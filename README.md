@@ -16,7 +16,7 @@
 <!-- [![pub points](https://img.shields.io/pub/points/kumihan)](https://pub.dev/packages/kumihan/score) -->
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Flutter](https://img.shields.io/badge/Flutter-3.12+-02569B.svg?logo=flutter)](https://flutter.dev)
+[![Flutter](https://img.shields.io/badge/Flutter-stable-02569B.svg?logo=flutter)](https://flutter.dev)
 
 </p>
 

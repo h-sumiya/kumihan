@@ -122,11 +122,14 @@ class LayoutAtom {
     String characterType,
     double fontSize,
     int fontType, {
-    this._bold = false,
-    this._italic = false,
-    this._kinsoku = false,
+    bool bold = false,
+    bool italic = false,
+    bool kinsoku = false,
   }) : _fontSize = fontSize,
        _fontType = fontType,
+       _bold = bold,
+       _italic = italic,
+       _kinsoku = kinsoku,
        _rotated = false,
        _r = characterType == 'R' || characterType == 'r',
        _t = characterType == 'u' || characterType == 'r';

@@ -212,8 +212,8 @@ typedef KumihanImageLoader = Future<ui.Image?> Function(String path);
 class KumihanEngine implements LayoutEnvironment, KumihanViewport {
   KumihanEngine({
     required this.baseUri,
-    this._coverImage,
-    required this._initialPage,
+    ui.Image? coverImage,
+    required int initialPage,
     required KumihanSpreadMode initialSpread,
     required KumihanWritingMode initialWritingMode,
     this.layout = const KumihanLayoutData(),
@@ -227,6 +227,8 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
            '${initialWritingMode == KumihanWritingMode.horizontal ? 'h' : 'v'}${initialSpread == KumihanSpreadMode.single ? 'single' : 'double'}',
        _currentTextRotation =
            initialWritingMode == KumihanWritingMode.horizontal ? 'h' : 'v',
+       _coverImage = coverImage,
+       _initialPage = initialPage,
        _currentPosition = PositionInfo(
          leftToRight: initialWritingMode == KumihanWritingMode.horizontal,
          length: 0,
