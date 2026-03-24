@@ -10,10 +10,9 @@
 
 <p align="center">
 
-<!-- TODO: pub.dev公開後にバッジを有効化 -->
-<!-- [![pub package](https://img.shields.io/pub/v/kumihan.svg)](https://pub.dev/packages/kumihan) -->
-<!-- [![likes](https://img.shields.io/pub/likes/kumihan)](https://pub.dev/packages/kumihan/score) -->
-<!-- [![pub points](https://img.shields.io/pub/points/kumihan)](https://pub.dev/packages/kumihan/score) -->
+[![pub package](https://img.shields.io/pub/v/kumihan.svg)](https://pub.dev/packages/kumihan)
+[![likes](https://img.shields.io/pub/likes/kumihan)](https://pub.dev/packages/kumihan/score)
+[![pub points](https://img.shields.io/pub/points/kumihan)](https://pub.dev/packages/kumihan/score)
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Flutter](https://img.shields.io/badge/Flutter-stable-02569B.svg?logo=flutter)](https://flutter.dev)
