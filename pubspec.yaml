@@ -1,0 +1,34 @@
+name: kumihan
+description: "Flutter canvas widget for vertical Japanese book rendering."
+version: 0.0.1
+publish_to: "none"
+
+environment:
+  sdk: ^3.12.0-210.2.beta
+  flutter: ">=1.17.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  html: ^0.15.6
+  markdown: ^7.3.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  fonts:
+    - family: WebFontGothic
+      fonts:
+        - asset: fonts/ipaexg.ttf
+    - family: WebFontMonoGothic
+      fonts:
+        - asset: fonts/ipag-mona.ttf
+    - family: WebFontMincho
+      fonts:
+        - asset: fonts/ipaexm.ttf
+    - family: WebFontMonoMincho
+      fonts:
+        - asset: fonts/ipam-mona.ttf
