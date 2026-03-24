@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 import 'engine/kumihan_engine.dart';
 import 'kumihan_controller.dart';
 import 'kumihan_document.dart';
+import 'kumihan_tap.dart';
 import 'kumihan_theme.dart';
 import 'kumihan_types.dart';
 import 'parsers/aozora_parser.dart';
@@ -25,6 +26,8 @@ class KumihanCanvas extends StatefulWidget {
     this.layout = const KumihanLayoutData(),
     this.theme = const KumihanThemeData(),
     this.onExternalOpen,
+    this.onUnhandledTap,
+    this.tapHandler = KumihanTapHandlers.pageTurnByHorizontalPosition,
     this.onSnapshotChanged,
   });
 
@@ -42,6 +45,9 @@ class KumihanCanvas extends StatefulWidget {
     KumihanLayoutData layout = const KumihanLayoutData(),
     KumihanThemeData theme = const KumihanThemeData(),
     ValueChanged<String>? onExternalOpen,
+    KumihanUnhandledTapCallback? onUnhandledTap,
+    KumihanTapHandler tapHandler =
+        KumihanTapHandlers.pageTurnByHorizontalPosition,
     ValueChanged<KumihanSnapshot>? onSnapshotChanged,
     bool includeCover = false,
   }) {
@@ -61,6 +67,8 @@ class KumihanCanvas extends StatefulWidget {
       layout: layout,
       theme: theme,
       onExternalOpen: onExternalOpen,
+      onUnhandledTap: onUnhandledTap,
+      tapHandler: tapHandler,
       onSnapshotChanged: onSnapshotChanged,
     );
   }
@@ -79,6 +87,9 @@ class KumihanCanvas extends StatefulWidget {
     KumihanLayoutData layout = const KumihanLayoutData(),
     KumihanThemeData theme = const KumihanThemeData(),
     ValueChanged<String>? onExternalOpen,
+    KumihanUnhandledTapCallback? onUnhandledTap,
+    KumihanTapHandler tapHandler =
+        KumihanTapHandlers.pageTurnByHorizontalPosition,
     ValueChanged<KumihanSnapshot>? onSnapshotChanged,
     bool includeCover = false,
   }) {
@@ -98,6 +109,8 @@ class KumihanCanvas extends StatefulWidget {
       layout: layout,
       theme: theme,
       onExternalOpen: onExternalOpen,
+      onUnhandledTap: onUnhandledTap,
+      tapHandler: tapHandler,
       onSnapshotChanged: onSnapshotChanged,
     );
   }
@@ -116,6 +129,9 @@ class KumihanCanvas extends StatefulWidget {
     KumihanLayoutData layout = const KumihanLayoutData(),
     KumihanThemeData theme = const KumihanThemeData(),
     ValueChanged<String>? onExternalOpen,
+    KumihanUnhandledTapCallback? onUnhandledTap,
+    KumihanTapHandler tapHandler =
+        KumihanTapHandlers.pageTurnByHorizontalPosition,
     ValueChanged<KumihanSnapshot>? onSnapshotChanged,
     bool includeCover = false,
   }) {
@@ -135,6 +151,8 @@ class KumihanCanvas extends StatefulWidget {
       layout: layout,
       theme: theme,
       onExternalOpen: onExternalOpen,
+      onUnhandledTap: onUnhandledTap,
+      tapHandler: tapHandler,
       onSnapshotChanged: onSnapshotChanged,
     );
   }
@@ -149,6 +167,8 @@ class KumihanCanvas extends StatefulWidget {
   final KumihanLayoutData layout;
   final KumihanThemeData theme;
   final ValueChanged<String>? onExternalOpen;
+  final KumihanUnhandledTapCallback? onUnhandledTap;
+  final KumihanTapHandler tapHandler;
   final ValueChanged<KumihanSnapshot>? onSnapshotChanged;
 
   @override
@@ -199,12 +219,21 @@ class _KumihanCanvasState extends State<KumihanCanvas> {
       _resolvePaperTexture(force: true);
     }
 
+    if (oldWidget.onExternalOpen != widget.onExternalOpen ||
+        oldWidget.onUnhandledTap != widget.onUnhandledTap ||
+        oldWidget.tapHandler != widget.tapHandler) {
+      _engine.updateInteractionHandlers(
+        onExternalOpen: widget.onExternalOpen,
+        onUnhandledTap: widget.onUnhandledTap,
+        tapHandler: widget.tapHandler,
+      );
+    }
+
     final settingsChanged =
         oldWidget.initialPage != widget.initialPage ||
         oldWidget.initialSpread != widget.initialSpread ||
         oldWidget.initialWritingMode != widget.initialWritingMode ||
-        oldWidget.imageLoader != widget.imageLoader ||
-        oldWidget.onExternalOpen != widget.onExternalOpen;
+        oldWidget.imageLoader != widget.imageLoader;
 
     if (settingsChanged) {
       oldWidget.controller?.detach(_engine);
@@ -252,6 +281,8 @@ class _KumihanCanvasState extends State<KumihanCanvas> {
       theme: widget.theme,
       paperTexture: _resolvedPaperTexture,
       onExternalOpen: widget.onExternalOpen,
+      onUnhandledTap: widget.onUnhandledTap,
+      tapHandler: widget.tapHandler,
       onInvalidate: () {
         if (!mounted) {
           return;

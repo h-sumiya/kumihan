@@ -12,6 +12,7 @@ abstract interface class KumihanViewport {
   Future<void> prevPage([int? amount]);
   Future<void> prevStop();
   Future<void> resize(double width, double height);
+  Future<void> showPage(int page);
   Future<void> showFirstPage();
   Future<void> showLastPage();
   Future<void> tap(double x, double y);
@@ -66,6 +67,8 @@ class KumihanController extends ChangeNotifier {
   Future<void> nextStop() async => _viewport?.nextStop();
 
   Future<void> prevStop() async => _viewport?.prevStop();
+
+  Future<void> showPage(int page) async => _viewport?.showPage(page);
 
   Future<void> showFirstPage() async => _viewport?.showFirstPage();
 

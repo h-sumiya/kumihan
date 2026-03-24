@@ -7,6 +7,7 @@ import 'package:flutter/painting.dart';
 
 import '../kumihan_controller.dart';
 import '../kumihan_document.dart';
+import '../kumihan_tap.dart';
 import '../kumihan_theme.dart';
 import '../kumihan_types.dart';
 import 'constants.dart';
@@ -220,6 +221,8 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
     this.theme = const KumihanThemeData(),
     ui.Image? paperTexture,
     required this.onExternalOpen,
+    this.onUnhandledTap,
+    this.tapHandler = KumihanTapHandlers.pageTurnByHorizontalPosition,
     required this.onInvalidate,
     required this.onSnapshot,
     this.imageLoader,
@@ -241,7 +244,9 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
   }
 
   final Uri? baseUri;
-  final ValueChanged<String>? onExternalOpen;
+  ValueChanged<String>? onExternalOpen;
+  ValueChanged<KumihanTapDetails>? onUnhandledTap;
+  KumihanTapHandler tapHandler;
   final VoidCallback onInvalidate;
   final ValueChanged<KumihanSnapshot> onSnapshot;
   final KumihanImageLoader? imageLoader;
@@ -249,6 +254,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
   KumihanLayoutData layout;
   final KumihanThemeData theme;
   final RendererSettings _settings = const RendererSettings();
+  late final KumihanTapActions _tapActions = KumihanTapActions(this);
 
   @override
   final List<String> gothicFontFamilies = defaultGothicFontFamilies;
@@ -472,11 +478,18 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
     return _clickable.any((area) => area.hit(x, y));
   }
 
+  void updateInteractionHandlers({
+    required ValueChanged<String>? onExternalOpen,
+    required ValueChanged<KumihanTapDetails>? onUnhandledTap,
+    required KumihanTapHandler tapHandler,
+  }) {
+    this.onExternalOpen = onExternalOpen;
+    this.onUnhandledTap = onUnhandledTap;
+    this.tapHandler = tapHandler;
+  }
+
   @override
   Future<void> tap(double x, double y) async {
-    final single = _currentState.endsWith('single');
-    final vertical = _currentState.startsWith('v');
-
     for (final area in _clickable) {
       if (!area.hit(x, y)) {
         continue;
@@ -500,12 +513,13 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
       }
     }
 
-    if (x > _width / 2) {
-      await (vertical ? prevPage(single ? 1 : 2) : nextPage(single ? 1 : 2));
-      return;
-    }
-
-    await (vertical ? nextPage(single ? 1 : 2) : prevPage(single ? 1 : 2));
+    final details = KumihanTapDetails(
+      canvasSize: Size(_width, _height),
+      position: Offset(x, y),
+      snapshot: snapshot,
+    );
+    onUnhandledTap?.call(details);
+    await tapHandler(details, _tapActions);
   }
 
   @override
@@ -523,6 +537,11 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
     if (_currentPageNo > 0) {
       _showPage(math.max(_currentPageNo - (amount ?? _step()), 0));
     }
+  }
+
+  @override
+  Future<void> showPage(int page) async {
+    _showPage(page);
   }
 
   @override
