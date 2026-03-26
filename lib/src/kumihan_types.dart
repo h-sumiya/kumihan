@@ -1,27 +1,54 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart';
+
+const Object _unsetPagePadding = Object();
 
 enum KumihanWritingMode { vertical, horizontal }
 
 enum KumihanSpreadMode { single, doublePage }
 
 const double defaultKumihanFontSize = 18;
-const double defaultKumihanPageMarginScale = 1;
+const EdgeInsets? defaultKumihanPagePadding = null;
+const bool defaultKumihanShowTitle = true;
+const bool defaultKumihanShowPageNumber = true;
+
+enum KumihanSinglePageNumberPosition { left, center, right }
+
+const KumihanSinglePageNumberPosition defaultKumihanSinglePageNumberPosition =
+    KumihanSinglePageNumberPosition.center;
 
 @immutable
 class KumihanLayoutData {
   const KumihanLayoutData({
     this.fontSize = defaultKumihanFontSize,
-    this.pageMarginScale = defaultKumihanPageMarginScale,
-  }) : assert(fontSize > 0),
-       assert(pageMarginScale > 0);
+    this.pagePadding = defaultKumihanPagePadding,
+    this.showTitle = defaultKumihanShowTitle,
+    this.showPageNumber = defaultKumihanShowPageNumber,
+    this.singlePageNumberPosition = defaultKumihanSinglePageNumberPosition,
+  }) : assert(fontSize > 0);
 
   final double fontSize;
-  final double pageMarginScale;
+  final EdgeInsets? pagePadding;
+  final bool showTitle;
+  final bool showPageNumber;
+  final KumihanSinglePageNumberPosition singlePageNumberPosition;
 
-  KumihanLayoutData copyWith({double? fontSize, double? pageMarginScale}) {
+  KumihanLayoutData copyWith({
+    double? fontSize,
+    Object? pagePadding = _unsetPagePadding,
+    bool? showTitle,
+    bool? showPageNumber,
+    KumihanSinglePageNumberPosition? singlePageNumberPosition,
+  }) {
     return KumihanLayoutData(
       fontSize: fontSize ?? this.fontSize,
-      pageMarginScale: pageMarginScale ?? this.pageMarginScale,
+      pagePadding: identical(pagePadding, _unsetPagePadding)
+          ? this.pagePadding
+          : pagePadding as EdgeInsets?,
+      showTitle: showTitle ?? this.showTitle,
+      showPageNumber: showPageNumber ?? this.showPageNumber,
+      singlePageNumberPosition:
+          singlePageNumberPosition ?? this.singlePageNumberPosition,
     );
   }
 
@@ -29,11 +56,20 @@ class KumihanLayoutData {
   bool operator ==(Object other) {
     return other is KumihanLayoutData &&
         other.fontSize == fontSize &&
-        other.pageMarginScale == pageMarginScale;
+        other.pagePadding == pagePadding &&
+        other.showTitle == showTitle &&
+        other.showPageNumber == showPageNumber &&
+        other.singlePageNumberPosition == singlePageNumberPosition;
   }
 
   @override
-  int get hashCode => Object.hash(fontSize, pageMarginScale);
+  int get hashCode => Object.hash(
+    fontSize,
+    pagePadding,
+    showTitle,
+    showPageNumber,
+    singlePageNumberPosition,
+  );
 }
 
 class KumihanSnapshot {

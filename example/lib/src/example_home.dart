@@ -16,6 +16,13 @@ class KumihanExampleHome extends StatefulWidget {
 }
 
 class _KumihanExampleHomeState extends State<KumihanExampleHome> {
+  static const EdgeInsets _defaultCustomPagePadding = EdgeInsets.fromLTRB(
+    28,
+    28,
+    28,
+    28,
+  );
+
   // ── KumihanCanvas に渡す状態 ──────────────────────────────────────
   final KumihanController _controller = KumihanController();
   final AssetImage _coverImage = const AssetImage('assets/cover.png');
@@ -277,7 +284,9 @@ class _KumihanExampleHomeState extends State<KumihanExampleHome> {
                   selectedTextureId: _selectedTextureId,
                   selectedThemeIsCustom: _selectedThemeIsCustom,
                   fontSize: _layout.fontSize,
-                  pageMarginScale: _layout.pageMarginScale,
+                  pagePadding: _layout.pagePadding,
+                  showTitle: _layout.showTitle,
+                  showPageNumber: _layout.showPageNumber,
                   draftTheme: _draftTheme,
                   panelColor: panelColor,
                   themeNameController: _themeNameController,
@@ -299,9 +308,28 @@ class _KumihanExampleHomeState extends State<KumihanExampleHome> {
                       _layout = _layout.copyWith(fontSize: value);
                     });
                   },
-                  onPageMarginScaleChanged: (value) {
+                  onUseCustomPaddingChanged: (enabled) {
                     setState(() {
-                      _layout = _layout.copyWith(pageMarginScale: value);
+                      _layout = _layout.copyWith(
+                        pagePadding: enabled
+                            ? (_layout.pagePadding ?? _defaultCustomPagePadding)
+                            : null,
+                      );
+                    });
+                  },
+                  onPagePaddingChanged: (value) {
+                    setState(() {
+                      _layout = _layout.copyWith(pagePadding: value);
+                    });
+                  },
+                  onShowTitleChanged: (value) {
+                    setState(() {
+                      _layout = _layout.copyWith(showTitle: value);
+                    });
+                  },
+                  onShowPageNumberChanged: (value) {
+                    setState(() {
+                      _layout = _layout.copyWith(showPageNumber: value);
                     });
                   },
                   onPaperColorChanged: (value) {

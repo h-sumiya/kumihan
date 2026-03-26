@@ -341,6 +341,28 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
 
   bool _isCoverPage(int pageNo) => _hasCover && pageNo == 0;
 
+  bool get _showsHeader => layout.showTitle && _headerTitle.isNotEmpty;
+
+  bool get _showsPageNumber => layout.showPageNumber;
+
+  double get _headerReservedExtent {
+    if (!_showsHeader) {
+      return 0;
+    }
+    return _currentState.startsWith('v')
+        ? math.max(1.85 * _fontSize + 20, 0)
+        : 3 * _fontSize;
+  }
+
+  double get _pageNumberReservedExtent {
+    if (!_showsPageNumber) {
+      return 0;
+    }
+    return _currentState.startsWith('v')
+        ? math.max(2.07 * _fontSize, 44)
+        : 2.5 * _fontSize;
+  }
+
   int _documentToInternalPageNo(int pageNo) => pageNo + (_hasCover ? 0 : 1);
 
   int _internalToDocumentPageNo(int pageNo) => pageNo - (_hasCover ? 0 : 1);
@@ -754,35 +776,50 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
   void _updateSizes() {
     _fontSize = layout.fontSize.roundToDouble();
     _lineSpace = _fontSize * (_settings.widenLineSpace ? 0.8 : 0.63);
-    final marginScale = layout.pageMarginScale;
+    final customPadding = layout.pagePadding;
+    final useCustomPadding = customPadding != null;
     final minPageWidth = _fontSize * 6;
     final minPageHeight = _fontSize * 6;
 
-    if (_currentState[1] == 'd') {
-      final desiredSide = math.max(_width * 0.045, _fontSize) * marginScale;
-      final maxSide = math.max((_width / 2 - minPageWidth) / 2.1, 0.0);
-      _pageMarginSide = math.min(desiredSide, maxSide);
-      _pageMarginCenter = 1.1 * _pageMarginSide;
-      _pageWidth = _width / 2 - _pageMarginSide - _pageMarginCenter;
+    if (useCustomPadding) {
+      final pageWidthBase = _currentState[1] == 'd' ? _width / 2 : _width;
+      final desiredSide = customPadding.left;
+      final desiredCenter = customPadding.right;
+      final maxMarginTotal = math.max(pageWidthBase - minPageWidth, 0.0);
+      final marginTotal = desiredSide + desiredCenter;
+      final marginFactor = marginTotal > maxMarginTotal && marginTotal > 0
+          ? maxMarginTotal / marginTotal
+          : 1.0;
+      _pageMarginSide = desiredSide * marginFactor;
+      _pageMarginCenter = desiredCenter * marginFactor;
+      _pageWidth = pageWidthBase - _pageMarginSide - _pageMarginCenter;
     } else {
-      final desiredSide = math.max(_width * 0.08, _fontSize) * marginScale;
-      final maxSide = math.max((_width - minPageWidth) / 2.1, 0.0);
-      _pageMarginSide = math.min(desiredSide, maxSide);
-      _pageMarginCenter = 1.1 * _pageMarginSide;
-      _pageWidth = _width - _pageMarginSide - _pageMarginCenter;
+      if (_currentState[1] == 'd') {
+        final desiredSide = math.max(_width * 0.045, _fontSize);
+        final maxSide = math.max((_width / 2 - minPageWidth) / 2.1, 0.0);
+        _pageMarginSide = math.min(desiredSide, maxSide);
+        _pageMarginCenter = 1.1 * _pageMarginSide;
+        _pageWidth = _width / 2 - _pageMarginSide - _pageMarginCenter;
+      } else {
+        final desiredSide = math.max(_width * 0.08, _fontSize);
+        final maxSide = math.max((_width - minPageWidth) / 2.1, 0.0);
+        _pageMarginSide = math.min(desiredSide, maxSide);
+        _pageMarginCenter = 1.1 * _pageMarginSide;
+        _pageWidth = _width - _pageMarginSide - _pageMarginCenter;
+      }
     }
 
     if (_currentState.startsWith('v')) {
       _pageWidth -= (_pageWidth + _lineSpace) % (_fontSize + _lineSpace);
-      if (_currentState[1] == 's') {
+      if (_currentState[1] == 's' && !useCustomPadding) {
         _pageMarginSide = (_width - _pageWidth) / 2;
       }
-      final desiredTop =
-          math.max(_height * 0.07, math.max(1.85 * _fontSize + 20, 0)) *
-          marginScale;
-      final desiredBottom =
-          math.max(_height * 0.07, math.max(2.07 * _fontSize, 44)) *
-          marginScale;
+      final desiredTop = useCustomPadding
+          ? customPadding.top + _headerReservedExtent
+          : math.max(_height * 0.07, math.max(1.85 * _fontSize + 20, 0));
+      final desiredBottom = useCustomPadding
+          ? customPadding.bottom + _pageNumberReservedExtent
+          : math.max(_height * 0.07, math.max(2.07 * _fontSize, 44));
       final maxMarginTotal = math.max(_height - minPageHeight, 0);
       final marginTotal = desiredTop + desiredBottom;
       final marginFactor = marginTotal > maxMarginTotal && marginTotal > 0
@@ -791,9 +828,12 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
       _pageMarginTop = desiredTop * marginFactor;
       _pageMarginBottom = desiredBottom * marginFactor;
     } else {
-      final desiredTop = math.max(_height * 0.07, 3 * _fontSize) * marginScale;
-      final desiredBottom =
-          math.max(_height * 0.07, 2.5 * _fontSize) * marginScale;
+      final desiredTop = useCustomPadding
+          ? customPadding.top + _headerReservedExtent
+        : math.max(_height * 0.07, 3 * _fontSize);
+      final desiredBottom = useCustomPadding
+          ? customPadding.bottom + _pageNumberReservedExtent
+        : math.max(_height * 0.07, 2.5 * _fontSize);
       final maxMarginTotal = math.max(_height - minPageHeight, 0);
       final marginTotal = desiredTop + desiredBottom;
       final marginFactor = marginTotal > maxMarginTotal && marginTotal > 0
@@ -3078,7 +3118,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
   }
 
   void _drawHeader(ui.Canvas canvas) {
-    if (_headerTitle.isEmpty || _isCoverPage(_currentPageNo)) {
+    if (!_showsHeader || _isCoverPage(_currentPageNo)) {
       return;
     }
 
@@ -3707,7 +3747,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
           : cursor + group.width + _lineSpace;
     }
 
-    if (pageNo > 0) {
+    if (pageNo > 0 && _showsPageNumber) {
       final label = '$pageNo/$_contentPageCount';
       final painter = TextPainter(
         text: TextSpan(
@@ -3727,10 +3767,17 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
       )..layout();
 
       if (_currentState.endsWith('single')) {
+        final x = switch (layout.singlePageNumberPosition) {
+          KumihanSinglePageNumberPosition.left => _pageMarginSide + _fontSize,
+          KumihanSinglePageNumberPosition.center =>
+            _width / 2 - painter.width / 2,
+          KumihanSinglePageNumberPosition.right =>
+            _width - _pageMarginCenter - _fontSize - painter.width,
+        };
         painter.paint(
           canvas,
           Offset(
-            _width / 2 - painter.width / 2,
+            x,
             _height - _pageMarginBottom + _fontSize - painter.height / 2,
           ),
         );

@@ -15,7 +15,9 @@ class ExampleControlsDialog extends StatelessWidget {
     required this.selectedTextureId,
     required this.selectedThemeIsCustom,
     required this.fontSize,
-    required this.pageMarginScale,
+    required this.pagePadding,
+    required this.showTitle,
+    required this.showPageNumber,
     required this.draftTheme,
     required this.panelColor,
     required this.themeNameController,
@@ -33,7 +35,10 @@ class ExampleControlsDialog extends StatelessWidget {
     required this.onSaveThemePreset,
     required this.onDeleteTheme,
     required this.onFontSizeChanged,
-    required this.onPageMarginScaleChanged,
+    required this.onUseCustomPaddingChanged,
+    required this.onPagePaddingChanged,
+    required this.onShowTitleChanged,
+    required this.onShowPageNumberChanged,
     required this.onPaperColorChanged,
     required this.onTextColorChanged,
     required this.onLinkColorChanged,
@@ -50,7 +55,9 @@ class ExampleControlsDialog extends StatelessWidget {
   final String selectedTextureId;
   final bool selectedThemeIsCustom;
   final double fontSize;
-  final double pageMarginScale;
+  final EdgeInsets? pagePadding;
+  final bool showTitle;
+  final bool showPageNumber;
   final KumihanThemeData draftTheme;
   final Color panelColor;
   final TextEditingController themeNameController;
@@ -68,7 +75,10 @@ class ExampleControlsDialog extends StatelessWidget {
   final VoidCallback onSaveThemePreset;
   final VoidCallback onDeleteTheme;
   final ValueChanged<double> onFontSizeChanged;
-  final ValueChanged<double> onPageMarginScaleChanged;
+  final ValueChanged<bool> onUseCustomPaddingChanged;
+  final ValueChanged<EdgeInsets> onPagePaddingChanged;
+  final ValueChanged<bool> onShowTitleChanged;
+  final ValueChanged<bool> onShowPageNumberChanged;
   final ValueChanged<String> onPaperColorChanged;
   final ValueChanged<String> onTextColorChanged;
   final ValueChanged<String> onLinkColorChanged;
@@ -79,6 +89,9 @@ class ExampleControlsDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final useCustomPadding = pagePadding != null;
+    final effectivePadding =
+        pagePadding ?? const EdgeInsets.fromLTRB(28, 28, 28, 28);
 
     return Material(
       color: theme.colorScheme.surface,
@@ -219,14 +232,111 @@ class ExampleControlsDialog extends StatelessWidget {
                       divisions: 24,
                       onChanged: onFontSizeChanged,
                     ),
+                    SizedBox(
+                      width: 300,
+                      child: SwitchListTile.adaptive(
+                        value: useCustomPadding,
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('カスタム余白'),
+                        subtitle: Text(
+                          useCustomPadding ? '上下左右を個別に指定中' : '自動余白を使用中',
+                        ),
+                        onChanged: onUseCustomPaddingChanged,
+                      ),
+                    ),
+                    SizedBox(
+                      width: 220,
+                      child: SwitchListTile.adaptive(
+                        value: showTitle,
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('タイトル表示'),
+                        onChanged: onShowTitleChanged,
+                      ),
+                    ),
+                    SizedBox(
+                      width: 220,
+                      child: SwitchListTile.adaptive(
+                        value: showPageNumber,
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('ページ番号表示'),
+                        onChanged: onShowPageNumberChanged,
+                      ),
+                    ),
                     _ReaderSlider(
-                      label: '余白サイズ',
-                      valueLabel: '${(pageMarginScale * 100).round()}%',
-                      value: pageMarginScale,
-                      min: 0.6,
-                      max: 1.8,
-                      divisions: 12,
-                      onChanged: onPageMarginScaleChanged,
+                      label: '余白 上',
+                      valueLabel:
+                          '${effectivePadding.top.toStringAsFixed(0)} px',
+                      value: effectivePadding.top,
+                      min: 0,
+                      max: 120,
+                      divisions: 120,
+                      onChanged: useCustomPadding
+                          ? (value) => onPagePaddingChanged(
+                              EdgeInsets.fromLTRB(
+                                effectivePadding.left,
+                                value,
+                                effectivePadding.right,
+                                effectivePadding.bottom,
+                              ),
+                            )
+                          : null,
+                    ),
+                    _ReaderSlider(
+                      label: '余白 下',
+                      valueLabel:
+                          '${effectivePadding.bottom.toStringAsFixed(0)} px',
+                      value: effectivePadding.bottom,
+                      min: 0,
+                      max: 120,
+                      divisions: 120,
+                      onChanged: useCustomPadding
+                          ? (value) => onPagePaddingChanged(
+                              EdgeInsets.fromLTRB(
+                                effectivePadding.left,
+                                effectivePadding.top,
+                                effectivePadding.right,
+                                value,
+                              ),
+                            )
+                          : null,
+                    ),
+                    _ReaderSlider(
+                      label: '余白 左',
+                      valueLabel:
+                          '${effectivePadding.left.toStringAsFixed(0)} px',
+                      value: effectivePadding.left,
+                      min: 0,
+                      max: 120,
+                      divisions: 120,
+                      onChanged: useCustomPadding
+                          ? (value) => onPagePaddingChanged(
+                              EdgeInsets.fromLTRB(
+                                value,
+                                effectivePadding.top,
+                                effectivePadding.right,
+                                effectivePadding.bottom,
+                              ),
+                            )
+                          : null,
+                    ),
+                    _ReaderSlider(
+                      label: '余白 右',
+                      valueLabel:
+                          '${effectivePadding.right.toStringAsFixed(0)} px',
+                      value: effectivePadding.right,
+                      min: 0,
+                      max: 120,
+                      divisions: 120,
+                      onChanged: useCustomPadding
+                          ? (value) => onPagePaddingChanged(
+                              EdgeInsets.fromLTRB(
+                                effectivePadding.left,
+                                effectivePadding.top,
+                                value,
+                                effectivePadding.bottom,
+                              ),
+                            )
+                          : null,
                     ),
                   ],
                 ),
@@ -489,7 +599,7 @@ class _ReaderSlider extends StatelessWidget {
   final double min;
   final double max;
   final int divisions;
-  final ValueChanged<double> onChanged;
+  final ValueChanged<double>? onChanged;
 
   @override
   Widget build(BuildContext context) {
