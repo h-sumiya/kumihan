@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import 'debug/render_trace.dart';
 import 'kumihan_document.dart';
 import 'kumihan_types.dart';
 
@@ -21,6 +22,7 @@ abstract interface class KumihanViewport {
   Future<void> toggleShift1Page();
   Future<void> toggleSpread();
   Future<void> toggleWritingMode();
+  KumihanRenderTrace? get renderTrace;
   KumihanSnapshot get snapshot;
 }
 
@@ -34,6 +36,8 @@ class KumihanController extends ChangeNotifier {
   );
 
   KumihanSnapshot get snapshot => _snapshot;
+
+  KumihanRenderTrace? get renderTrace => _viewport?.renderTrace;
 
   void attach(KumihanViewport viewport) {
     _viewport = viewport;

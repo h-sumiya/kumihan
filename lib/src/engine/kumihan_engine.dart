@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 
 import '../kumihan_controller.dart';
+import '../debug/render_trace.dart';
 import '../kumihan_document.dart';
 import '../kumihan_tap.dart';
 import '../kumihan_theme.dart';
@@ -374,6 +375,9 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
     totalPages: _contentPageCount + (_hasCover ? 1 : 0),
     writingMode: getWritingModeFromState(_currentState),
   );
+
+  @override
+  KumihanRenderTrace? get renderTrace => _buildRenderTrace();
 
   @override
   MeasuredText layoutText(LayoutAtom atom, String text, Color color) {
@@ -2993,6 +2997,41 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
     onInvalidate();
   }
 
+  KumihanRenderTrace? _buildRenderTrace() {
+    if (_width <= 0 || _height <= 0 || _pageWidth <= 0 || _pageHeight <= 0) {
+      return null;
+    }
+
+    final pageNo = _currentPageNo < 0 ? 0 : _currentPageNo;
+    if (pageNo > _lastDocumentPage || _isCoverPage(pageNo)) {
+      return KumihanRenderTrace(
+        currentPage: pageNo,
+        writingMode: getWritingModeFromState(_currentState),
+        commands: const <KumihanRenderCommand>[],
+      );
+    }
+
+    final commands = <KumihanRenderCommand>[];
+    final recorder = ui.PictureRecorder();
+    final canvas = ui.Canvas(recorder);
+    final previousClickable = _clickable;
+    _clickable = <ClickableArea>[];
+    _showOnePage(
+      canvas,
+      _documentToInternalPageNo(pageNo),
+      true,
+      traceSink: commands.add,
+    );
+    _clickable = previousClickable;
+    recorder.endRecording().dispose();
+
+    return KumihanRenderTrace(
+      currentPage: pageNo,
+      writingMode: getWritingModeFromState(_currentState),
+      commands: List<KumihanRenderCommand>.unmodifiable(commands),
+    );
+  }
+
   void paint(ui.Canvas canvas) {
     if (_width <= 0 || _height <= 0 || _pageWidth <= 0 || _pageHeight <= 0) {
       return;
@@ -3286,6 +3325,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
     int pageNo,
     bool leftSide, {
     bool backPage = false,
+    KumihanRenderCommandSink? traceSink,
   }) {
     final vertical = _currentState.startsWith('v');
     final pageStartLine = pageNo < _pages.length ? _pages[pageNo].line : 0;
@@ -3336,13 +3376,19 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
               ? cursor - line.width + _pageMarginSide
               : _width - _pageMarginSide - _pageWidth + cursor - line.width;
           y = _pageMarginTop;
-          line.draw(canvas, x, y, backPage: backPage);
+          line.draw(canvas, x, y, backPage: backPage, traceSink: traceSink);
         } else {
           x = cursor + _pageMarginTop;
           y = leftSide
               ? _pageMarginSide
               : _width - _pageMarginSide - _pageWidth;
-          line.drawYoko(canvas, y, x + line.width / 2, backPage: backPage);
+          line.drawYoko(
+            canvas,
+            y,
+            x + line.width / 2,
+            backPage: backPage,
+            traceSink: traceSink,
+          );
         }
 
         line.x = x;
@@ -3355,72 +3401,141 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
             switch (kind) {
               case '右点':
                 vertical
-                    ? item.draw(canvas, x + line.width - pointOffset, y)
+                    ? item.draw(
+                        canvas,
+                        x + line.width - pointOffset,
+                        y,
+                        traceSink: traceSink,
+                      )
                     : item.drawYoko(
                         canvas,
                         y,
                         x - item.width / 2 + pointOffset,
+                        traceSink: traceSink,
                       );
               case '左点':
                 vertical
-                    ? item.draw(canvas, x - item.width + pointOffset, y)
+                    ? item.draw(
+                        canvas,
+                        x - item.width + pointOffset,
+                        y,
+                        traceSink: traceSink,
+                      )
                     : item.drawYoko(
                         canvas,
                         y,
                         x + line.width + item.width / 2 - pointOffset,
+                        traceSink: traceSink,
                       );
               case '※':
               case '注':
                 vertical
-                    ? item.draw(canvas, x - 0.45 * line.width, y)
+                    ? item.draw(
+                        canvas,
+                        x - 0.45 * line.width,
+                        y,
+                        traceSink: traceSink,
+                      )
                     : item.drawYoko(
                         canvas,
                         y,
                         x + 0.95 * line.width + item.width / 2,
+                        traceSink: traceSink,
                       );
               case 'る':
                 item.color = _theme.rubyColor;
                 vertical
-                    ? item.draw(canvas, x - item.width, y)
-                    : item.drawYoko(canvas, y, x + line.width + item.width / 2);
+                    ? item.draw(canvas, x - item.width, y, traceSink: traceSink)
+                    : item.drawYoko(
+                        canvas,
+                        y,
+                        x + line.width + item.width / 2,
+                        traceSink: traceSink,
+                      );
               case 'ル':
                 item.color = _theme.rubyColor;
                 vertical
-                    ? item.draw(canvas, x + line.width, y)
-                    : item.drawYoko(canvas, y, x - item.width / 2);
+                    ? item.draw(canvas, x + line.width, y, traceSink: traceSink)
+                    : item.drawYoko(
+                        canvas,
+                        y,
+                        x - item.width / 2,
+                        traceSink: traceSink,
+                      );
               case '返':
                 final size = item.block.atom.first.getFontSize();
                 vertical
-                    ? item.draw(canvas, x - 0.2 * size, y)
-                    : item.drawYoko(canvas, y, x + line.width - 0.3 * size);
+                    ? item.draw(canvas, x - 0.2 * size, y, traceSink: traceSink)
+                    : item.drawYoko(
+                        canvas,
+                        y,
+                        x + line.width - 0.3 * size,
+                        traceSink: traceSink,
+                      );
               case '中':
                 final size = item.block.atom.first.getFontSize();
                 vertical
-                    ? item.draw(canvas, x + line.width / 2 - size / 2, y)
-                    : item.drawYoko(canvas, y, x + line.width / 2);
+                    ? item.draw(
+                        canvas,
+                        x + line.width / 2 - size / 2,
+                        y,
+                        traceSink: traceSink,
+                      )
+                    : item.drawYoko(
+                        canvas,
+                        y,
+                        x + line.width / 2,
+                        traceSink: traceSink,
+                      );
               case '送':
                 final size = item.block.atom.first.getFontSize();
                 vertical
-                    ? item.draw(canvas, x + line.width - 0.8 * size, y)
-                    : item.drawYoko(canvas, y, x + 0.3 * size);
+                    ? item.draw(
+                        canvas,
+                        x + line.width - 0.8 * size,
+                        y,
+                        traceSink: traceSink,
+                      )
+                    : item.drawYoko(
+                        canvas,
+                        y,
+                        x + 0.3 * size,
+                        traceSink: traceSink,
+                      );
             }
             continue;
           }
 
           if (item is WarichuMarker) {
             if (vertical) {
-              item.upperLine?.draw(canvas, x + line.width / 2, y);
+              item.upperLine?.draw(
+                canvas,
+                x + line.width / 2,
+                y,
+                traceSink: traceSink,
+              );
               item.lowerLine?.draw(
                 canvas,
                 x + line.width / 2 - (item.lowerLine?.width ?? 0),
                 y,
+                traceSink: traceSink,
               );
             } else {
               final upperCenter = x + (item.upperLine?.width ?? 0) / 2;
               final lowerCenter =
                   x + line.width - (item.lowerLine?.width ?? 0) / 2;
-              item.upperLine?.drawYoko(canvas, y, upperCenter);
-              item.lowerLine?.drawYoko(canvas, y, lowerCenter);
+              item.upperLine?.drawYoko(
+                canvas,
+                y,
+                upperCenter,
+                traceSink: traceSink,
+              );
+              item.lowerLine?.drawYoko(
+                canvas,
+                y,
+                lowerCenter,
+                traceSink: traceSink,
+              );
             }
             continue;
           }
@@ -3447,12 +3562,45 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
                       data: item.userData,
                     ),
             );
+            traceSink?.call(
+              KumihanRenderCommand(
+                kind: 'region',
+                role: 'link',
+                localX: vertical ? x : y + top + line.y,
+                localY: vertical ? y + top + line.y : x,
+                width: vertical ? line.width : bottom - top,
+                height: vertical ? bottom - top : line.width,
+                data: <String, Object?>{'target': item.userData},
+              ),
+            );
             continue;
           }
 
           if (item is! SpanMarker && item is! NoteMarker) {
             continue;
           }
+
+          final markerTop = item is SpanMarker ? item.top + y : y;
+          final markerBottom = item is SpanMarker ? item.bottom + y : y;
+          final markerRole = switch (item) {
+            SpanMarker() => item.markType,
+            NoteMarker() => item.markType,
+            _ => '',
+          };
+          traceSink?.call(
+            KumihanRenderCommand(
+              kind: 'marker',
+              role: markerRole,
+              localX: vertical ? x : markerTop,
+              localY: vertical ? markerTop : x,
+              width: vertical ? line.width : markerBottom - markerTop,
+              height: vertical ? markerBottom - markerTop : line.width,
+              data: <String, Object?>{
+                'vertical': vertical,
+                'lineIndex': lineIndex,
+              },
+            ),
+          );
 
           canvas.save();
           final paint = Paint()
