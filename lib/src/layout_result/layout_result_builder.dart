@@ -16,7 +16,7 @@ class LayoutResultBuilder {
   static const String _noteClose = '）';
 
   static const String _lineStartForbidden =
-      '、。，．・：；！？)]｝〕〉》」』】〙〗ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮー゛゜';
+      '、。，．・：；！？)]｝〕〉》」』】〙〗ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮー゛゜々ゝゞヽヾ';
   static const String _lineEndForbidden = '([｛〔〈《「『【〘〖';
   static const String _openingBrackets = '‘“（〔［｛〈《「『【｟〘〖«〝';
   static const String _closingBrackets = '’”）〕］｝〉》」』】｠〙〗»〟';
@@ -59,10 +59,13 @@ class LayoutResultBuilder {
     var blockExtent = 0.0;
     var emitted = false;
 
-    void append(_LeafLayout leaf, {required bool keepWithPrevious}) {
+    void applyGap(bool keepWithPrevious) {
       if (emitted && !keepWithPrevious) {
         cursor += constraints.blockGap;
       }
+    }
+
+    void append(_LeafLayout leaf) {
       results.add(leaf.block);
       hitRegions.addAll(leaf.hitRegions);
       blockExtent = math.max(blockExtent, leaf.block.blockExtent);
@@ -70,12 +73,9 @@ class LayoutResultBuilder {
       emitted = true;
     }
 
-    void appendFlow(_FlowLayout flow, {required bool keepWithPrevious}) {
+    void appendFlow(_FlowLayout flow) {
       if (flow.blocks.isEmpty) {
         return;
-      }
-      if (emitted && !keepWithPrevious) {
-        cursor += constraints.blockGap;
       }
       results.addAll(flow.blocks);
       hitRegions.addAll(flow.hitRegions);
@@ -87,106 +87,100 @@ class LayoutResultBuilder {
     for (final block in blocks) {
       switch (block) {
         case LayoutParagraph():
-          append(
-            _layoutParagraph(block, context, inlineOffset: cursor),
-            keepWithPrevious: block.keepWithPrevious,
-          );
+          applyGap(block.keepWithPrevious);
+          append(_layoutParagraph(block, context, inlineOffset: cursor));
         case LayoutEmptyLine():
-          append(
-            _layoutEmptyLine(block, context, inlineOffset: cursor),
-            keepWithPrevious: false,
-          );
+          applyGap(false);
+          append(_layoutEmptyLine(block, context, inlineOffset: cursor));
         case LayoutUnsupportedBlock():
+          applyGap(false);
           append(
             _layoutUnsupportedBlock(block, context, inlineOffset: cursor),
-            keepWithPrevious: false,
           );
         case LayoutIndentBlock():
+          applyGap(false);
           appendFlow(
             _layoutBlocks(
               block.children,
               context.withIndent(block.width?.toDouble() ?? 0),
               baseInlineOffset: cursor,
             ),
-            keepWithPrevious: false,
           );
         case LayoutAlignmentBlock():
+          applyGap(false);
           appendFlow(
             _layoutBlocks(
               block.children,
               context.withAlignment(block.kind),
               baseInlineOffset: cursor,
             ),
-            keepWithPrevious: false,
           );
         case LayoutJizumeBlock():
+          applyGap(false);
           appendFlow(
             _layoutBlocks(
               block.children,
               context.withJizume(block.width?.toDouble()),
               baseInlineOffset: cursor,
             ),
-            keepWithPrevious: false,
           );
         case LayoutFlowBlock():
+          applyGap(false);
           appendFlow(
             _layoutBlocks(
               block.children,
               context.withFlow(block.kind),
               baseInlineOffset: cursor,
             ),
-            keepWithPrevious: false,
           );
         case LayoutCaptionBlock():
+          applyGap(false);
           appendFlow(
             _layoutBlocks(
               block.children,
               context.withCaption(),
               baseInlineOffset: cursor,
             ),
-            keepWithPrevious: false,
           );
         case LayoutFrameBlock():
+          applyGap(false);
           appendFlow(
             _layoutBlocks(
               block.children,
               context.withFrame(block.kind, block.borderWidth),
               baseInlineOffset: cursor,
             ),
-            keepWithPrevious: false,
           );
         case LayoutStyledBlock():
+          applyGap(false);
           appendFlow(
             _layoutBlocks(
               block.children,
               context.withTextStyle(block.style),
               baseInlineOffset: cursor,
             ),
-            keepWithPrevious: false,
           );
         case LayoutFontSizeBlock():
+          applyGap(false);
           appendFlow(
             _layoutBlocks(
               block.children,
               context.withFontSize(block.kind, block.steps),
               baseInlineOffset: cursor,
             ),
-            keepWithPrevious: false,
           );
         case LayoutHeadingBlock():
+          applyGap(false);
           appendFlow(
             _layoutBlocks(
               block.children,
               context.withHeading(block.level, block.display),
               baseInlineOffset: cursor,
             ),
-            keepWithPrevious: false,
           );
         case LayoutTableBlock():
-          append(
-            _layoutTable(block, context, inlineOffset: cursor),
-            keepWithPrevious: false,
-          );
+          applyGap(false);
+          append(_layoutTable(block, context, inlineOffset: cursor));
       }
     }
 
@@ -1768,7 +1762,7 @@ class LayoutResultBuilder {
     _BlockContext context,
   ) {
     return switch (position) {
-      RubyPosition.over || RubyPosition.left => -extent,
+      RubyPosition.over || RubyPosition.left => extent,
       RubyPosition.under || RubyPosition.right => context.crossExtent,
     };
   }
@@ -1786,7 +1780,7 @@ class LayoutResultBuilder {
           (characters.length - 1);
     }
     if (overflow > 0) {
-      return (baseExtent - rubyTextExtent) / (characters.length - 1);
+      return 0;
     }
     return 0;
   }

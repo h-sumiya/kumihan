@@ -91,8 +91,9 @@ class KumihanPageProjection {
       return null;
     }
     final projectedInlineOffset = projectInline(inlineOffset);
+    final pageRight = contentRect.left + pageInlineExtent * fontSize;
     return Rect.fromLTWH(
-      contentRect.right - (projectedInlineOffset + inlineExtent) * fontSize,
+      pageRight - (projectedInlineOffset + inlineExtent) * fontSize,
       contentRect.top + blockOffset * fontSize,
       inlineExtent * fontSize,
       blockExtent * fontSize,
