@@ -1,62 +1,150 @@
 # kumihan-v1 Architecture
 
+## 方針
+
+`kumihan-v1` では、本文組版と書籍 UI/演出を分離する。
+中心になるパイプラインは `Input -> AST -> Layout IR -> Layout Result` とし、その外側に `Presentation` を置く。
+
+目的は 2 つある。
+
+1. `kumihan-v0` の本文描画を崩さずに `Layout IR` を導入すること
+2. 同じ本文レイアウト結果から、ページ表示と連続スクロール表示の両方を作れるようにすること
+
+## v0 調査から得た結論
+
+`kumihan-v0` では、本文組版と書籍 UI が `KumihanEngine` に強く混在している。
+
+- `document_compiler.dart` は段落やインラインをエンジン専用文字列へ直列化する
+- `kumihan_engine.dart` はその文字列を再解釈し、注記展開、行分割、ページ分割、索引、リンク領域生成までをまとめて行う
+- 同じ `kumihan_engine.dart` が柱、ノンブル、裏写り、ページ単位描画、タップ処理も持っている
+
+このため `v0` の本文を崩さず移行するには、旧エンジン文字列を正式 IR として残すのではなく、`v0` が本文組版に使っていた情報を型付き `Layout IR` として抽出し直す必要がある。
+
 ## Layers
 
-`kumihan-v1` separates vertical composition into four layers.
+### 1. Input
 
-1. Input
-   Raw source text such as Aozora Bunko notation, Markdown, or HTML.
-2. AST
-   A format-aware but renderer-independent document tree.
-3. Layout IR
-   A composition-oriented intermediate representation for line breaking, ruby placement, tate-chu-yoko, tables, and pagination.
-4. Renderer
-   Flutter widgets and paint logic that draw the layout IR.
+- 青空、Markdown、HTML などの入力形式を受け取る
+- 文字コード、改行、パーサーの入口を担当する
+- Flutter や glyph 座標を知らない
+
+### 2. AST
+
+- 文書意味を保持する構文木
+- 段落、見出し、ルビ、注記、装飾、画像、表、未知注記、ソース位置を表現する
+- Renderer 都合の座標やピクセル値は持たない
+
+### 3. Layout IR
+
+- AST を本文組版向けの中間表現へ変換したもの
+- 次の情報を失わず保持する
+  - paragraph boundary
+  - keep-with-previous
+  - first/rest indent
+  - bottom alignment
+  - ruby
+  - tate-chu-yoko
+  - inline decoration
+  - warichu
+  - inline attachment
+  - anchor / link target
+  - table
+- 青空の生注記文字列を再解釈しない
+- まだページ番号や裏写りのような書籍 UI は含めない
+
+### 4. Layout Result
+
+- `Layout IR` を計測・改行・配置して得る本文レイアウト結果
+- 行、行グループ、本文内装飾、ruby 配置、annotation marker、本文由来の hit test 領域を持つ
+- これは本文の論理レイアウト結果であり、ページという見せ方にはまだ固定しない
+
+### 5. Presentation
+
+- `Layout Result` をユーザーに見せるための層
+- 単ページ表示、見開き表示、連続スクロール表示を担当する
+- さらに次のような書籍演出・操作を担当する
+  - 裏写り
+  - タイトル
+  - ページ数
+  - 表紙表示
+  - ページ送り
+  - タップ操作
+  - スクロール制御
+- 本文組版ルールそのものは持たない
 
 ## Dependency Direction
 
-The dependency direction is one way.
+依存方向は一方向に固定する。
 
-`Input -> AST -> Layout IR -> Renderer`
+`Input -> AST -> Layout IR -> Layout Result -> Presentation`
 
-Each downstream layer can depend on upstream output, but no layer may interpret upstream raw syntax again.
+下流の層は上流の出力だけを見る。
+下流が青空の生注記や元テキスト断片を再解釈してはならない。
 
-## Layer Responsibilities
+## 本文互換のための境界
 
-### Input
+`v0` の本文描画を崩さずに移行するため、`Layout IR` の責務を「本文組版に必要な意味情報の保持」に限定する。
 
-- Owns source decoding, newline normalization, and parser entry points.
-- Does not know typography, glyph positions, or Flutter widgets.
+具体的には次を守る。
 
-### AST
+- `v0` の制御文字列は互換確認用の参考にとどめる
+- `Layout IR` ではルビ、割り注、傍点、傍線、縦中横、横組み、画像、リンク、アンカー、表を型で表す
+- 本文の改行規則や注記配置は `Layout Result` を作る層で処理する
+- ページ番号や柱のような本文外要素は `Presentation` で後付けする
 
-- Preserves document meaning rather than HTML output details.
-- Represents paragraphs, inline annotations, ruby, gaiji, generic containers, and future structures such as tables.
-- Keeps unsupported directives as typed opaque nodes with raw text and source spans.
-- May carry source-format metadata, but not renderer instructions such as coordinates or pixels.
+この設計なら、初期段階では `v0` に近い本文組版アルゴリズムを流用しつつ、責務境界だけ先に正すことができる。
 
-### Layout IR
+## Render Modes
 
-- Converts AST semantics into composition primitives.
-- Resolves writing direction, ruby placement strategy, inline annotations, spacing, table geometry, and pagination hints.
-- Must not parse Aozora directives directly.
+`Layout Result` は 1 つとし、表示モードはその投影方法だけを変える。
 
-### Renderer
+### Paged Projection
 
-- Draws only Layout IR.
-- Must not inspect Aozora raw strings like `［＃...］`.
-- Owns Flutter-specific concerns such as text measurement, painting, hit testing, and scrolling.
+- 単ページ、見開き
+- ページ幅に応じて行グループ範囲を切り出す
+- ページ送り、ノンブル、柱は `Presentation` 側で加える
 
-## AST Design Rules
+### Continuous Projection
 
-- The AST is not Aozora-only.
-- Generic blocks and inline containers are first-class so future Markdown or HTML parsers can map into the same tree.
-- Source spans are attached to every node to support diagnostics, tooling, and lossless fallback.
-- Unknown or currently unsupported directives are preserved as opaque directive nodes instead of being dropped.
-- Tables are part of the core AST model even before the Aozora parser emits them, so downstream layers are not forced into a paragraph-only assumption.
+- 横スクロール前提の連続表示
+- 同じ行グループ列をページで切らず、そのまま連続軸へ配置する
+- `v0` の「横幅を無限にする感じ」の実験は、この投影層で扱う
 
-## Parser Rules
+重要なのは、ページ分割を本文組版ルールではなく表示戦略として扱うこと。
+これにより本文互換を保ったまま、ページ表示とスクロール表示を併存できる。
 
-- The parser should eagerly recognize stable semantics such as ruby, gaiji, inline decoration, tate-chu-yoko, and multiline containers.
-- When semantics are unclear, the parser should preserve the original directive and emit a diagnostic instead of guessing.
-- The parser may normalize surface syntax, but it must not erase authoring intent or source location.
+## Layout に含めるもの / 含めないもの
+
+### Layout に含める
+
+- 本文の文字列
+- 行分割
+- 行内装飾
+- ルビ
+- 割り注
+- 画像や表の本文内配置
+- 本文内リンクやアンカーの領域情報
+
+### Layout に含めない
+
+- 裏写り
+- 紙の質感演出
+- タイトル表示
+- ページ数表示
+- 表紙 UI
+- ページ送りジェスチャ
+- 読書ビュー全体の操作設計
+
+## 移行順序
+
+1. AST から `Layout IR` を作る
+2. `Layout IR` から `Layout Result` を作る本文組版器を作る
+3. まずページ表示で `v0` 本文互換を確認する
+4. その同じ `Layout Result` から連続スクロール表示を作る
+5. 最後に書籍演出や操作を `Presentation` に寄せる
+
+## Non-Goals
+
+- `Layout IR` に青空パーサー固有文字列を残すこと
+- 本文組版と UI 操作を同じクラスへ戻すこと
+- ページ表示専用のレイアウト結果しか持てない設計にすること
