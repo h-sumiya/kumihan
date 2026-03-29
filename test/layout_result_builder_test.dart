@@ -228,6 +228,47 @@ void main() {
       expect(secondLineTexts.last, 'い」');
     });
 
+    test('centers short ruby like v0 and preserves ruby tracking', () {
+      final builder = LayoutResultBuilder(
+        constraints: const LayoutConstraints(lineExtent: 10),
+      );
+      final document = LayoutDocument(
+        span: _span(300),
+        children: <LayoutBlock>[
+          LayoutParagraph(
+            span: _span(301),
+            children: <LayoutInline>[
+              LayoutRubyInline(
+                span: _span(302),
+                base: <LayoutInline>[
+                  LayoutTextInline(span: _span(303), text: '縦書き本文'),
+                ],
+                text: 'ルビ',
+                kind: RubyKind.phonetic,
+                position: RubyPosition.over,
+              ),
+            ],
+          ),
+        ],
+      );
+
+      final result = builder.build(document);
+      final paragraph = result.blocks.single as LayoutParagraphResult;
+      final line = paragraph.lineGroup.lines.single;
+      final ruby = line.rubies.single;
+      final textFragments = line.fragments
+          .whereType<LayoutTextFragment>()
+          .toList();
+      final baseStart = textFragments.first.blockOffset;
+      final baseEnd =
+          textFragments.last.blockOffset + textFragments.last.blockExtent;
+
+      expect(baseEnd - baseStart, closeTo(5, 1e-9));
+      expect(ruby.interCharacterSpacing, closeTo(3.5, 1e-9));
+      expect(ruby.blockExtent, closeTo(4.5, 1e-9));
+      expect(ruby.blockOffset, closeTo(baseStart + 0.25, 1e-9));
+    });
+
     test('processes block containers and tables into leaf block results', () {
       final builder = LayoutResultBuilder(
         constraints: const LayoutConstraints(lineExtent: 6),

@@ -10,6 +10,11 @@ import 'kumihan_render_theme.dart';
 class KumihanLayoutPainter extends CustomPainter {
   const KumihanLayoutPainter({required this.result, required this.theme});
 
+  static const String _verticalSmallGlyphs =
+      'ぁぃぅぇぉっゃゅょゎゕゖァィゥェォッャュョヮヵヶㇰㇱㇲㇳㇴㇵㇶㇷㇸㇹㇺㇻㇼㇽㇾㇿ';
+  static const String _verticalPunctuationGlyphs = '，、。﹐﹑﹒，．';
+  static const String _dakutenGlyphs = '゛゜';
+
   final LayoutResult result;
   final KumihanRenderThemeData theme;
 
@@ -58,7 +63,7 @@ class KumihanLayoutPainter extends CustomPainter {
           canvas,
           block.lineGroup,
           contentRect,
-          baseInlineOffset: inlineOffset,
+          baseInlineOffset: baseInlineOffset,
           baseBlockOffset: blockOffset,
         );
       case LayoutEmptyLineResult():
@@ -66,7 +71,7 @@ class KumihanLayoutPainter extends CustomPainter {
           canvas,
           block.lineGroup,
           contentRect,
-          baseInlineOffset: inlineOffset,
+          baseInlineOffset: baseInlineOffset,
           baseBlockOffset: blockOffset,
         );
       case LayoutTableResult():
@@ -176,7 +181,6 @@ class KumihanLayoutPainter extends CustomPainter {
     required double baseBlockOffset,
   }) {
     for (final line in group.lines) {
-      final lineInlineOffset = baseInlineOffset + line.inlineOffset;
       final lineBlockOffset = baseBlockOffset + line.blockOffset;
 
       for (final marker in line.markers) {
@@ -184,7 +188,7 @@ class KumihanLayoutPainter extends CustomPainter {
           canvas,
           marker,
           contentRect,
-          baseInlineOffset: lineInlineOffset,
+          baseInlineOffset: baseInlineOffset,
           baseBlockOffset: lineBlockOffset,
         );
       }
@@ -193,7 +197,7 @@ class KumihanLayoutPainter extends CustomPainter {
           canvas,
           fragment,
           contentRect,
-          baseInlineOffset: lineInlineOffset,
+          baseInlineOffset: baseInlineOffset,
           baseBlockOffset: lineBlockOffset,
         );
       }
@@ -203,7 +207,7 @@ class KumihanLayoutPainter extends CustomPainter {
           ruby,
           contentRect,
           baseInlineOffset: baseInlineOffset,
-          baseBlockOffset: baseBlockOffset,
+          baseBlockOffset: lineBlockOffset,
         );
       }
     }
@@ -317,6 +321,10 @@ class KumihanLayoutPainter extends CustomPainter {
     required double baseInlineOffset,
     required double baseBlockOffset,
   }) {
+    final characters = ruby.text.characters.toList(growable: false);
+    if (characters.isEmpty) {
+      return;
+    }
     final crossExtent = ruby.inlineExtent;
     final inlineOffset =
         baseInlineOffset + ruby.lineInlineOffset - ruby.crossOffset;
@@ -324,22 +332,27 @@ class KumihanLayoutPainter extends CustomPainter {
       contentRect,
       inlineOffset: inlineOffset,
       blockOffset: baseBlockOffset + ruby.blockOffset,
-      inlineExtent: math.max(crossExtent, 0.6),
-      blockExtent: math.max(ruby.blockExtent, 1),
+      inlineExtent: math.max(crossExtent, theme.rubyScale),
+      blockExtent: math.max(ruby.blockExtent, theme.rubyScale),
     );
-    _paintVerticalText(
-      canvas,
-      rect,
-      ruby.text,
-      const LayoutInlineStyle(
-        fontScale: 0.5,
-        bold: false,
-        italic: false,
-        caption: false,
-      ),
+    final style = _textStyle(
+      fontScale: theme.rubyScale,
       color: theme.rubyColor,
-      forcedFontScale: theme.rubyScale,
     );
+    final glyphExtent = theme.fontSize * theme.rubyScale;
+    final tracking = theme.fontSize * ruby.interCharacterSpacing;
+    var cursor = rect.top;
+
+    for (final character in characters) {
+      final glyphRect = Rect.fromLTWH(
+        rect.left,
+        cursor,
+        rect.width,
+        glyphExtent,
+      );
+      _paintVerticalGlyph(canvas, glyphRect, character, style);
+      cursor += glyphExtent + tracking;
+    }
   }
 
   void _paintMarker(
@@ -489,13 +502,49 @@ class KumihanLayoutPainter extends CustomPainter {
         rect.width,
         step,
       );
-      _paintCenteredText(
+      _paintVerticalGlyph(
         canvas,
         cellRect,
         characters[index],
         _textStyle(fontScale: fontScale, color: color, style: style),
       );
     }
+  }
+
+  void _paintVerticalGlyph(
+    Canvas canvas,
+    Rect rect,
+    String text,
+    TextStyle style,
+  ) {
+    final painter = TextPainter(
+      text: TextSpan(text: text, style: style),
+      textDirection: TextDirection.ltr,
+      textAlign: TextAlign.center,
+      maxLines: 1,
+    )..layout(maxWidth: rect.width * 2);
+
+    var dx = rect.left + rect.width / 2;
+    var dy = rect.top;
+    final fontSize = style.fontSize ?? theme.fontSize;
+
+    if (_verticalSmallGlyphs.contains(text)) {
+      dx += fontSize / 8;
+      dy -= fontSize / 8;
+    } else if (_verticalPunctuationGlyphs.contains(text)) {
+      dx += 0.68 * fontSize;
+      dy -= 0.65 * fontSize;
+    }
+
+    if (_dakutenGlyphs.contains(text)) {
+      dx += 0.74 * fontSize;
+      dy -= fontSize;
+    }
+
+    painter.paint(
+      canvas,
+      Offset(dx - painter.width / 2, dy + fontSize / 2 - painter.height / 2),
+    );
   }
 
   void _paintCenteredText(
@@ -525,10 +574,13 @@ class KumihanLayoutPainter extends CustomPainter {
       color: color,
       fontSize: theme.fontSize * fontScale,
       fontFamily: theme.fontFamily,
+      package: theme.fontFamilyPackage,
       fontFamilyFallback: theme.fontFamilyFallback,
       fontWeight: style?.bold == true ? FontWeight.w700 : FontWeight.w400,
       fontStyle: style?.italic == true ? FontStyle.italic : FontStyle.normal,
       height: 1,
+      leadingDistribution: TextLeadingDistribution.even,
+      textBaseline: TextBaseline.ideographic,
     );
   }
 

@@ -26,9 +26,10 @@ class KumihanRenderThemeData {
     this.provisionalBannerColor = defaultKumihanRenderBannerColor,
     this.fontSize = 18,
     this.fontFamily,
+    this.fontFamilyPackage,
     this.fontFamilyFallback = const <String>[],
     this.pagePadding = const EdgeInsets.fromLTRB(24, 24, 24, 24),
-    this.lineGapEm = 0.65,
+    this.lineGapEm = 0.63,
     this.blockGapEm = 1.2,
     this.rubyScale = 0.5,
     this.scriptScale = 0.6,
@@ -56,6 +57,7 @@ class KumihanRenderThemeData {
   final Color provisionalBannerColor;
   final double fontSize;
   final String? fontFamily;
+  final String? fontFamilyPackage;
   final List<String> fontFamilyFallback;
   final EdgeInsets pagePadding;
   final double lineGapEm;
@@ -98,6 +100,7 @@ class KumihanRenderThemeData {
     Color? provisionalBannerColor,
     double? fontSize,
     String? fontFamily,
+    String? fontFamilyPackage,
     List<String>? fontFamilyFallback,
     EdgeInsets? pagePadding,
     double? lineGapEm,
@@ -123,6 +126,7 @@ class KumihanRenderThemeData {
           provisionalBannerColor ?? this.provisionalBannerColor,
       fontSize: fontSize ?? this.fontSize,
       fontFamily: fontFamily ?? this.fontFamily,
+      fontFamilyPackage: fontFamilyPackage ?? this.fontFamilyPackage,
       fontFamilyFallback: fontFamilyFallback ?? this.fontFamilyFallback,
       pagePadding: pagePadding ?? this.pagePadding,
       lineGapEm: lineGapEm ?? this.lineGapEm,

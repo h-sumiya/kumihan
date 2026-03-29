@@ -18,6 +18,15 @@ class LayoutResultBuilder {
   static const String _lineStartForbidden =
       '、。，．・：；！？)]｝〕〉》」』】〙〗ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮー゛゜';
   static const String _lineEndForbidden = '([｛〔〈《「『【〘〖';
+  static const String _openingBrackets = '‘“（〔［｛〈《「『【｟〘〖«〝';
+  static const String _closingBrackets = '’”）〕］｝〉》」』】｠〙〗»〟';
+  static const String _punctuationMarks = '，、。﹐﹑﹒，．';
+  static const String _hangingLineEndGlyphs =
+      '$_closingBrackets$_punctuationMarks';
+  static const String _halfWidthNextToClosing =
+      '$_punctuationMarks$_openingBrackets$_closingBrackets・';
+  static const String _halfWidthNextToOpening = '$_openingBrackets・';
+  static const String _zeroExtentGlyphs = '⁠￼゛゜';
 
   final GaijiResolver _gaijiResolver = const GaijiResolver();
 
@@ -551,6 +560,13 @@ class LayoutResultBuilder {
         cursor += 1;
         continue;
       }
+      if (_hangingLineEndGlyphs.contains(atom.text) &&
+          visibleExtent + atom.blockExtent / 2 <= available) {
+        visibleExtent = nextExtent - atom.blockExtent / 2;
+        hadVisible = true;
+        cursor += 1;
+        break;
+      }
       if (lastBreakCursor > start) {
         cursor = lastBreakCursor;
         visibleExtent = extentAtLastBreak;
@@ -814,6 +830,17 @@ class LayoutResultBuilder {
       final blockStart = first.blockOffset;
       final blockEnd = last.blockOffset + last.blockExtent;
       final segmentText = _sliceRubyTextForLine(ruby, lineStart, lineEnd);
+      if (segmentText.isEmpty) {
+        continue;
+      }
+      final interCharacterSpacing = _rubyInterCharacterSpacing(
+        segmentText,
+        math.max(blockEnd - blockStart, 0),
+      );
+      final rubyBlockExtent = _rubyTextExtent(
+        segmentText,
+        interCharacterSpacing,
+      );
       final inlineExtent = math.max(
         context.crossExtent * constraints.rubyScale,
         constraints.baseFontSize * constraints.rubyScale,
@@ -830,13 +857,12 @@ class LayoutResultBuilder {
             inlineExtent,
             context,
           ),
-          blockOffset: blockStart,
-          blockExtent: math.max(blockEnd - blockStart, 0),
+          blockOffset:
+              blockStart +
+              (math.max(blockEnd - blockStart, 0) - rubyBlockExtent) / 2,
+          blockExtent: rubyBlockExtent,
           inlineExtent: inlineExtent,
-          interCharacterSpacing: _rubyInterCharacterSpacing(
-            segmentText,
-            math.max(blockEnd - blockStart, 0),
-          ),
+          interCharacterSpacing: interCharacterSpacing,
           issues: ruby.issues,
         ),
       );
@@ -1096,13 +1122,21 @@ class LayoutResultBuilder {
     for (final node in nodes) {
       switch (node) {
         case LayoutTextInline():
-          for (final char in _splitCharacters(node.text)) {
+          final characters = _splitCharacters(node.text);
+          for (var index = 0; index < characters.length; index += 1) {
+            final char = characters[index];
             model.atoms.add(
               _Atom.text(
                 span: node.span,
                 text: char,
                 style: context.publicStyle,
-                blockExtent: context.fontScale,
+                blockExtent: _resolveTextBlockExtent(
+                  char,
+                  nextText: index + 1 < characters.length
+                      ? characters[index + 1]
+                      : null,
+                  context: context,
+                ),
                 inlineExtent: context.fontScale,
                 issues: node.issues,
               ),
@@ -1567,6 +1601,36 @@ class LayoutResultBuilder {
     return text.runes.map(String.fromCharCode).toList(growable: false);
   }
 
+  double _resolveTextBlockExtent(
+    String text, {
+    required String? nextText,
+    required _InlineContext context,
+  }) {
+    if (_zeroExtentGlyphs.contains(text)) {
+      return 0;
+    }
+
+    if (_closingBrackets.contains(text) &&
+        nextText != null &&
+        _halfWidthNextToClosing.contains(nextText)) {
+      return context.fontScale / 2;
+    }
+
+    if (_halfWidthNextToOpening.contains(text) &&
+        nextText != null &&
+        _openingBrackets.contains(nextText)) {
+      return context.fontScale / 2;
+    }
+
+    if (_punctuationMarks.contains(text) &&
+        nextText != null &&
+        '$_openingBrackets$_closingBrackets'.contains(nextText)) {
+      return context.fontScale / 2;
+    }
+
+    return context.fontScale;
+  }
+
   Set<int> _computeLineBreakOpportunities(List<_Atom> atoms) {
     final buffer = StringBuffer();
     final boundaries = <int, int>{};
@@ -1669,8 +1733,26 @@ class LayoutResultBuilder {
     if (characters.length <= 1) {
       return 0;
     }
-    final rubyGlyphExtent = characters.length * constraints.rubyScale;
-    return (baseExtent - rubyGlyphExtent) / (characters.length - 1);
+    final rubyTextExtent = characters.length * constraints.rubyScale;
+    final overflow = rubyTextExtent - baseExtent;
+
+    if (overflow + constraints.baseFontSize / 2 < 0) {
+      return -(overflow + constraints.baseFontSize / 2) /
+          (characters.length - 1);
+    }
+    if (overflow > 0) {
+      return (baseExtent - rubyTextExtent) / (characters.length - 1);
+    }
+    return 0;
+  }
+
+  double _rubyTextExtent(String text, double interCharacterSpacing) {
+    final characters = _splitCharacters(text);
+    if (characters.isEmpty) {
+      return 0;
+    }
+    return characters.length * constraints.rubyScale +
+        (characters.length - 1) * interCharacterSpacing;
   }
 
   double _crossOffsetForMarker(_RangeMarker marker, _BlockContext context) {
