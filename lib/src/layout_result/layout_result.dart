@@ -485,6 +485,7 @@ class LayoutMarker {
     this.decorationSide,
     this.noteKind,
     this.frameKind,
+    this.repeatCount,
     this.issues = const <LayoutIssue>[],
   });
 
@@ -502,6 +503,7 @@ class LayoutMarker {
   final DecorationSide? decorationSide;
   final NoteKind? noteKind;
   final FrameKind? frameKind;
+  final int? repeatCount;
   final List<LayoutIssue> issues;
 }
 

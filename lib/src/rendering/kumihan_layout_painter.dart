@@ -121,9 +121,14 @@ class KumihanLayoutPainter extends CustomPainter {
     required double baseInlineOffset,
     required double baseBlockOffset,
   }) {
+    final slotInlineOffset = projection.projectedSlotInlineOffset(table);
+    if (slotInlineOffset == null) {
+      return;
+    }
+    final projectedBaseInlineOffset = slotInlineOffset - table.inlineOffset;
     final tableRect = projection.projectLogicalRect(
       contentRect,
-      inlineOffset: baseInlineOffset,
+      inlineOffset: slotInlineOffset,
       blockOffset: baseBlockOffset,
       inlineExtent: table.inlineExtent,
       blockExtent: table.blockExtent,
@@ -142,7 +147,7 @@ class KumihanLayoutPainter extends CustomPainter {
     for (final row in table.rows) {
       final rowRect = projection.projectLogicalRect(
         contentRect,
-        inlineOffset: baseInlineOffset + row.inlineOffset,
+        inlineOffset: projectedBaseInlineOffset + row.inlineOffset,
         blockOffset: baseBlockOffset + row.blockOffset,
         inlineExtent: row.inlineExtent,
         blockExtent: row.blockExtent,
@@ -160,7 +165,7 @@ class KumihanLayoutPainter extends CustomPainter {
 
       for (final cell in row.cells) {
         final cellInlineOffset =
-            baseInlineOffset + row.inlineOffset + cell.inlineOffset;
+            projectedBaseInlineOffset + row.inlineOffset + cell.inlineOffset;
         final cellBlockOffset =
             baseBlockOffset + row.blockOffset + cell.blockOffset;
         final cellRect = projection.projectLogicalRect(
@@ -203,12 +208,11 @@ class KumihanLayoutPainter extends CustomPainter {
     required double baseBlockOffset,
   }) {
     for (final line in group.lines) {
-      if (!projection.overlapsInline(
-        baseInlineOffset + line.inlineOffset,
-        line.inlineExtent,
-      )) {
+      final slotInlineOffset = projection.projectedSlotInlineOffset(line);
+      if (slotInlineOffset == null) {
         continue;
       }
+      final projectedBaseInlineOffset = slotInlineOffset - line.inlineOffset;
       final lineBlockOffset = baseBlockOffset + line.blockOffset;
 
       for (final marker in line.markers) {
@@ -217,7 +221,7 @@ class KumihanLayoutPainter extends CustomPainter {
           marker,
           contentRect,
           projection: projection,
-          baseInlineOffset: baseInlineOffset,
+          baseInlineOffset: projectedBaseInlineOffset,
           baseBlockOffset: lineBlockOffset,
         );
       }
@@ -227,7 +231,7 @@ class KumihanLayoutPainter extends CustomPainter {
           fragment,
           contentRect,
           projection: projection,
-          baseInlineOffset: baseInlineOffset,
+          baseInlineOffset: projectedBaseInlineOffset,
           baseBlockOffset: lineBlockOffset,
         );
       }
@@ -237,7 +241,7 @@ class KumihanLayoutPainter extends CustomPainter {
           ruby,
           contentRect,
           projection: projection,
-          baseInlineOffset: baseInlineOffset,
+          baseInlineOffset: projectedBaseInlineOffset,
           baseBlockOffset: lineBlockOffset,
         );
       }
@@ -425,14 +429,29 @@ class KumihanLayoutPainter extends CustomPainter {
       case LayoutMarkerKind.decoration:
         canvas.drawLine(rect.topLeft, rect.bottomLeft, stroke);
       case LayoutMarkerKind.emphasis:
-        final count = math.max(
-          (rect.height / (theme.fontSize * 0.9)).round(),
-          1,
-        );
-        final gap = rect.height / count;
+        final emphasisGlyph = _emphasisGlyph(marker.emphasisMark);
+        final count = math.max(marker.repeatCount ?? 0, 1);
+        final step = rect.height / count;
         for (var index = 0; index < count; index += 1) {
-          final center = Offset(rect.center.dx, rect.top + gap * (index + 0.5));
-          canvas.drawCircle(center, 1.35, fill);
+          final cellRect = Rect.fromLTWH(
+            rect.left,
+            rect.top + step * index,
+            rect.width,
+            step,
+          );
+          _paintVerticalText(
+            canvas,
+            cellRect,
+            emphasisGlyph,
+            const LayoutInlineStyle(
+              fontScale: 0.48,
+              bold: false,
+              italic: false,
+              caption: false,
+            ),
+            color: theme.textColor,
+            forcedFontScale: 0.48,
+          );
         }
       case LayoutMarkerKind.note ||
           LayoutMarkerKind.kaeriten ||
@@ -460,6 +479,20 @@ class KumihanLayoutPainter extends CustomPainter {
       LayoutMarkerKind.editorNote => '編',
       LayoutMarkerKind.unsupported => '未',
       _ => '',
+    };
+  }
+
+  String _emphasisGlyph(EmphasisMark? mark) {
+    return switch (mark) {
+      EmphasisMark.whiteSesameDot => '﹆',
+      EmphasisMark.blackCircle => '⬤',
+      EmphasisMark.whiteCircle => '○',
+      EmphasisMark.blackTriangle => '▲',
+      EmphasisMark.whiteTriangle => '△',
+      EmphasisMark.bullseye => '◎',
+      EmphasisMark.fisheye => '◉',
+      EmphasisMark.saltire => '❌',
+      _ => '﹅',
     };
   }
 

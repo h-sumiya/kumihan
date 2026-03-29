@@ -27,6 +27,9 @@ class LayoutResultBuilder {
       '$_punctuationMarks$_openingBrackets$_closingBrackets・';
   static const String _halfWidthNextToOpening = '$_openingBrackets・';
   static const String _zeroExtentGlyphs = '⁠￼゛゜';
+  static final RegExp _cjkIdeographPattern = RegExp(
+    r'[⺀-⻳㐁-䶮一-龻豈-龎仝々〆〇ヶ]',
+  );
 
   final GaijiResolver _gaijiResolver = const GaijiResolver();
 
@@ -607,54 +610,58 @@ class LayoutResultBuilder {
     _BlockContext context, {
     required double lineInlineOffset,
   }) {
-    final fragments = <LayoutFragment>[];
     final hitRegions = <LayoutHitRegion>[];
-    final atomPlacements = <int, _FragmentPlacement>{};
     final trackingAdjustments = _resolveTrackingAdjustments(
       model.atoms,
       draft,
       breakPositions,
       context,
     );
+    final initialPlacements = _buildAtomPlacements(
+      model.atoms,
+      draft,
+      context,
+      boundaryAdjustments: trackingAdjustments,
+    );
+    final rubyAdjustments = _resolveRubyBaseTrackingAdjustments(
+      model,
+      initialPlacements,
+      draft.start,
+      draft.end,
+    );
+    final combinedBoundaryAdjustments = <int, double>{...trackingAdjustments};
+    for (final entry in rubyAdjustments.boundaryAdjustments.entries) {
+      combinedBoundaryAdjustments.update(
+        entry.key,
+        (current) => current + entry.value,
+        ifAbsent: () => entry.value,
+      );
+    }
+    final atomPlacements = rubyAdjustments.boundaryAdjustments.isEmpty &&
+            rubyAdjustments.trailingExtent == 0
+        ? initialPlacements
+        : _buildAtomPlacements(
+            model.atoms,
+            draft,
+            context,
+            boundaryAdjustments: combinedBoundaryAdjustments,
+          );
     final justifiedTextExtent =
         draft.textExtent +
-        trackingAdjustments.values.fold<double>(0, (sum, value) => sum + value);
-
-    final contentShift = context.alignToFarEdge
-        ? math.max(context.resolvedLineExtent - draft.textExtent, 0).toDouble()
-        : draft.indent;
-    var blockCursor = contentShift;
-
+        combinedBoundaryAdjustments.values.fold<double>(
+          rubyAdjustments.trailingExtent,
+          (sum, value) => sum + value,
+        );
+    final fragments = <LayoutFragment>[];
     for (var index = draft.start; index < draft.end; index += 1) {
       final atom = model.atoms[index];
-      if (atom.kind == _AtomKind.lineBreak) {
+      if (atom.kind == _AtomKind.lineBreak || atom.kind.isMarkerOnly) {
         continue;
       }
-      if (index == draft.start &&
-          draft.start > 0 &&
-          atom.kind == _AtomKind.text &&
-          _openingBrackets.contains(atom.text)) {
-        blockCursor -= atom.blockExtent / 2;
-      }
-      if (index > draft.start) {
-        blockCursor += trackingAdjustments[index] ?? 0;
-      }
-      if (atom.kind.isMarkerOnly) {
-        atomPlacements[index] = _FragmentPlacement(
-          blockOffset: blockCursor,
-          blockExtent: 0,
-          inlineExtent: context.crossExtent,
-          style: atom.style,
-        );
+      final placement = atomPlacements[index];
+      if (placement == null) {
         continue;
       }
-      final placement = _FragmentPlacement(
-        blockOffset: blockCursor,
-        blockExtent: atom.blockExtent,
-        inlineExtent: atom.inlineExtent,
-        style: atom.style,
-      );
-      atomPlacements[index] = placement;
       final fragment = _buildFragment(atom, placement, lineInlineOffset);
       if (fragment != null) {
         fragments.add(fragment);
@@ -672,8 +679,16 @@ class LayoutResultBuilder {
           );
         }
       }
-      blockCursor += atom.blockExtent;
     }
+
+    // v0 paginates and positions vertical lines by the maximum rendered glyph
+    // width in the line, not by a fixed 1em column width. Preserve that here
+    // so wide glyphs (for example headings or rotated runs) consume the same
+    // inline slot width during page projection.
+    final lineInlineExtent = atomPlacements.values.fold<double>(
+      0,
+      (current, placement) => math.max(current, placement.inlineExtent),
+    );
 
     final rubies = _buildRubiesForLine(
       model,
@@ -733,7 +748,7 @@ class LayoutResultBuilder {
         span: span,
         inlineOffset: lineInlineOffset,
         blockOffset: 0,
-        inlineExtent: context.crossExtent,
+        inlineExtent: math.max(lineInlineExtent, context.crossExtent),
         blockExtent: context.resolvedLineExtent,
         textExtent: justifiedTextExtent,
         fragments: List<LayoutFragment>.unmodifiable(fragments),
@@ -767,6 +782,11 @@ class LayoutResultBuilder {
       if (!breakPositions.contains(index)) {
         continue;
       }
+      final previousIndex = _previousVisibleAtomCursor(atoms, index - 1);
+      if (previousIndex >= 0 &&
+          !_mayBreakBetween(atoms[previousIndex], atom)) {
+        continue;
+      }
       adjustable.add(index);
     }
 
@@ -776,6 +796,134 @@ class LayoutResultBuilder {
 
     final addition = slack / adjustable.length;
     return <int, double>{for (final index in adjustable) index: addition};
+  }
+
+  Map<int, _FragmentPlacement> _buildAtomPlacements(
+    List<_Atom> atoms,
+    _TakenLineDraft draft,
+    _BlockContext context, {
+    required Map<int, double> boundaryAdjustments,
+  }) {
+    final atomPlacements = <int, _FragmentPlacement>{};
+    final contentShift = context.alignToFarEdge
+        ? math.max(context.resolvedLineExtent - draft.textExtent, 0).toDouble()
+        : draft.indent;
+    var blockCursor = contentShift;
+
+    for (var index = draft.start; index < draft.end; index += 1) {
+      final atom = atoms[index];
+      if (atom.kind == _AtomKind.lineBreak) {
+        continue;
+      }
+      if (index == draft.start &&
+          draft.start > 0 &&
+          atom.kind == _AtomKind.text &&
+          _openingBrackets.contains(atom.text)) {
+        blockCursor -= atom.blockExtent / 2;
+      }
+      if (index > draft.start) {
+        blockCursor += boundaryAdjustments[index] ?? 0;
+      }
+      if (atom.kind.isMarkerOnly) {
+        atomPlacements[index] = _FragmentPlacement(
+          blockOffset: blockCursor,
+          blockExtent: 0,
+          inlineExtent: context.crossExtent,
+          style: atom.style,
+        );
+        continue;
+      }
+      atomPlacements[index] = _FragmentPlacement(
+        blockOffset: blockCursor,
+        blockExtent: atom.blockExtent,
+        inlineExtent: atom.inlineExtent,
+        style: atom.style,
+      );
+      blockCursor += atom.blockExtent;
+    }
+
+    return atomPlacements;
+  }
+
+  _RubyBaseTrackingAdjustments _resolveRubyBaseTrackingAdjustments(
+    _ParagraphModel model,
+    Map<int, _FragmentPlacement> placements,
+    int lineStart,
+    int lineEnd,
+  ) {
+    final boundaryAdjustments = <int, double>{};
+    var trailingExtent = 0.0;
+
+    for (final ruby in model.rubies) {
+      final segmentStart = math.max(ruby.start, lineStart);
+      final segmentEnd = math.min(ruby.end, lineEnd);
+      if (segmentEnd <= segmentStart) {
+        continue;
+      }
+      final baseAtoms = <int>[
+        for (var index = segmentStart; index < segmentEnd; index += 1)
+          if (placements[index] case final _?) index,
+      ];
+      if (baseAtoms.isEmpty) {
+        continue;
+      }
+      final first = placements[baseAtoms.first]!;
+      final last = placements[baseAtoms.last]!;
+      final baseExtent =
+          (last.blockOffset + last.blockExtent) - first.blockOffset;
+      final segmentText = _sliceRubyTextForLine(ruby, lineStart, lineEnd);
+      if (segmentText.isEmpty) {
+        continue;
+      }
+      final rubyExtent = _rubyTextExtent(
+        segmentText,
+        _rubyInterCharacterSpacing(segmentText, math.max(baseExtent, 0)),
+      );
+      if (rubyExtent <= baseExtent) {
+        continue;
+      }
+
+      var overflow = rubyExtent - baseExtent;
+      final previousIndex = _previousVisibleAtomCursor(
+        model.atoms,
+        baseAtoms.first - 1,
+      );
+      if (previousIndex >= 0 &&
+          !_cjkIdeographPattern.hasMatch(model.atoms[previousIndex].text)) {
+        overflow -= 0.5;
+      }
+      final nextIndex = _nextVisibleAtomCursor(model.atoms, baseAtoms.last + 1);
+      if (nextIndex >= 0 &&
+          !_cjkIdeographPattern.hasMatch(model.atoms[nextIndex].text)) {
+        overflow -= 0.5;
+      }
+      if (overflow <= 0) {
+        continue;
+      }
+
+      final tracking = overflow / baseAtoms.length;
+      for (final atomIndex in baseAtoms) {
+        final boundaryIndex = _nextVisibleAtomCursorInRange(
+          model.atoms,
+          atomIndex + 1,
+          lineEnd,
+        );
+        if (boundaryIndex >= 0) {
+          boundaryAdjustments.update(
+            boundaryIndex,
+            (current) => current + tracking,
+            ifAbsent: () => tracking,
+          );
+        } else {
+          trailingExtent += tracking;
+        }
+      }
+    }
+
+    return _RubyBaseTrackingAdjustments(
+      boundaryAdjustments: boundaryAdjustments,
+      trailingExtent: trailingExtent,
+    );
   }
 
   LayoutFragment? _buildFragment(
@@ -958,6 +1106,9 @@ class LayoutResultBuilder {
           decorationSide: marker.decorationSide,
           noteKind: marker.noteKind,
           frameKind: marker.frameKind,
+          repeatCount: marker.kind == LayoutMarkerKind.emphasis
+              ? anchored.length
+              : null,
           issues: marker.issues,
         ),
       );
@@ -1739,6 +1890,26 @@ class LayoutResultBuilder {
     return -1;
   }
 
+  int _previousVisibleAtomCursor(List<_Atom> atoms, int start) {
+    for (var index = start; index >= 0; index -= 1) {
+      if (!atoms[index].kind.isMarkerOnly &&
+          atoms[index].kind != _AtomKind.lineBreak) {
+        return index;
+      }
+    }
+    return -1;
+  }
+
+  int _nextVisibleAtomCursorInRange(List<_Atom> atoms, int start, int end) {
+    for (var index = start; index < end; index += 1) {
+      if (!atoms[index].kind.isMarkerOnly &&
+          atoms[index].kind != _AtomKind.lineBreak) {
+        return index;
+      }
+    }
+    return -1;
+  }
+
   int _consumeLeadingMarkers(List<_Atom> atoms, int start) {
     var cursor = start;
     while (cursor < atoms.length &&
@@ -2428,6 +2599,16 @@ class _FragmentPlacement {
   final double blockExtent;
   final double inlineExtent;
   final LayoutInlineStyle style;
+}
+
+class _RubyBaseTrackingAdjustments {
+  const _RubyBaseTrackingAdjustments({
+    required this.boundaryAdjustments,
+    required this.trailingExtent,
+  });
+
+  final Map<int, double> boundaryAdjustments;
+  final double trailingExtent;
 }
 
 class _BlockContext {
