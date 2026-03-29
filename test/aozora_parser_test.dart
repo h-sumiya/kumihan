@@ -33,10 +33,12 @@ void main() {
       expect(paragraph.children, hasLength(3));
       expect((paragraph.children.first as TextNode).text, '米機Ｂ');
 
-      final container = paragraph.children[1] as InlineContainerNode;
-      expect(container.kind, 'direction');
-      expect(container.variant, 'tateChuYoko');
-      expect(container.openDirective.category, 'inline.reference');
+      final container = paragraph.children[1] as DirectionInlineNode;
+      expect(container.kind, DirectionKind.tateChuYoko);
+      expect(
+        container.openDirective.category,
+        SourceDirectiveCategory.inlineReference,
+      );
       expect(container.children, hasLength(1));
       expect((container.children.first as TextNode).text, '29');
 
@@ -66,9 +68,8 @@ void main() {
 
       expect(document.children, hasLength(1));
 
-      final container = document.children.single as ContainerBlockNode;
-      expect(container.kind, 'style');
-      expect(container.variant, 'bold');
+      final container = document.children.single as StyledBlockNode;
+      expect(container.style, TextStyleKind.bold);
       expect(container.isClosed, isTrue);
       expect(container.children, hasLength(1));
 
@@ -80,10 +81,9 @@ void main() {
     test('preserves explicit line-break directives inside inline scopes', () {
       final document = parser.parse('［＃割り注］東は［＃改行］西は［＃割り注終わり］');
       final paragraph = _onlyParagraph(document);
-      final container = paragraph.children.single as InlineContainerNode;
+      final container = paragraph.children.single as NoteInlineNode;
 
-      expect(container.kind, 'note');
-      expect(container.variant, 'warichu');
+      expect(container.kind, NoteKind.warichu);
       expect(container.children, hasLength(3));
       expect((container.children.first as TextNode).text, '東は');
       expect(container.children[1], isA<LineBreakNode>());
@@ -98,13 +98,12 @@ void main() {
       final paragraph = document.children.first as ParagraphNode;
       expect(paragraph.children, hasLength(3));
       expect(
-        (paragraph.children[1] as DirectiveInlineNode).directive.rawText,
+        (paragraph.children[1] as OpaqueInlineNode).directive.rawText,
         '［＃未対応注記］',
       );
 
-      final container = document.children.last as ContainerBlockNode;
-      expect(container.kind, 'style');
-      expect(container.variant, 'bold');
+      final container = document.children.last as StyledBlockNode;
+      expect(container.style, TextStyleKind.bold);
       expect(container.isClosed, isFalse);
 
       expect(document.diagnostics, hasLength(1));

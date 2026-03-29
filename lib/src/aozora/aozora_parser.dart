@@ -1,5 +1,23 @@
 import '../ast/ast.dart';
 
+typedef _BuildBlockNode =
+    BlockNode Function(
+      SourceSpan span,
+      List<BlockNode> children,
+      SourceDirective openDirective,
+      SourceDirective? closeDirective,
+      bool isClosed,
+    );
+
+typedef _BuildInlineNode =
+    InlineNode Function(
+      SourceSpan span,
+      List<InlineNode> children,
+      SourceDirective openDirective,
+      SourceDirective? closeDirective,
+      bool isClosed,
+    );
+
 class AozoraAstParser {
   AozoraAstParser();
 
@@ -26,46 +44,41 @@ class AozoraAstParser {
       }
     }
 
-    var lineStart = 0;
-    while (lineStart <= normalized.length) {
-      final lineEnd = normalized.indexOf('\n', lineStart);
-      final endOffset = lineEnd >= 0 ? lineEnd : normalized.length;
-      final line = normalized.substring(lineStart, endOffset);
-      final lineSpan = mapper.span(lineStart, endOffset);
+    if (normalized.isNotEmpty) {
+      var lineStart = 0;
+      while (lineStart < normalized.length) {
+        final lineEnd = normalized.indexOf('\n', lineStart);
+        final endOffset = lineEnd >= 0 ? lineEnd : normalized.length;
+        final line = normalized.substring(lineStart, endOffset);
+        final lineSpan = mapper.span(lineStart, endOffset);
 
-      if (line.isEmpty) {
-        addBlock(EmptyLineNode(span: lineSpan));
-      } else {
-        final directive = _parseWholeLineDirective(line, lineStart, mapper);
-        if (directive != null) {
-          final handled = _handleDirectiveLine(
-            directive,
-            blockStack,
-            addBlock,
-            mapper,
-            diagnostics,
-          );
-          if (!handled) {
-            addBlock(
-              DirectiveBlockNode(span: directive.span, directive: directive),
-            );
-          }
+        if (line.isEmpty) {
+          addBlock(EmptyLineNode(span: lineSpan));
         } else {
-          final paragraph = _parseParagraph(
-            normalized,
-            line,
-            lineStart,
-            mapper,
-            diagnostics,
-          );
-          addBlock(paragraph);
+          final directive = _parseWholeLineDirective(line, lineStart, mapper);
+          if (directive != null && _looksLikeBlockDirective(directive.body)) {
+            final handled = _handleDirectiveLine(
+              directive,
+              blockStack,
+              addBlock,
+              mapper,
+              diagnostics,
+            );
+            if (!handled) {
+              addBlock(
+                OpaqueBlockNode(span: directive.span, directive: directive),
+              );
+            }
+          } else {
+            addBlock(_parseParagraph(line, lineStart, mapper, diagnostics));
+          }
         }
-      }
 
-      if (lineEnd < 0) {
-        break;
+        if (lineEnd < 0) {
+          break;
+        }
+        lineStart = lineEnd + 1;
       }
-      lineStart = lineEnd + 1;
     }
 
     while (blockStack.isNotEmpty) {
@@ -82,20 +95,14 @@ class AozoraAstParser {
         frame.openDirective.span,
         frame.children.isEmpty ? null : frame.children.last.span,
       );
-      final node = ContainerBlockNode(
-        span: span,
-        kind: frame.kind,
-        variant: frame.variant,
-        attributes: frame.attributes,
-        children: List<BlockNode>.unmodifiable(frame.children),
-        openDirective: frame.openDirective,
-        isClosed: false,
+      final node = frame.buildNode(
+        span,
+        List<BlockNode>.unmodifiable(frame.children),
+        frame.openDirective,
+        null,
+        false,
       );
-      if (blockStack.isEmpty) {
-        rootBlocks.add(node);
-      } else {
-        blockStack.last.children.add(node);
-      }
+      addBlock(node);
     }
 
     return DocumentNode(
@@ -106,7 +113,6 @@ class AozoraAstParser {
   }
 
   ParagraphNode _parseParagraph(
-    String source,
     String line,
     int lineStartOffset,
     _SourceMapper mapper,
@@ -115,13 +121,14 @@ class AozoraAstParser {
     final root = _InlineFrame.root();
     final stack = <_InlineFrame>[root];
     var explicitRubyStartIndex = -1;
+    var hadOrphanInlineClose = false;
     var index = 0;
 
     void addInline(InlineNode node) {
       _appendInline(stack.last.children, node);
     }
 
-    void addText(String text, int start, int end) {
+    void addTextRange(String text, int start, int end) {
       if (text.isEmpty) {
         return;
       }
@@ -135,12 +142,12 @@ class AozoraAstParser {
 
     while (index < line.length) {
       if (line.startsWith('※$_directiveOpen', index)) {
-        final directiveEnd = line.indexOf(_directiveClose, index + 3);
+        final directiveEnd = _findDirectiveEnd(line, index + 1);
         if (directiveEnd >= 0) {
           final raw = line.substring(index, directiveEnd + 1);
           final body = line.substring(index + 3, directiveEnd);
           addInline(
-            _buildGaijiNode(
+            _buildGaijiOrUnresolvedNode(
               mapper: mapper,
               raw: raw,
               body: body,
@@ -154,7 +161,7 @@ class AozoraAstParser {
       }
 
       if (line.startsWith(_directiveOpen, index)) {
-        final directiveEnd = line.indexOf(_directiveClose, index + 2);
+        final directiveEnd = _findDirectiveEnd(line, index);
         if (directiveEnd >= 0) {
           final raw = line.substring(index, directiveEnd + 1);
           final body = line.substring(index + 2, directiveEnd);
@@ -172,11 +179,13 @@ class AozoraAstParser {
             stack,
             mapper,
             diagnostics,
-            lineStartOffset,
           );
           if (!handled) {
+            if (directive.body.endsWith('終わり')) {
+              hadOrphanInlineClose = true;
+            }
             addInline(
-              DirectiveInlineNode(span: directive.span, directive: directive),
+              OpaqueInlineNode(span: directive.span, directive: directive),
             );
           }
           index = directiveEnd + 1;
@@ -187,12 +196,32 @@ class AozoraAstParser {
       if (line.startsWith(_accentOpen, index)) {
         final accentEnd = line.indexOf(_accentClose, index + 1);
         if (accentEnd >= 0) {
-          final raw = line.substring(index + 1, accentEnd);
-          final decoded = _decodeAccentText(raw);
-          addText(decoded, index, accentEnd + 1);
+          final content = line.substring(index + 1, accentEnd);
+          final nodes = _parseAccentNodes(
+            content: content,
+            contentStartOffset: lineStartOffset + index + 1,
+            mapper: mapper,
+          );
+          for (final node in nodes) {
+            addInline(node);
+          }
           index = accentEnd + 1;
           continue;
         }
+        diagnostics.add(
+          AstDiagnostic(
+            code: 'unclosed_accent_bracket',
+            message: 'Accent bracket was not closed before end of line.',
+            severity: AstDiagnosticSeverity.warning,
+            span: mapper.span(
+              lineStartOffset + index,
+              lineStartOffset + line.length,
+            ),
+          ),
+        );
+        addTextRange(line.substring(index), index, line.length);
+        index = line.length;
+        continue;
       }
 
       if (line.startsWith(_rubyExplicitMarker, index)) {
@@ -209,7 +238,6 @@ class AozoraAstParser {
             stack.last.children,
             explicitRubyStartIndex: explicitRubyStartIndex,
             mapper: mapper,
-            rubyStartOffset: lineStartOffset + index,
           );
           explicitRubyStartIndex = -1;
           if (base != null) {
@@ -246,27 +274,45 @@ class AozoraAstParser {
       }
 
       final next = _findNextSpecialIndex(line, index + 1);
-      addText(line.substring(index, next), index, next);
+      addTextRange(line.substring(index, next), index, next);
       index = next;
     }
 
     while (stack.length > 1) {
       final frame = stack.removeLast();
-      diagnostics.add(
-        AstDiagnostic(
-          code: 'unclosed_inline_container',
-          message: 'Inline directive was not closed before end of line.',
-          severity: AstDiagnosticSeverity.warning,
-          span: frame.openDirective!.span,
+      if (!hadOrphanInlineClose) {
+        diagnostics.add(
+          AstDiagnostic(
+            code: 'inline_container_crossed_line',
+            message:
+                'Inline directive crossed a line break. Use a block directive instead.',
+            severity: AstDiagnosticSeverity.warning,
+            span: frame.openDirective!.span,
+          ),
+        );
+      }
+      if (frame.kind == _InlineScopeKind.pendingRubyAnnotation) {
+        _appendInline(
+          stack.last.children,
+          OpaqueInlineNode(
+            span: frame.openDirective!.span,
+            directive: frame.openDirective!,
+          ),
+        );
+        for (final child in frame.children) {
+          _appendInline(stack.last.children, child);
+        }
+        continue;
+      }
+      _appendInline(
+        stack.last.children,
+        _finalizeInlineFrame(
+          frame,
+          mapper: mapper,
+          closeDirective: null,
+          isClosed: false,
         ),
       );
-      final node = _finalizeInlineFrame(
-        frame,
-        mapper: mapper,
-        closeDirective: null,
-        isClosed: false,
-      );
-      _appendInline(stack.last.children, node);
     }
 
     return ParagraphNode(
@@ -282,15 +328,14 @@ class AozoraAstParser {
     _SourceMapper mapper,
     List<AstDiagnostic> diagnostics,
   ) {
-    final openSpec = _parseBlockOpenDirective(directive);
+    final openSpec = _parseBlockOpenDirective(directive, diagnostics);
     if (openSpec != null) {
       stack.add(
         _BlockFrame(
-          kind: openSpec.kind,
-          variant: openSpec.variant,
-          attributes: openSpec.attributes,
-          closeMatcher: openSpec.closeMatcher,
-          openDirective: directive.copyWith(category: 'block.open'),
+          openSpec: openSpec,
+          openDirective: directive.copyWith(
+            category: SourceDirectiveCategory.blockOpen,
+          ),
         ),
       );
       return true;
@@ -300,7 +345,7 @@ class AozoraAstParser {
     if (closeSpec == null) {
       return false;
     }
-    if (stack.isEmpty || !closeSpec.matches(stack.last)) {
+    if (stack.isEmpty || stack.last.kind != closeSpec.kind) {
       diagnostics.add(
         AstDiagnostic(
           code: 'orphan_block_close',
@@ -314,16 +359,15 @@ class AozoraAstParser {
 
     final frame = stack.removeLast();
     final span = mapper.mergeSpans(frame.openDirective.span, directive.span);
-    final node = ContainerBlockNode(
-      span: span,
-      kind: frame.kind,
-      variant: frame.variant,
-      attributes: frame.attributes,
-      children: List<BlockNode>.unmodifiable(frame.children),
-      openDirective: frame.openDirective,
-      closeDirective: directive.copyWith(category: 'block.close'),
+    addBlock(
+      frame.buildNode(
+        span,
+        List<BlockNode>.unmodifiable(frame.children),
+        frame.openDirective,
+        directive.copyWith(category: SourceDirectiveCategory.blockClose),
+        true,
+      ),
     );
-    addBlock(node);
     return true;
   }
 
@@ -332,14 +376,15 @@ class AozoraAstParser {
     List<_InlineFrame> stack,
     _SourceMapper mapper,
     List<AstDiagnostic> diagnostics,
-    int lineStartOffset,
   ) {
     if (directive.body == '改行') {
       _appendInline(
         stack.last.children,
         LineBreakNode(
           span: directive.span,
-          sourceDirective: directive.copyWith(category: 'inline.lineBreak'),
+          sourceDirective: directive.copyWith(
+            category: SourceDirectiveCategory.inlineLineBreak,
+          ),
         ),
       );
       return true;
@@ -348,20 +393,20 @@ class AozoraAstParser {
     if (directive.body == '注記付き') {
       stack.add(
         _InlineFrame.pendingRubyAnnotation(
-          openDirective: directive.copyWith(category: 'inline.open'),
+          openDirective: directive.copyWith(
+            category: SourceDirectiveCategory.inlineOpen,
+          ),
         ),
       );
       return true;
     }
 
-    final closeNoteMatch = RegExp(
-      r'^「(.+)」の注記付き終わり$',
-    ).firstMatch(directive.body);
-    if (closeNoteMatch != null &&
+    final noteClose = RegExp(r'^「(.+)」の注記付き終わり$').firstMatch(directive.body);
+    if (noteClose != null &&
         stack.length > 1 &&
-        stack.last.kind == 'rubyAnnotationPending') {
+        stack.last.kind == _InlineScopeKind.pendingRubyAnnotation) {
       final frame = stack.removeLast();
-      final text = closeNoteMatch.group(1)!;
+      final text = noteClose.group(1)!;
       final span = mapper.mergeSpans(frame.openDirective!.span, directive.span);
       _appendInline(
         stack.last.children,
@@ -371,7 +416,9 @@ class AozoraAstParser {
           text: text,
           kind: RubyKind.annotation,
           position: RubyPosition.over,
-          sourceDirective: directive.copyWith(category: 'inline.close'),
+          sourceDirective: directive.copyWith(
+            category: SourceDirectiveCategory.inlineClose,
+          ),
         ),
       );
       return true;
@@ -379,15 +426,19 @@ class AozoraAstParser {
 
     if (directive.body.endsWith('終わり')) {
       final openBody = directive.body.substring(0, directive.body.length - 3);
-      if (stack.length > 1 && stack.last.matches(openBody)) {
+      if (stack.length > 1 && stack.last.openBody == openBody) {
         final frame = stack.removeLast();
-        final node = _finalizeInlineFrame(
-          frame,
-          mapper: mapper,
-          closeDirective: directive.copyWith(category: 'inline.close'),
-          isClosed: true,
+        _appendInline(
+          stack.last.children,
+          _finalizeInlineFrame(
+            frame,
+            mapper: mapper,
+            closeDirective: directive.copyWith(
+              category: SourceDirectiveCategory.inlineClose,
+            ),
+            isClosed: true,
+          ),
         );
-        _appendInline(stack.last.children, node);
         return true;
       }
       diagnostics.add(
@@ -401,13 +452,18 @@ class AozoraAstParser {
       return false;
     }
 
-    final wrapped = _tryApplyTargetDirective(
+    if (_tryApplyTargetDirective(
       directive,
       stack.last.children,
       mapper,
       diagnostics,
-    );
-    if (wrapped) {
+    )) {
+      return true;
+    }
+
+    final leafNode = _parseInlineLeafDirective(directive);
+    if (leafNode != null) {
+      _appendInline(stack.last.children, leafNode);
       return true;
     }
 
@@ -419,9 +475,10 @@ class AozoraAstParser {
       _InlineFrame.container(
         openBody: directive.body,
         kind: openSpec.kind,
-        variant: openSpec.variant,
-        attributes: openSpec.attributes,
-        openDirective: directive.copyWith(category: 'inline.open'),
+        buildNode: openSpec.buildNode,
+        openDirective: directive.copyWith(
+          category: SourceDirectiveCategory.inlineOpen,
+        ),
       ),
     );
     return true;
@@ -433,13 +490,19 @@ class AozoraAstParser {
     _SourceMapper mapper,
     List<AstDiagnostic> diagnostics,
   ) {
-    final match = RegExp(r'^「(.+?)」(?:に|は|の)(.+)$').firstMatch(directive.body);
+    final match = RegExp(
+      r'^「([^「」]*(?:「.+」)*[^「」]*)」[にはの](「.+」の)*(.+)$',
+    ).firstMatch(directive.body);
     if (match == null) {
       return false;
     }
 
+    final originalSiblings = List<InlineNode>.from(siblings);
     final targetText = match.group(1)!;
-    final action = match.group(2)!;
+    final actionPrefix = match.group(2);
+    final action = actionPrefix == null
+        ? match.group(3)!
+        : '$actionPrefix${match.group(3)!}';
     final base = _takeTargetTail(siblings, targetText, mapper);
     if (base == null) {
       diagnostics.add(
@@ -450,30 +513,30 @@ class AozoraAstParser {
           span: directive.span,
         ),
       );
+      siblings
+        ..clear()
+        ..addAll(originalSiblings);
       return false;
     }
 
+    final referenceDirective = directive.copyWith(
+      category: SourceDirectiveCategory.inlineReference,
+    );
     final rubyDirectional = RegExp(
       r'^(左|右|上|下)に「(.+?)」の(ルビ|注記)$',
     ).firstMatch(action);
     if (rubyDirectional != null) {
-      final rubyText = rubyDirectional.group(2)!;
-      final type = rubyDirectional.group(3)!;
-      final position = switch (rubyDirectional.group(1)!) {
-        '左' => RubyPosition.left,
-        '右' => RubyPosition.right,
-        '下' => RubyPosition.under,
-        _ => RubyPosition.over,
-      };
       _appendInline(
         siblings,
         RubyNode(
           span: mapper.mergeSpans(base.span, directive.span),
           base: base.nodes,
-          text: rubyText,
-          kind: type == '注記' ? RubyKind.annotation : RubyKind.phonetic,
-          position: position,
-          sourceDirective: directive.copyWith(category: 'inline.reference'),
+          text: rubyDirectional.group(2)!,
+          kind: rubyDirectional.group(3)! == '注記'
+              ? RubyKind.annotation
+              : RubyKind.phonetic,
+          position: _rubyPositionFromKanji(rubyDirectional.group(1)!),
+          sourceDirective: referenceDirective,
         ),
       );
       return true;
@@ -491,28 +554,112 @@ class AozoraAstParser {
               ? RubyKind.annotation
               : RubyKind.phonetic,
           position: RubyPosition.over,
-          sourceDirective: directive.copyWith(category: 'inline.reference'),
+          sourceDirective: referenceDirective,
         ),
       );
       return true;
     }
 
-    final inlineSpec = _parseInlineOpenDirective(action);
-    if (inlineSpec == null) {
-      return false;
+    final boukiMatch = RegExp(r'^「(.)」の傍記$').firstMatch(action);
+    if (boukiMatch != null) {
+      final mark = boukiMatch.group(1)!;
+      _appendInline(
+        siblings,
+        RubyNode(
+          span: mapper.mergeSpans(base.span, directive.span),
+          base: base.nodes,
+          text: List<String>.filled(
+            _plainTextListLength(base.nodes),
+            mark,
+          ).join(' '),
+          kind: RubyKind.annotation,
+          position: RubyPosition.over,
+          sourceDirective: referenceDirective,
+        ),
+      );
+      return true;
     }
+
+    final script = _parseScriptAction(action);
+    if (script != null) {
+      _appendInline(
+        siblings,
+        ScriptInlineNode(
+          span: mapper.mergeSpans(base.span, directive.span),
+          kind: script,
+          text: _plainTextFromNodes(base.nodes),
+          sourceDirective: referenceDirective,
+        ),
+      );
+      return true;
+    }
+
+    final openSpec = _parseInlineOpenDirective(action);
+    if (openSpec != null) {
+      _appendInline(
+        siblings,
+        openSpec.buildNode(
+          mapper.mergeSpans(base.span, directive.span),
+          base.nodes,
+          referenceDirective,
+          null,
+          true,
+        ),
+      );
+      return true;
+    }
+
+    siblings
+      ..clear()
+      ..addAll(originalSiblings);
     _appendInline(
       siblings,
-      InlineContainerNode(
-        span: mapper.mergeSpans(base.span, directive.span),
-        kind: inlineSpec.kind,
-        variant: inlineSpec.variant,
-        attributes: inlineSpec.attributes,
-        children: base.nodes,
-        openDirective: directive.copyWith(category: 'inline.reference'),
+      EditorNoteNode(
+        span: directive.span,
+        text: directive.body,
+        sourceDirective: directive,
       ),
     );
     return true;
+  }
+
+  InlineNode? _parseInlineLeafDirective(SourceDirective directive) {
+    final image = _parseImageDirective(directive);
+    if (image != null) {
+      return image;
+    }
+
+    final unresolvedGaiji = _parseStandaloneUnresolvedGaijiDirective(directive);
+    if (unresolvedGaiji != null) {
+      return unresolvedGaiji;
+    }
+
+    if (_kaeritenPattern.hasMatch(directive.body)) {
+      return KaeritenNode(
+        span: directive.span,
+        text: directive.body,
+        sourceDirective: directive,
+      );
+    }
+
+    final okurigana = RegExp(r'^（(.+)）$').firstMatch(directive.body);
+    if (okurigana != null) {
+      return OkuriganaNode(
+        span: directive.span,
+        text: okurigana.group(1)!,
+        sourceDirective: directive,
+      );
+    }
+
+    if (_isEditorNoteDirective(directive.body)) {
+      return EditorNoteNode(
+        span: directive.span,
+        text: directive.body,
+        sourceDirective: directive,
+      );
+    }
+
+    return null;
   }
 
   InlineNode _finalizeInlineFrame(
@@ -525,15 +672,12 @@ class AozoraAstParser {
         closeDirective?.span ??
         (frame.children.isEmpty ? null : frame.children.last.span);
     final span = mapper.mergeSpans(frame.openDirective!.span, endSpan);
-    return InlineContainerNode(
-      span: span,
-      kind: frame.kind,
-      variant: frame.variant,
-      attributes: frame.attributes,
-      children: List<InlineNode>.unmodifiable(frame.children),
-      openDirective: frame.openDirective!,
-      closeDirective: closeDirective,
-      isClosed: isClosed,
+    return frame.buildNode!(
+      span,
+      List<InlineNode>.unmodifiable(frame.children),
+      frame.openDirective!,
+      closeDirective,
+      isClosed,
     );
   }
 
@@ -558,102 +702,182 @@ class AozoraAstParser {
     );
   }
 
-  _BlockOpenSpec? _parseBlockOpenDirective(SourceDirective directive) {
-    final body = directive.body;
-    if (body.startsWith('ここから')) {
-      final inner = body.substring('ここから'.length);
-      final spec = _parseStandaloneBlockType(inner);
-      if (spec != null) {
-        return spec;
-      }
-    }
-    return _parseStandaloneBlockType(body);
+  bool _looksLikeBlockDirective(String body) {
+    return body.startsWith('ここから') || body.startsWith('ここで');
   }
 
-  _BlockOpenSpec? _parseStandaloneBlockType(String body) {
-    final indentMatch = RegExp(r'^(.+?)字下げ$').firstMatch(body);
-    if (indentMatch != null) {
-      final width = _parseLength(indentMatch.group(1)!);
+  _BlockOpenSpec? _parseBlockOpenDirective(
+    SourceDirective directive,
+    List<AstDiagnostic> diagnostics,
+  ) {
+    if (!directive.body.startsWith('ここから')) {
+      return null;
+    }
+    final inner = directive.body.substring('ここから'.length);
+
+    final indent = _parseIndent(inner);
+    if (indent != null) {
       return _BlockOpenSpec(
-        kind: 'indent',
-        variant: 'jisage',
-        attributes: <String, String>{
-          if (width != null) 'width': width.toString(),
-        },
-        closeMatcher: (frame) => frame.kind == 'indent',
+        kind: _BlockScopeKind.indent,
+        buildNode: (span, children, openDirective, closeDirective, isClosed) =>
+            IndentBlockNode(
+              span: span,
+              children: children,
+              openDirective: openDirective,
+              closeDirective: closeDirective,
+              isClosed: isClosed,
+              width: indent,
+            ),
       );
     }
 
-    final jizumeMatch = RegExp(r'^(.+?)字詰め$').firstMatch(body);
-    if (jizumeMatch != null) {
-      final width = _parseLength(jizumeMatch.group(1)!);
+    final jizume = _parseJizume(inner);
+    if (jizume != null) {
       return _BlockOpenSpec(
-        kind: 'measure',
-        variant: 'jizume',
-        attributes: <String, String>{
-          if (width != null) 'width': width.toString(),
-        },
-        closeMatcher: (frame) => frame.kind == 'measure',
+        kind: _BlockScopeKind.jizume,
+        buildNode: (span, children, openDirective, closeDirective, isClosed) =>
+            JizumeBlockNode(
+              span: span,
+              children: children,
+              openDirective: openDirective,
+              closeDirective: closeDirective,
+              isClosed: isClosed,
+              width: jizume,
+            ),
       );
     }
 
-    if (body == '地付き' || body == '字上げ') {
+    if (inner == '地付き' || inner == '字上げ') {
       return _BlockOpenSpec(
-        kind: 'alignment',
-        variant: body == '地付き' ? 'chitsuki' : 'jiage',
-        closeMatcher: (frame) => frame.kind == 'alignment',
+        kind: _BlockScopeKind.alignment,
+        buildNode: (span, children, openDirective, closeDirective, isClosed) =>
+            AlignmentBlockNode(
+              span: span,
+              children: children,
+              openDirective: openDirective,
+              closeDirective: closeDirective,
+              isClosed: isClosed,
+              kind: inner == '地付き'
+                  ? BlockAlignmentKind.chitsuki
+                  : BlockAlignmentKind.jiage,
+            ),
       );
     }
 
-    if (body == '横組み') {
+    if (inner == '横組み') {
       return _BlockOpenSpec(
-        kind: 'flow',
-        variant: 'yokogumi',
-        closeMatcher: (frame) => frame.kind == 'flow',
+        kind: _BlockScopeKind.flow,
+        buildNode: (span, children, openDirective, closeDirective, isClosed) =>
+            FlowBlockNode(
+              span: span,
+              children: children,
+              openDirective: openDirective,
+              closeDirective: closeDirective,
+              isClosed: isClosed,
+              kind: FlowKind.yokogumi,
+            ),
       );
     }
 
-    if (body == '罫囲み') {
+    final frame = _parseFrame(inner);
+    if (frame != null) {
       return _BlockOpenSpec(
-        kind: 'frame',
-        variant: 'keigakomi',
-        closeMatcher: (frame) => frame.kind == 'frame',
+        kind: _BlockScopeKind.frame,
+        buildNode: (span, children, openDirective, closeDirective, isClosed) =>
+            FrameBlockNode(
+              span: span,
+              children: children,
+              openDirective: openDirective,
+              closeDirective: closeDirective,
+              isClosed: isClosed,
+              kind: FrameKind.keigakomi,
+              borderWidth: frame,
+            ),
       );
     }
 
-    if (body == 'キャプション') {
+    if (inner == 'キャプション') {
       return _BlockOpenSpec(
-        kind: 'caption',
-        variant: 'caption',
-        closeMatcher: (frame) => frame.kind == 'caption',
+        kind: _BlockScopeKind.caption,
+        buildNode: (span, children, openDirective, closeDirective, isClosed) =>
+            CaptionBlockNode(
+              span: span,
+              children: children,
+              openDirective: openDirective,
+              closeDirective: closeDirective,
+              isClosed: isClosed,
+            ),
       );
     }
 
-    if (body == '太字' || body == '斜体') {
+    final style = _parseTextStyle(inner);
+    if (style != null) {
       return _BlockOpenSpec(
-        kind: 'style',
-        variant: body == '太字' ? 'bold' : 'italic',
-        closeMatcher: (frame) => frame.kind == 'style',
+        kind: _BlockScopeKind.style,
+        buildNode: (span, children, openDirective, closeDirective, isClosed) =>
+            StyledBlockNode(
+              span: span,
+              children: children,
+              openDirective: openDirective,
+              closeDirective: closeDirective,
+              isClosed: isClosed,
+              style: style,
+            ),
       );
     }
 
-    final charSize = _parseCharSize(body);
-    if (charSize != null) {
+    final fontSize = _parseFontSize(inner);
+    if (fontSize != null) {
       return _BlockOpenSpec(
-        kind: 'fontSize',
-        variant: charSize.variant,
-        attributes: charSize.attributes,
-        closeMatcher: (frame) => frame.kind == 'fontSize',
+        kind: _BlockScopeKind.fontSize,
+        buildNode: (span, children, openDirective, closeDirective, isClosed) =>
+            FontSizeBlockNode(
+              span: span,
+              children: children,
+              openDirective: openDirective,
+              closeDirective: closeDirective,
+              isClosed: isClosed,
+              kind: fontSize.kind,
+              steps: fontSize.steps,
+            ),
       );
     }
+    if (_looksLikeFontSize(inner)) {
+      diagnostics.add(
+        AstDiagnostic(
+          code: 'invalid_font_size',
+          message: 'Font size directive is invalid.',
+          severity: AstDiagnosticSeverity.warning,
+          span: directive.span,
+        ),
+      );
+      return null;
+    }
 
-    final heading = _parseHeading(body);
+    final heading = _parseHeading(inner);
     if (heading != null) {
       return _BlockOpenSpec(
-        kind: 'heading',
-        variant: heading.variant,
-        attributes: heading.attributes,
-        closeMatcher: (frame) => frame.kind == 'heading',
+        kind: _BlockScopeKind.heading,
+        buildNode: (span, children, openDirective, closeDirective, isClosed) =>
+            HeadingBlockNode(
+              span: span,
+              children: children,
+              openDirective: openDirective,
+              closeDirective: closeDirective,
+              isClosed: isClosed,
+              level: heading.level,
+              display: heading.display,
+            ),
+      );
+    }
+    if (inner.contains('見出し')) {
+      diagnostics.add(
+        AstDiagnostic(
+          code: 'invalid_heading',
+          message: 'Heading directive is invalid.',
+          severity: AstDiagnosticSeverity.warning,
+          span: directive.span,
+        ),
       );
     }
 
@@ -661,179 +885,329 @@ class AozoraAstParser {
   }
 
   _BlockCloseSpec? _parseBlockCloseDirective(SourceDirective directive) {
-    var body = directive.body;
-    if (body.startsWith('ここで')) {
-      body = body.substring('ここで'.length);
-    }
-    if (!body.endsWith('終わり')) {
+    if (!directive.body.startsWith('ここで') || !directive.body.endsWith('終わり')) {
       return null;
     }
-    final target = body.substring(0, body.length - '終わり'.length);
+    final target = directive.body.substring(
+      'ここで'.length,
+      directive.body.length - '終わり'.length,
+    );
     if (target == '字下げ') {
-      return _BlockCloseSpec((frame) => frame.kind == 'indent');
+      return const _BlockCloseSpec(_BlockScopeKind.indent);
     }
     if (target == '地付き' || target == '字上げ') {
-      return _BlockCloseSpec((frame) => frame.kind == 'alignment');
+      return const _BlockCloseSpec(_BlockScopeKind.alignment);
     }
     if (target == '字詰め') {
-      return _BlockCloseSpec((frame) => frame.kind == 'measure');
+      return const _BlockCloseSpec(_BlockScopeKind.jizume);
     }
     if (target == '横組み') {
-      return _BlockCloseSpec((frame) => frame.kind == 'flow');
+      return const _BlockCloseSpec(_BlockScopeKind.flow);
     }
-    if (target == '罫囲み') {
-      return _BlockCloseSpec((frame) => frame.kind == 'frame');
+    if (_parseFrame(target) != null) {
+      return const _BlockCloseSpec(_BlockScopeKind.frame);
     }
     if (target == 'キャプション') {
-      return _BlockCloseSpec((frame) => frame.kind == 'caption');
+      return const _BlockCloseSpec(_BlockScopeKind.caption);
     }
-    if (target == '太字' || target == '斜体') {
-      return _BlockCloseSpec((frame) => frame.kind == 'style');
+    if (_parseTextStyle(target) != null) {
+      return const _BlockCloseSpec(_BlockScopeKind.style);
     }
     if (_parseHeading(target) != null) {
-      return _BlockCloseSpec((frame) => frame.kind == 'heading');
+      return const _BlockCloseSpec(_BlockScopeKind.heading);
     }
-    if (_parseCharSize(target) != null) {
-      return _BlockCloseSpec((frame) => frame.kind == 'fontSize');
+    if (_parseFontSize(target) != null) {
+      return const _BlockCloseSpec(_BlockScopeKind.fontSize);
     }
     return null;
   }
 
   _InlineOpenSpec? _parseInlineOpenDirective(String body) {
     if (body == '縦中横') {
-      return const _InlineOpenSpec(kind: 'direction', variant: 'tateChuYoko');
-    }
-    if (body == '横組み') {
-      return const _InlineOpenSpec(kind: 'flow', variant: 'yokogumi');
-    }
-    if (body == '罫囲み') {
-      return const _InlineOpenSpec(kind: 'frame', variant: 'keigakomi');
-    }
-    if (body == 'キャプション') {
-      return const _InlineOpenSpec(kind: 'caption', variant: 'caption');
-    }
-    if (body == '割り注') {
-      return const _InlineOpenSpec(kind: 'note', variant: 'warichu');
-    }
-    if (body == '割書') {
-      return const _InlineOpenSpec(kind: 'note', variant: 'warigaki');
-    }
-    if (body == '太字') {
-      return const _InlineOpenSpec(kind: 'style', variant: 'bold');
-    }
-    if (body == '斜体') {
-      return const _InlineOpenSpec(kind: 'style', variant: 'italic');
-    }
-
-    final charSize = _parseCharSize(body);
-    if (charSize != null) {
       return _InlineOpenSpec(
-        kind: 'fontSize',
-        variant: charSize.variant,
-        attributes: charSize.attributes,
+        kind: _InlineScopeKind.direction,
+        buildNode: (span, children, openDirective, closeDirective, isClosed) =>
+            DirectionInlineNode(
+              span: span,
+              children: children,
+              openDirective: openDirective,
+              closeDirective: closeDirective,
+              isClosed: isClosed,
+              kind: DirectionKind.tateChuYoko,
+            ),
       );
     }
-
+    if (body == '横組み') {
+      return _InlineOpenSpec(
+        kind: _InlineScopeKind.flow,
+        buildNode: (span, children, openDirective, closeDirective, isClosed) =>
+            FlowInlineNode(
+              span: span,
+              children: children,
+              openDirective: openDirective,
+              closeDirective: closeDirective,
+              isClosed: isClosed,
+              kind: FlowKind.yokogumi,
+            ),
+      );
+    }
+    final frame = _parseFrame(body);
+    if (frame != null) {
+      return _InlineOpenSpec(
+        kind: _InlineScopeKind.frame,
+        buildNode: (span, children, openDirective, closeDirective, isClosed) =>
+            FrameInlineNode(
+              span: span,
+              children: children,
+              openDirective: openDirective,
+              closeDirective: closeDirective,
+              isClosed: isClosed,
+              kind: FrameKind.keigakomi,
+              borderWidth: frame,
+            ),
+      );
+    }
+    if (body == 'キャプション') {
+      return _InlineOpenSpec(
+        kind: _InlineScopeKind.caption,
+        buildNode: (span, children, openDirective, closeDirective, isClosed) =>
+            CaptionInlineNode(
+              span: span,
+              children: children,
+              openDirective: openDirective,
+              closeDirective: closeDirective,
+              isClosed: isClosed,
+            ),
+      );
+    }
+    if (body == '割り注' || body == '割書') {
+      return _InlineOpenSpec(
+        kind: _InlineScopeKind.note,
+        buildNode: (span, children, openDirective, closeDirective, isClosed) =>
+            NoteInlineNode(
+              span: span,
+              children: children,
+              openDirective: openDirective,
+              closeDirective: closeDirective,
+              isClosed: isClosed,
+              kind: body == '割り注' ? NoteKind.warichu : NoteKind.warigaki,
+            ),
+      );
+    }
+    final style = _parseTextStyle(body);
+    if (style != null) {
+      return _InlineOpenSpec(
+        kind: _InlineScopeKind.style,
+        buildNode: (span, children, openDirective, closeDirective, isClosed) =>
+            StyledInlineNode(
+              span: span,
+              children: children,
+              openDirective: openDirective,
+              closeDirective: closeDirective,
+              isClosed: isClosed,
+              style: style,
+            ),
+      );
+    }
+    final fontSize = _parseFontSize(body);
+    if (fontSize != null) {
+      return _InlineOpenSpec(
+        kind: _InlineScopeKind.fontSize,
+        buildNode: (span, children, openDirective, closeDirective, isClosed) =>
+            FontSizeInlineNode(
+              span: span,
+              children: children,
+              openDirective: openDirective,
+              closeDirective: closeDirective,
+              isClosed: isClosed,
+              kind: fontSize.kind,
+              steps: fontSize.steps,
+            ),
+      );
+    }
     final heading = _parseHeading(body);
     if (heading != null) {
       return _InlineOpenSpec(
-        kind: 'heading',
-        variant: heading.variant,
-        attributes: heading.attributes,
+        kind: _InlineScopeKind.heading,
+        buildNode: (span, children, openDirective, closeDirective, isClosed) =>
+            HeadingInlineNode(
+              span: span,
+              children: children,
+              openDirective: openDirective,
+              closeDirective: closeDirective,
+              isClosed: isClosed,
+              level: heading.level,
+              display: heading.display,
+            ),
       );
     }
-
     final decoration = _parseDecoration(body);
     if (decoration != null) {
       return _InlineOpenSpec(
-        kind: decoration.kind,
-        variant: decoration.variant,
-        attributes: decoration.attributes,
+        kind: decoration.scopeKind,
+        buildNode: decoration.buildNode,
+      );
+    }
+    return null;
+  }
+
+  TextStyleKind? _parseTextStyle(String body) {
+    return switch (body) {
+      '太字' => TextStyleKind.bold,
+      '斜体' => TextStyleKind.italic,
+      _ => null,
+    };
+  }
+
+  int? _parseIndent(String body) {
+    final match = RegExp(r'^(.+?)字下げ$').firstMatch(body);
+    if (match == null) {
+      return null;
+    }
+    return _parseLength(match.group(1)!);
+  }
+
+  int? _parseJizume(String body) {
+    final match = RegExp(r'^(.+?)字詰め$').firstMatch(body);
+    if (match == null) {
+      return null;
+    }
+    return _parseLength(match.group(1)!);
+  }
+
+  int? _parseFrame(String body) {
+    if (body == '罫囲み') {
+      return 1;
+    }
+    if (body == '2重罫囲み') {
+      return 2;
+    }
+    return null;
+  }
+
+  _ParsedHeading? _parseHeading(String body) {
+    final display = switch (true) {
+      _ when body.startsWith('同行') => HeadingDisplay.dogyo,
+      _ when body.startsWith('窓') => HeadingDisplay.mado,
+      _ => HeadingDisplay.normal,
+    };
+    final stripped = switch (display) {
+      HeadingDisplay.dogyo => body.substring('同行'.length),
+      HeadingDisplay.mado => body.substring('窓'.length),
+      HeadingDisplay.normal => body,
+    };
+    final level = switch (stripped) {
+      '小見出し' => HeadingLevel.small,
+      '中見出し' => HeadingLevel.medium,
+      '大見出し' => HeadingLevel.large,
+      _ => null,
+    };
+    if (level == null) {
+      return null;
+    }
+    return _ParsedHeading(level: level, display: display);
+  }
+
+  _ParsedFontSize? _parseFontSize(String body) {
+    final match = RegExp(r'^(.+?)段階(..)な文字$').firstMatch(body);
+    if (match == null) {
+      return null;
+    }
+    final steps = _parseLength(match.group(1)!);
+    if (steps == null || steps <= 0) {
+      return null;
+    }
+    final kind = switch (match.group(2)!) {
+      '大き' => FontSizeKind.larger,
+      '小さ' => FontSizeKind.smaller,
+      _ => null,
+    };
+    if (kind == null) {
+      return null;
+    }
+    return _ParsedFontSize(kind: kind, steps: steps);
+  }
+
+  bool _looksLikeFontSize(String body) {
+    return body.contains('段階') && body.endsWith('な文字');
+  }
+
+  _ParsedDecoration? _parseDecoration(String body) {
+    var core = body;
+    var side = EmphasisSide.auto;
+    var decorationSide = DecorationSide.auto;
+
+    final directionMatch = RegExp(r'^(右|左|上|下)に(.+)$').firstMatch(body);
+    if (directionMatch != null) {
+      core = directionMatch.group(2)!;
+      side = _emphasisSideFromKanji(directionMatch.group(1)!);
+      decorationSide = _decorationSideFromKanji(directionMatch.group(1)!);
+    }
+
+    final emphasis = <String, EmphasisMark>{
+      '傍点': EmphasisMark.sesameDot,
+      '白ゴマ傍点': EmphasisMark.whiteSesameDot,
+      '丸傍点': EmphasisMark.blackCircle,
+      '白丸傍点': EmphasisMark.whiteCircle,
+      '黒三角傍点': EmphasisMark.blackTriangle,
+      '白三角傍点': EmphasisMark.whiteTriangle,
+      '二重丸傍点': EmphasisMark.bullseye,
+      '蛇の目傍点': EmphasisMark.fisheye,
+      'ばつ傍点': EmphasisMark.saltire,
+    }[core];
+    if (emphasis != null) {
+      return _ParsedDecoration(
+        scopeKind: _InlineScopeKind.emphasis,
+        buildNode: (span, children, openDirective, closeDirective, isClosed) =>
+            EmphasisInlineNode(
+              span: span,
+              children: children,
+              openDirective: openDirective,
+              closeDirective: closeDirective,
+              isClosed: isClosed,
+              mark: emphasis,
+              side: side,
+            ),
+      );
+    }
+
+    final decoration = <String, DecorationKind>{
+      '傍線': DecorationKind.underlineSolid,
+      '二重傍線': DecorationKind.underlineDouble,
+      '鎖線': DecorationKind.underlineDotted,
+      '破線': DecorationKind.underlineDashed,
+      '波線': DecorationKind.underlineWave,
+    }[core];
+    if (decoration != null) {
+      return _ParsedDecoration(
+        scopeKind: _InlineScopeKind.decoration,
+        buildNode: (span, children, openDirective, closeDirective, isClosed) =>
+            DecorationInlineNode(
+              span: span,
+              children: children,
+              openDirective: openDirective,
+              closeDirective: closeDirective,
+              isClosed: isClosed,
+              kind: decoration,
+              side: decorationSide,
+            ),
       );
     }
 
     return null;
   }
 
-  _SpecParts? _parseHeading(String body) {
-    final display = body.startsWith('同行')
-        ? 'dogyo'
-        : body.startsWith('窓')
-        ? 'mado'
-        : 'normal';
-    final stripped = body
-        .replaceFirst('同行', '')
-        .replaceFirst('窓', '')
-        .replaceFirst('見出し', '見出し');
-    final level = switch (stripped) {
-      '大見出し' => 'large',
-      '中見出し' => 'medium',
-      '小見出し' => 'small',
+  ScriptKind? _parseScriptAction(String action) {
+    return switch (action) {
+      '上付き小文字' => ScriptKind.superscript,
+      '行右小書き' => ScriptKind.superscript,
+      '下付き小文字' => ScriptKind.subscript,
+      '行左小書き' => ScriptKind.subscript,
       _ => null,
     };
-    if (level == null) {
-      return null;
-    }
-    return _SpecParts(
-      variant: level,
-      attributes: <String, String>{'display': display},
-    );
   }
 
-  _SpecParts? _parseCharSize(String body) {
-    final match = RegExp(r'^(.+?)段階(..)な文字$').firstMatch(body);
-    if (match == null) {
-      return null;
-    }
-    final amount = _parseLength(match.group(1)!);
-    final type = match.group(2)! == '大き' ? 'larger' : 'smaller';
-    return _SpecParts(
-      variant: type,
-      attributes: <String, String>{
-        if (amount != null) 'steps': amount.toString(),
-      },
-    );
-  }
-
-  _SpecParts? _parseDecoration(String body) {
-    final directionMatch = RegExp(r'^(右|左|上|下)に(.+)$').firstMatch(body);
-    var direction = 'default';
-    var core = body;
-    if (directionMatch != null) {
-      direction = directionMatch.group(1)!;
-      core = directionMatch.group(2)!;
-    }
-
-    final mapping = <String, String>{
-      '傍点': 'sesameDot',
-      '白ゴマ傍点': 'whiteSesameDot',
-      '丸傍点': 'blackCircle',
-      '白丸傍点': 'whiteCircle',
-      '黒三角傍点': 'blackTriangle',
-      '白三角傍点': 'whiteTriangle',
-      '二重丸傍点': 'bullseye',
-      '蛇の目傍点': 'fisheye',
-      'ばつ傍点': 'saltire',
-      '傍線': 'underlineSolid',
-      '二重傍線': 'underlineDouble',
-      '鎖線': 'underlineDotted',
-      '破線': 'underlineDashed',
-      '波線': 'underlineWave',
-    };
-    final variant = mapping[core];
-    if (variant == null) {
-      return null;
-    }
-    return _SpecParts(
-      variant: variant,
-      kind: core.endsWith('点') ? 'emphasis' : 'decoration',
-      attributes: <String, String>{
-        if (direction != 'default') 'direction': direction,
-      },
-    );
-  }
-
-  GaijiNode _buildGaijiNode({
+  InlineNode _buildGaijiOrUnresolvedNode({
     required _SourceMapper mapper,
     required String raw,
     required String body,
@@ -842,6 +1216,13 @@ class AozoraAstParser {
   }) {
     final jisCode = RegExp(r'(\d+-\d+-\d+)').firstMatch(body)?.group(1);
     final unicode = RegExp(r'U\+([0-9A-Fa-f]{4,6})').firstMatch(body)?.group(1);
+    if (jisCode == null && unicode == null) {
+      return UnresolvedGaijiNode(
+        span: mapper.span(start, end),
+        rawNotation: raw,
+        text: body,
+      );
+    }
     return GaijiNode(
       span: mapper.span(start, end),
       rawNotation: raw,
@@ -851,233 +1232,168 @@ class AozoraAstParser {
     );
   }
 
-  _RubyBase? _takeRubyBase(
-    List<InlineNode> siblings, {
-    required int explicitRubyStartIndex,
-    required _SourceMapper mapper,
-    required int rubyStartOffset,
-  }) {
-    if (siblings.isEmpty) {
-      return null;
-    }
-
-    if (explicitRubyStartIndex >= 0 &&
-        explicitRubyStartIndex < siblings.length) {
-      final nodes = siblings.sublist(explicitRubyStartIndex);
-      siblings.removeRange(explicitRubyStartIndex, siblings.length);
-      return _RubyBase(
-        nodes: List<InlineNode>.unmodifiable(nodes),
-        span: mapper.mergeSpans(nodes.first.span, nodes.last.span),
-      );
-    }
-
-    final tail = _takeTrailingRubyNodes(siblings, mapper);
-    return tail;
-  }
-
-  _RubyBase? _takeTrailingRubyNodes(
-    List<InlineNode> siblings,
-    _SourceMapper mapper,
+  UnresolvedGaijiNode? _parseStandaloneUnresolvedGaijiDirective(
+    SourceDirective directive,
   ) {
-    if (siblings.isEmpty) {
+    if (!directive.body.startsWith('「') ||
+        !directive.body.contains('ページ数-行数')) {
       return null;
     }
-
-    final matched = <InlineNode>[];
-    while (siblings.isNotEmpty) {
-      final candidate = siblings.removeLast();
-      if (candidate is TextNode) {
-        final split = _splitRubyText(candidate, mapper);
-        if (split.matched != null) {
-          if (split.remaining != null) {
-            siblings.add(split.remaining!);
-          }
-          matched.insert(0, split.matched!);
-          continue;
-        }
-        siblings.add(candidate);
-        break;
-      }
-      if (_isRubyEligibleNode(candidate)) {
-        matched.insert(0, candidate);
-        continue;
-      }
-      siblings.add(candidate);
-      break;
-    }
-
-    if (matched.isEmpty) {
-      return null;
-    }
-    return _RubyBase(
-      nodes: List<InlineNode>.unmodifiable(matched),
-      span: mapper.mergeSpans(matched.first.span, matched.last.span),
+    return UnresolvedGaijiNode(
+      span: directive.span,
+      rawNotation: '※${directive.rawText}',
+      text: directive.body,
+      sourceDirective: directive,
     );
   }
 
-  _SplitTextResult _splitRubyText(TextNode node, _SourceMapper mapper) {
-    final text = node.text;
-    var splitIndex = text.length;
-    while (splitIndex > 0 && _isRubyBaseCharacter(text[splitIndex - 1])) {
-      splitIndex -= 1;
+  ImageNode? _parseImageDirective(SourceDirective directive) {
+    final match = RegExp(
+      r'^(.*?)（([^、)]+\.png)(?:、横([0-9０-９]+)×縦([0-9０-９]+))?）入る$',
+    ).firstMatch(directive.body);
+    if (match == null) {
+      return null;
     }
-    if (splitIndex == text.length) {
-      return const _SplitTextResult();
-    }
-
-    final remainingText = text.substring(0, splitIndex);
-    final matchedText = text.substring(splitIndex);
-    TextNode? remaining;
-    if (remainingText.isNotEmpty) {
-      remaining = TextNode(
-        span: mapper.span(
-          node.span.start.offset,
-          node.span.start.offset + remainingText.length,
-        ),
-        text: remainingText,
-      );
-    }
-    final matched = TextNode(
-      span: mapper.span(
-        node.span.start.offset + splitIndex,
-        node.span.end.offset,
-      ),
-      text: matchedText,
-    );
-    return _SplitTextResult(remaining: remaining, matched: matched);
-  }
-
-  bool _isRubyEligibleNode(InlineNode node) {
-    return switch (node) {
-      TextNode() => true,
-      GaijiNode() => true,
-      InlineContainerNode() => true,
-      InlineAnnotationNode() => true,
-      _ => false,
+    final alt = match.group(1)!.trim();
+    final width = match.group(3) == null ? null : _parseLength(match.group(3)!);
+    final height = match.group(4) == null
+        ? null
+        : _parseLength(match.group(4)!);
+    final className = switch (true) {
+      _ when alt.contains('写真') => 'photo',
+      _ => RegExp(r'(\S+)$').firstMatch(alt)?.group(1),
     };
+    return ImageNode(
+      span: directive.span,
+      source: match.group(2)!,
+      alt: alt.isEmpty ? null : alt,
+      className: className,
+      width: width,
+      height: height,
+      sourceDirective: directive,
+    );
   }
 
-  _TargetTail? _takeTargetTail(
-    List<InlineNode> siblings,
-    String targetText,
-    _SourceMapper mapper,
-  ) {
-    if (siblings.isEmpty) {
-      return null;
+  bool _isEditorNoteDirective(String body) {
+    if (body == '注記付き') {
+      return false;
     }
+    return body.startsWith('注記') ||
+        body.startsWith('ルビの') ||
+        body.contains('底本') ||
+        body.contains('ママ');
+  }
 
-    var remaining = targetText;
-    final matched = <InlineNode>[];
-    while (siblings.isNotEmpty && remaining.isNotEmpty) {
-      final candidate = siblings.removeLast();
-      final plain = _plainText(candidate);
-      if (plain.isEmpty) {
-        siblings.add(candidate);
-        break;
-      }
-
-      if (remaining.endsWith(plain)) {
-        matched.insert(0, candidate);
-        remaining = remaining.substring(0, remaining.length - plain.length);
+  List<InlineNode> _parseAccentNodes({
+    required String content,
+    required int contentStartOffset,
+    required _SourceMapper mapper,
+  }) {
+    final nodes = <InlineNode>[];
+    var index = 0;
+    var textStart = 0;
+    while (index < content.length) {
+      final match = _matchAccentSequence(content, index);
+      if (match == null) {
+        index += 1;
         continue;
       }
-
-      if (candidate is TextNode && plain.endsWith(remaining)) {
-        final splitPoint = plain.length - remaining.length;
-        final leading = plain.substring(0, splitPoint);
-        if (leading.isNotEmpty) {
-          siblings.add(
-            TextNode(
-              span: mapper.span(
-                candidate.span.start.offset,
-                candidate.span.start.offset + leading.length,
-              ),
-              text: leading,
-            ),
-          );
-        }
-        matched.insert(
-          0,
+      if (textStart < index) {
+        nodes.add(
           TextNode(
             span: mapper.span(
-              candidate.span.start.offset + splitPoint,
-              candidate.span.end.offset,
+              contentStartOffset + textStart,
+              contentStartOffset + index,
             ),
-            text: remaining,
+            text: content.substring(textStart, index),
           ),
         );
-        remaining = '';
-        continue;
       }
-
-      siblings.add(candidate);
-      break;
+      nodes.add(
+        GaijiNode(
+          span: mapper.span(
+            contentStartOffset + index,
+            contentStartOffset + index + match.length,
+          ),
+          rawNotation: match.raw,
+          description: match.description,
+          unicodeCodePoint: match.unicodeCodePoint,
+        ),
+      );
+      index += match.length;
+      textStart = index;
     }
-
-    if (remaining.isNotEmpty || matched.isEmpty) {
-      return null;
+    if (textStart < content.length) {
+      nodes.add(
+        TextNode(
+          span: mapper.span(
+            contentStartOffset + textStart,
+            contentStartOffset + content.length,
+          ),
+          text: content.substring(textStart),
+        ),
+      );
     }
-
-    return _TargetTail(
-      nodes: List<InlineNode>.unmodifiable(matched),
-      span: mapper.mergeSpans(matched.first.span, matched.last.span),
-    );
+    return nodes;
   }
 
-  String _plainText(InlineNode node) {
-    return switch (node) {
-      TextNode(:final text) => text,
-      GaijiNode(:final rawNotation) => rawNotation,
-      InlineContainerNode(:final children) => children.map(_plainText).join(),
-      InlineAnnotationNode(:final text) => text,
-      RubyNode(:final base) => base.map(_plainText).join(),
-      _ => '',
-    };
-  }
-
-  String _decodeAccentText(String input) {
-    final output = StringBuffer();
-    var index = 0;
-    while (index < input.length) {
-      final matched = _matchAccentSequence(input, index);
-      if (matched != null) {
-        output.write(matched.value);
-        index += matched.length;
-      } else {
-        output.write(input[index]);
-        index += 1;
-      }
-    }
-    return output.toString();
-  }
-
-  _AccentMatch? _matchAccentSequence(String input, int index) {
+  _AccentSequence? _matchAccentSequence(String input, int index) {
     if (index + 1 >= input.length) {
       return null;
     }
+
     final twoChar = input.substring(index, index + 2);
-    final twoMap = <String, String>{'!@': '¡', '?@': '¿', 's&': 'ß'};
+    const twoMap = <String, (String, String)>{
+      '!@': ('¡', '逆感嘆符'),
+      '?@': ('¿', '逆疑問符'),
+      's&': ('ß', 'エスツェット'),
+    };
     final twoValue = twoMap[twoChar];
     if (twoValue != null) {
-      return _AccentMatch(twoValue, 2);
+      return _AccentSequence(
+        raw: twoChar,
+        unicodeCodePoint: _unicodeCodePoint(twoValue.$1),
+        description: twoValue.$2,
+        length: 2,
+      );
     }
 
     if (index + 2 < input.length) {
       final threeChar = input.substring(index, index + 3);
-      final threeMap = <String, String>{
-        'AE&': 'Æ',
-        'ae&': 'æ',
-        'OE&': 'Œ',
-        'oe&': 'œ',
+      const threeMap = <String, (String, String)>{
+        'AE&': ('Æ', 'AE合字'),
+        'ae&': ('æ', 'AE合字小文字'),
+        'OE&': ('Œ', 'OE合字'),
+        'oe&': ('œ', 'OE合字小文字'),
       };
       final threeValue = threeMap[threeChar];
       if (threeValue != null) {
-        return _AccentMatch(threeValue, 3);
+        return _AccentSequence(
+          raw: threeChar,
+          unicodeCodePoint: _unicodeCodePoint(threeValue.$1),
+          description: threeValue.$2,
+          length: 3,
+        );
       }
     }
 
-    final pair = input.substring(index, index + 2);
-    final composed = switch (pair) {
+    final accentName = switch (input[index + 1]) {
+      '`' => 'グレーブアクセント',
+      '\'' => 'アキュートアクセント',
+      '^' => 'サーカムフレックスアクセント',
+      '~' => 'チルダ',
+      ':' => 'トレマ',
+      '&' => 'リング',
+      '_' => 'マクロン',
+      ',' => 'セディーユ',
+      '/' => 'スラッシュ',
+      _ => null,
+    };
+    if (accentName == null) {
+      return null;
+    }
+
+    final unicode = switch (twoChar) {
       'A`' => 'À',
       "A'" => 'Á',
       'A^' => 'Â',
@@ -1143,12 +1459,286 @@ class AozoraAstParser {
       'u_' => 'ū',
       "y'" => 'ý',
       'y:' => 'ÿ',
-      _ => '',
+      _ => null,
     };
-    if (composed.isEmpty) {
+    if (unicode == null) {
       return null;
     }
-    return _AccentMatch(composed, 2);
+
+    return _AccentSequence(
+      raw: twoChar,
+      unicodeCodePoint: _unicodeCodePoint(unicode),
+      description: '$accentName付き${_accentLetterName(twoChar[0])}',
+      length: 2,
+    );
+  }
+
+  String _unicodeCodePoint(String value) {
+    return value.runes.first.toRadixString(16).toUpperCase();
+  }
+
+  String _accentLetterName(String char) {
+    if (char.toUpperCase() == char) {
+      return char;
+    }
+    return '${char.toUpperCase()}小文字';
+  }
+
+  RubyPosition _rubyPositionFromKanji(String direction) {
+    return switch (direction) {
+      '左' => RubyPosition.left,
+      '右' => RubyPosition.right,
+      '下' => RubyPosition.under,
+      _ => RubyPosition.over,
+    };
+  }
+
+  EmphasisSide _emphasisSideFromKanji(String direction) {
+    return switch (direction) {
+      '左' => EmphasisSide.left,
+      '右' => EmphasisSide.right,
+      '下' => EmphasisSide.under,
+      '上' => EmphasisSide.over,
+      _ => EmphasisSide.auto,
+    };
+  }
+
+  DecorationSide _decorationSideFromKanji(String direction) {
+    return switch (direction) {
+      '左' => DecorationSide.left,
+      '右' => DecorationSide.right,
+      '下' => DecorationSide.under,
+      '上' => DecorationSide.over,
+      _ => DecorationSide.auto,
+    };
+  }
+
+  _RubyBase? _takeRubyBase(
+    List<InlineNode> siblings, {
+    required int explicitRubyStartIndex,
+    required _SourceMapper mapper,
+  }) {
+    if (siblings.isEmpty) {
+      return null;
+    }
+
+    if (explicitRubyStartIndex >= 0 &&
+        explicitRubyStartIndex < siblings.length) {
+      final nodes = siblings.sublist(explicitRubyStartIndex);
+      siblings.removeRange(explicitRubyStartIndex, siblings.length);
+      return _RubyBase(
+        nodes: List<InlineNode>.unmodifiable(nodes),
+        span: mapper.mergeSpans(nodes.first.span, nodes.last.span),
+      );
+    }
+
+    return _takeTrailingRubyNodes(siblings, mapper);
+  }
+
+  _RubyBase? _takeTrailingRubyNodes(
+    List<InlineNode> siblings,
+    _SourceMapper mapper,
+  ) {
+    if (siblings.isEmpty) {
+      return null;
+    }
+
+    final matched = <InlineNode>[];
+    while (siblings.isNotEmpty) {
+      final candidate = siblings.removeLast();
+      if (candidate is TextNode) {
+        final split = _splitRubyText(candidate, mapper);
+        if (split.matched != null) {
+          if (split.remaining != null) {
+            siblings.add(split.remaining!);
+          }
+          matched.insert(0, split.matched!);
+          break;
+        }
+        siblings.add(candidate);
+        break;
+      }
+      if (_isRubyEligibleNode(candidate)) {
+        matched.insert(0, candidate);
+        continue;
+      }
+      siblings.add(candidate);
+      break;
+    }
+
+    if (matched.isEmpty) {
+      return null;
+    }
+    return _RubyBase(
+      nodes: List<InlineNode>.unmodifiable(matched),
+      span: mapper.mergeSpans(matched.first.span, matched.last.span),
+    );
+  }
+
+  _SplitTextResult _splitRubyText(TextNode node, _SourceMapper mapper) {
+    final text = node.text;
+    if (text.isEmpty) {
+      return const _SplitTextResult();
+    }
+
+    var splitIndex = text.length;
+    final tailClass = _rubyBaseClass(text[text.length - 1]);
+    while (splitIndex > 0) {
+      final char = text[splitIndex - 1];
+      if (!_isRubyBaseCharacter(char) || _rubyBaseClass(char) != tailClass) {
+        break;
+      }
+      splitIndex -= 1;
+    }
+    if (splitIndex == text.length) {
+      return const _SplitTextResult();
+    }
+
+    final remainingText = text.substring(0, splitIndex);
+    final matchedText = text.substring(splitIndex);
+    TextNode? remaining;
+    if (remainingText.isNotEmpty) {
+      remaining = TextNode(
+        span: mapper.span(
+          node.span.start.offset,
+          node.span.start.offset + remainingText.length,
+        ),
+        text: remainingText,
+      );
+    }
+    final matched = TextNode(
+      span: mapper.span(
+        node.span.start.offset + splitIndex,
+        node.span.end.offset,
+      ),
+      text: matchedText,
+    );
+    return _SplitTextResult(remaining: remaining, matched: matched);
+  }
+
+  bool _isRubyEligibleNode(InlineNode node) {
+    return switch (node) {
+      TextNode() => true,
+      GaijiNode() => true,
+      UnresolvedGaijiNode() => true,
+      DirectionInlineNode() => true,
+      FlowInlineNode() => true,
+      CaptionInlineNode() => true,
+      FrameInlineNode() => true,
+      NoteInlineNode() => true,
+      StyledInlineNode() => true,
+      FontSizeInlineNode() => true,
+      HeadingInlineNode() => true,
+      EmphasisInlineNode() => true,
+      DecorationInlineNode() => true,
+      ScriptInlineNode() => true,
+      KaeritenNode() => true,
+      OkuriganaNode() => true,
+      _ => false,
+    };
+  }
+
+  _TargetTail? _takeTargetTail(
+    List<InlineNode> siblings,
+    String targetText,
+    _SourceMapper mapper,
+  ) {
+    if (siblings.isEmpty) {
+      return null;
+    }
+
+    final working = List<InlineNode>.from(siblings);
+    var remaining = targetText;
+    final matched = <InlineNode>[];
+
+    while (working.isNotEmpty && remaining.isNotEmpty) {
+      final candidate = working.removeLast();
+      final plain = _plainText(candidate);
+      if (plain.isEmpty) {
+        working.add(candidate);
+        break;
+      }
+
+      if (remaining.endsWith(plain)) {
+        matched.insert(0, candidate);
+        remaining = remaining.substring(0, remaining.length - plain.length);
+        continue;
+      }
+
+      if (candidate is TextNode && plain.endsWith(remaining)) {
+        final splitPoint = plain.length - remaining.length;
+        final leading = plain.substring(0, splitPoint);
+        if (leading.isNotEmpty) {
+          working.add(
+            TextNode(
+              span: mapper.span(
+                candidate.span.start.offset,
+                candidate.span.start.offset + leading.length,
+              ),
+              text: leading,
+            ),
+          );
+        }
+        matched.insert(
+          0,
+          TextNode(
+            span: mapper.span(
+              candidate.span.start.offset + splitPoint,
+              candidate.span.end.offset,
+            ),
+            text: remaining,
+          ),
+        );
+        remaining = '';
+        continue;
+      }
+
+      working.add(candidate);
+      break;
+    }
+
+    if (remaining.isNotEmpty || matched.isEmpty) {
+      return null;
+    }
+
+    siblings
+      ..clear()
+      ..addAll(working);
+    return _TargetTail(
+      nodes: List<InlineNode>.unmodifiable(matched),
+      span: mapper.mergeSpans(matched.first.span, matched.last.span),
+    );
+  }
+
+  int _plainTextListLength(List<InlineNode> nodes) {
+    return _plainTextFromNodes(nodes).runes.length;
+  }
+
+  String _plainTextFromNodes(List<InlineNode> nodes) {
+    return nodes.map(_plainText).join();
+  }
+
+  String _plainText(InlineNode node) {
+    return switch (node) {
+      TextNode(:final text) => text,
+      GaijiNode(:final rawNotation) => rawNotation,
+      UnresolvedGaijiNode(:final rawNotation) => rawNotation,
+      DirectionInlineNode(:final children) => children.map(_plainText).join(),
+      FlowInlineNode(:final children) => children.map(_plainText).join(),
+      CaptionInlineNode(:final children) => children.map(_plainText).join(),
+      FrameInlineNode(:final children) => children.map(_plainText).join(),
+      NoteInlineNode(:final children) => children.map(_plainText).join(),
+      StyledInlineNode(:final children) => children.map(_plainText).join(),
+      FontSizeInlineNode(:final children) => children.map(_plainText).join(),
+      HeadingInlineNode(:final children) => children.map(_plainText).join(),
+      EmphasisInlineNode(:final children) => children.map(_plainText).join(),
+      DecorationInlineNode(:final children) => children.map(_plainText).join(),
+      ScriptInlineNode(:final text) => text,
+      KaeritenNode(:final text) => text,
+      OkuriganaNode(:final text) => text,
+      RubyNode(:final base) => base.map(_plainText).join(),
+      _ => '',
+    };
   }
 
   int _findNextSpecialIndex(String line, int from) {
@@ -1166,8 +1756,41 @@ class AozoraAstParser {
     return candidates.first;
   }
 
+  int _findDirectiveEnd(String line, int start) {
+    var depth = 0;
+    for (var index = start; index < line.length; index += 1) {
+      final char = line[index];
+      if (char == '［') {
+        depth += 1;
+      } else if (char == '］') {
+        depth -= 1;
+        if (depth == 0) {
+          return index;
+        }
+      }
+    }
+    return -1;
+  }
+
   bool _isRubyBaseCharacter(String char) {
     return !RegExp(r'[\s、。，．,.「」『』（）()［］【】〈〉《》!?！？…―ー]').hasMatch(char);
+  }
+
+  _RubyBaseClass _rubyBaseClass(String char) {
+    if (RegExp(r'[ぁ-んゝゞ]').hasMatch(char)) {
+      return _RubyBaseClass.hiragana;
+    }
+    if (RegExp(r'[ァ-ンーヽヾヴ]').hasMatch(char)) {
+      return _RubyBaseClass.katakana;
+    }
+    if (RegExp('[\\u3400-\\u9FFF\\uF900-\\uFAFF々〆〇ヶ]').hasMatch(char)) {
+      return _RubyBaseClass.kanji;
+    }
+    if (RegExp(r'[A-Za-z0-9０-９Ａ-Ｚａ-ｚΑ-Ωα-ωА-Яа-я]').hasMatch(char) ||
+        '−＆’，．#-\\&\','.contains(char)) {
+      return _RubyBaseClass.latinOrNumber;
+    }
+    return _RubyBaseClass.other;
   }
 
   int? _parseLength(String raw) {
@@ -1215,19 +1838,8 @@ class AozoraAstParser {
     }
     return total + current;
   }
-}
 
-extension on SourceDirective {
-  SourceDirective copyWith({String? category, AstAttributes? attributes}) {
-    return SourceDirective(
-      format: format,
-      rawText: rawText,
-      body: body,
-      span: span,
-      category: category ?? this.category,
-      attributes: attributes ?? this.attributes,
-    );
-  }
+  static final RegExp _kaeritenPattern = RegExp(r'^[一二三四五六七八九十レ上中下甲乙丙丁天地人]+$');
 }
 
 class _SourceMapper {
@@ -1287,97 +1899,109 @@ class _SourceMapper {
   }
 }
 
-class _BlockFrame {
-  _BlockFrame({
-    required this.kind,
-    required this.variant,
-    required this.attributes,
-    required this.closeMatcher,
-    required this.openDirective,
-  });
+enum _BlockScopeKind {
+  indent,
+  alignment,
+  jizume,
+  flow,
+  frame,
+  caption,
+  style,
+  heading,
+  fontSize,
+}
 
-  final String kind;
-  final String? variant;
-  final AstAttributes attributes;
-  final bool Function(_BlockFrame frame) closeMatcher;
+class _BlockFrame {
+  _BlockFrame({required _BlockOpenSpec openSpec, required this.openDirective})
+    : kind = openSpec.kind,
+      buildNode = openSpec.buildNode;
+
+  final _BlockScopeKind kind;
+  final _BuildBlockNode buildNode;
   final SourceDirective openDirective;
   final List<BlockNode> children = <BlockNode>[];
+}
+
+class _BlockOpenSpec {
+  const _BlockOpenSpec({required this.kind, required this.buildNode});
+
+  final _BlockScopeKind kind;
+  final _BuildBlockNode buildNode;
+}
+
+class _BlockCloseSpec {
+  const _BlockCloseSpec(this.kind);
+
+  final _BlockScopeKind kind;
+}
+
+enum _InlineScopeKind {
+  root,
+  pendingRubyAnnotation,
+  direction,
+  flow,
+  frame,
+  caption,
+  note,
+  style,
+  heading,
+  fontSize,
+  emphasis,
+  decoration,
 }
 
 class _InlineFrame {
   _InlineFrame.root()
     : openBody = '',
-      kind = 'root',
-      variant = null,
-      attributes = const <String, String>{},
+      kind = _InlineScopeKind.root,
+      buildNode = null,
       openDirective = null;
 
   _InlineFrame.container({
     required this.openBody,
     required this.kind,
-    required this.variant,
-    required this.attributes,
+    required this.buildNode,
     required this.openDirective,
   });
 
   _InlineFrame.pendingRubyAnnotation({required this.openDirective})
     : openBody = '注記付き',
-      kind = 'rubyAnnotationPending',
-      variant = 'annotation',
-      attributes = const <String, String>{};
+      kind = _InlineScopeKind.pendingRubyAnnotation,
+      buildNode = null;
 
   final String openBody;
-  final String kind;
-  final String? variant;
-  final AstAttributes attributes;
+  final _InlineScopeKind kind;
+  final _BuildInlineNode? buildNode;
   final SourceDirective? openDirective;
   final List<InlineNode> children = <InlineNode>[];
-
-  bool matches(String body) => openBody == body;
-}
-
-class _BlockOpenSpec {
-  const _BlockOpenSpec({
-    required this.kind,
-    this.variant,
-    this.attributes = const <String, String>{},
-    required this.closeMatcher,
-  });
-
-  final String kind;
-  final String? variant;
-  final AstAttributes attributes;
-  final bool Function(_BlockFrame frame) closeMatcher;
-}
-
-class _BlockCloseSpec {
-  const _BlockCloseSpec(this.matches);
-
-  final bool Function(_BlockFrame frame) matches;
 }
 
 class _InlineOpenSpec {
-  const _InlineOpenSpec({
-    required this.kind,
-    this.variant,
-    this.attributes = const <String, String>{},
-  });
+  const _InlineOpenSpec({required this.kind, required this.buildNode});
 
-  final String kind;
-  final String? variant;
-  final AstAttributes attributes;
+  final _InlineScopeKind kind;
+  final _BuildInlineNode buildNode;
 }
 
-class _SpecParts {
-  const _SpecParts({
-    required this.variant,
-    this.kind = 'style',
-    this.attributes = const <String, String>{},
-  });
+class _ParsedHeading {
+  const _ParsedHeading({required this.level, required this.display});
 
-  final String kind;
-  final String variant;
-  final AstAttributes attributes;
+  final HeadingLevel level;
+  final HeadingDisplay display;
+}
+
+class _ParsedFontSize {
+  const _ParsedFontSize({required this.kind, required this.steps});
+
+  final FontSizeKind kind;
+  final int steps;
+}
+
+class _ParsedDecoration {
+  const _ParsedDecoration({required this.scopeKind, required this.buildNode});
+
+  final _InlineScopeKind scopeKind;
+  final _BuildInlineNode buildNode;
 }
 
 class _RubyBase {
@@ -1401,12 +2025,21 @@ class _SplitTextResult {
   final TextNode? matched;
 }
 
-class _AccentMatch {
-  const _AccentMatch(this.value, this.length);
+class _AccentSequence {
+  const _AccentSequence({
+    required this.raw,
+    required this.description,
+    required this.length,
+    this.unicodeCodePoint,
+  });
 
-  final String value;
+  final String raw;
+  final String description;
+  final String? unicodeCodePoint;
   final int length;
 }
+
+enum _RubyBaseClass { hiragana, katakana, kanji, latinOrNumber, other }
 
 void _appendInline(List<InlineNode> nodes, InlineNode node) {
   if (node is TextNode &&

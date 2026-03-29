@@ -2,9 +2,65 @@ typedef AstAttributes = Map<String, String>;
 
 enum AstDiagnosticSeverity { info, warning, error }
 
+enum SourceDirectiveCategory {
+  opaque,
+  blockOpen,
+  blockClose,
+  inlineOpen,
+  inlineClose,
+  inlineReference,
+  inlineLineBreak,
+}
+
 enum RubyKind { phonetic, annotation }
 
 enum RubyPosition { over, under, left, right }
+
+enum TextStyleKind { bold, italic }
+
+enum FontSizeKind { larger, smaller }
+
+enum HeadingLevel { small, medium, large }
+
+enum HeadingDisplay { normal, dogyo, mado }
+
+enum BlockAlignmentKind { chitsuki, jiage }
+
+enum FlowKind { yokogumi }
+
+enum DirectionKind { tateChuYoko }
+
+enum NoteKind { warichu, warigaki }
+
+enum FrameKind { keigakomi }
+
+enum EmphasisMark {
+  sesameDot,
+  whiteSesameDot,
+  blackCircle,
+  whiteCircle,
+  blackTriangle,
+  whiteTriangle,
+  bullseye,
+  fisheye,
+  saltire,
+}
+
+enum EmphasisSide { auto, over, under, left, right }
+
+enum DecorationKind {
+  underlineSolid,
+  underlineDouble,
+  underlineDotted,
+  underlineDashed,
+  underlineWave,
+}
+
+enum DecorationSide { auto, over, under, left, right }
+
+enum ScriptKind { superscript, subscript }
+
+enum LineBreakKind { explicit }
 
 class SourceLocation {
   const SourceLocation({
@@ -65,30 +121,44 @@ class SourceDirective {
     required this.rawText,
     required this.body,
     required this.span,
-    this.category = 'unknown',
+    this.category = SourceDirectiveCategory.opaque,
     this.attributes = const <String, String>{},
   });
 
   final String format;
   final String rawText;
   final String body;
-  final String category;
+  final SourceDirectiveCategory category;
   final AstAttributes attributes;
   final SourceSpan span;
+
+  SourceDirective copyWith({
+    SourceDirectiveCategory? category,
+    AstAttributes? attributes,
+  }) {
+    return SourceDirective(
+      format: format,
+      rawText: rawText,
+      body: body,
+      span: span,
+      category: category ?? this.category,
+      attributes: attributes ?? this.attributes,
+    );
+  }
 
   Map<String, Object> toDebugMap() {
     return <String, Object>{
       'format': format,
       'rawText': rawText,
       'body': body,
-      'category': category,
+      'category': category.name,
       'attributes': Map<String, String>.from(attributes),
       'span': span.toDebugMap(),
     };
   }
 }
 
-abstract class AstNode {
+sealed class AstNode {
   const AstNode(this.span);
 
   final SourceSpan span;
@@ -102,12 +172,56 @@ abstract class AstNode {
   }
 }
 
-abstract class BlockNode extends AstNode {
+sealed class BlockNode extends AstNode {
   const BlockNode(super.span);
 }
 
-abstract class InlineNode extends AstNode {
+sealed class InlineNode extends AstNode {
   const InlineNode(super.span);
+}
+
+sealed class DirectiveContainerBlockNode extends BlockNode {
+  const DirectiveContainerBlockNode({
+    required SourceSpan span,
+    required this.children,
+    required this.openDirective,
+    this.closeDirective,
+    this.isClosed = true,
+  }) : super(span);
+
+  final List<BlockNode> children;
+  final SourceDirective openDirective;
+  final SourceDirective? closeDirective;
+  final bool isClosed;
+
+  void fillDebugMap(Map<String, Object?> map) {
+    map['isClosed'] = isClosed;
+    map['openDirective'] = openDirective.toDebugMap();
+    map['closeDirective'] = closeDirective?.toDebugMap();
+    map['children'] = children.map((node) => node.toDebugMap()).toList();
+  }
+}
+
+sealed class DirectiveContainerInlineNode extends InlineNode {
+  const DirectiveContainerInlineNode({
+    required SourceSpan span,
+    required this.children,
+    required this.openDirective,
+    this.closeDirective,
+    this.isClosed = true,
+  }) : super(span);
+
+  final List<InlineNode> children;
+  final SourceDirective openDirective;
+  final SourceDirective? closeDirective;
+  final bool isClosed;
+
+  void fillDebugMap(Map<String, Object?> map) {
+    map['isClosed'] = isClosed;
+    map['openDirective'] = openDirective.toDebugMap();
+    map['closeDirective'] = closeDirective?.toDebugMap();
+    map['children'] = children.map((node) => node.toDebugMap()).toList();
+  }
 }
 
 class DocumentNode extends AstNode {
@@ -161,61 +275,240 @@ class EmptyLineNode extends BlockNode {
   Map<String, Object?> toDebugMap() => debugBase();
 }
 
-class ContainerBlockNode extends BlockNode {
-  const ContainerBlockNode({
-    required SourceSpan span,
-    required this.kind,
-    required this.children,
-    required this.openDirective,
-    this.variant,
-    this.attributes = const <String, String>{},
-    this.closeDirective,
-    this.isClosed = true,
-  }) : super(span);
+class OpaqueBlockNode extends BlockNode {
+  const OpaqueBlockNode({required SourceSpan span, required this.directive})
+    : super(span);
 
-  final String kind;
-  final String? variant;
-  final AstAttributes attributes;
-  final List<BlockNode> children;
-  final SourceDirective openDirective;
-  final SourceDirective? closeDirective;
-  final bool isClosed;
+  final SourceDirective directive;
 
   @override
-  String get debugType => 'containerBlock';
+  String get debugType => 'opaqueBlock';
 
   @override
   Map<String, Object?> toDebugMap() {
     final map = debugBase();
-    map['kind'] = kind;
-    map['variant'] = variant;
-    map['attributes'] = Map<String, String>.from(attributes);
-    map['isClosed'] = isClosed;
-    map['openDirective'] = openDirective.toDebugMap();
-    map['closeDirective'] = closeDirective?.toDebugMap();
-    map['children'] = children.map((node) => node.toDebugMap()).toList();
+    map['directive'] = directive.toDebugMap();
     return map;
   }
 }
 
-class DirectiveBlockNode extends BlockNode {
-  const DirectiveBlockNode({
-    required SourceSpan span,
-    required this.directive,
-    this.classification = 'opaque',
-  }) : super(span);
+class IndentBlockNode extends DirectiveContainerBlockNode {
+  const IndentBlockNode({
+    required super.span,
+    required super.children,
+    required super.openDirective,
+    required this.width,
+    super.closeDirective,
+    super.isClosed,
+  });
 
-  final SourceDirective directive;
-  final String classification;
+  final int? width;
 
   @override
-  String get debugType => 'directiveBlock';
+  String get debugType => 'indentBlock';
 
   @override
   Map<String, Object?> toDebugMap() {
     final map = debugBase();
-    map['classification'] = classification;
-    map['directive'] = directive.toDebugMap();
+    map['width'] = width;
+    fillDebugMap(map);
+    return map;
+  }
+}
+
+class AlignmentBlockNode extends DirectiveContainerBlockNode {
+  const AlignmentBlockNode({
+    required super.span,
+    required super.children,
+    required super.openDirective,
+    required this.kind,
+    super.closeDirective,
+    super.isClosed,
+  });
+
+  final BlockAlignmentKind kind;
+
+  @override
+  String get debugType => 'alignmentBlock';
+
+  @override
+  Map<String, Object?> toDebugMap() {
+    final map = debugBase();
+    map['kind'] = kind.name;
+    fillDebugMap(map);
+    return map;
+  }
+}
+
+class JizumeBlockNode extends DirectiveContainerBlockNode {
+  const JizumeBlockNode({
+    required super.span,
+    required super.children,
+    required super.openDirective,
+    required this.width,
+    super.closeDirective,
+    super.isClosed,
+  });
+
+  final int? width;
+
+  @override
+  String get debugType => 'jizumeBlock';
+
+  @override
+  Map<String, Object?> toDebugMap() {
+    final map = debugBase();
+    map['width'] = width;
+    fillDebugMap(map);
+    return map;
+  }
+}
+
+class FlowBlockNode extends DirectiveContainerBlockNode {
+  const FlowBlockNode({
+    required super.span,
+    required super.children,
+    required super.openDirective,
+    required this.kind,
+    super.closeDirective,
+    super.isClosed,
+  });
+
+  final FlowKind kind;
+
+  @override
+  String get debugType => 'flowBlock';
+
+  @override
+  Map<String, Object?> toDebugMap() {
+    final map = debugBase();
+    map['kind'] = kind.name;
+    fillDebugMap(map);
+    return map;
+  }
+}
+
+class CaptionBlockNode extends DirectiveContainerBlockNode {
+  const CaptionBlockNode({
+    required super.span,
+    required super.children,
+    required super.openDirective,
+    super.closeDirective,
+    super.isClosed,
+  });
+
+  @override
+  String get debugType => 'captionBlock';
+
+  @override
+  Map<String, Object?> toDebugMap() {
+    final map = debugBase();
+    fillDebugMap(map);
+    return map;
+  }
+}
+
+class FrameBlockNode extends DirectiveContainerBlockNode {
+  const FrameBlockNode({
+    required super.span,
+    required super.children,
+    required super.openDirective,
+    required this.kind,
+    this.borderWidth = 1,
+    super.closeDirective,
+    super.isClosed,
+  });
+
+  final FrameKind kind;
+  final int borderWidth;
+
+  @override
+  String get debugType => 'frameBlock';
+
+  @override
+  Map<String, Object?> toDebugMap() {
+    final map = debugBase();
+    map['kind'] = kind.name;
+    map['borderWidth'] = borderWidth;
+    fillDebugMap(map);
+    return map;
+  }
+}
+
+class StyledBlockNode extends DirectiveContainerBlockNode {
+  const StyledBlockNode({
+    required super.span,
+    required super.children,
+    required super.openDirective,
+    required this.style,
+    super.closeDirective,
+    super.isClosed,
+  });
+
+  final TextStyleKind style;
+
+  @override
+  String get debugType => 'styledBlock';
+
+  @override
+  Map<String, Object?> toDebugMap() {
+    final map = debugBase();
+    map['style'] = style.name;
+    fillDebugMap(map);
+    return map;
+  }
+}
+
+class FontSizeBlockNode extends DirectiveContainerBlockNode {
+  const FontSizeBlockNode({
+    required super.span,
+    required super.children,
+    required super.openDirective,
+    required this.kind,
+    required this.steps,
+    super.closeDirective,
+    super.isClosed,
+  });
+
+  final FontSizeKind kind;
+  final int steps;
+
+  @override
+  String get debugType => 'fontSizeBlock';
+
+  @override
+  Map<String, Object?> toDebugMap() {
+    final map = debugBase();
+    map['kind'] = kind.name;
+    map['steps'] = steps;
+    fillDebugMap(map);
+    return map;
+  }
+}
+
+class HeadingBlockNode extends DirectiveContainerBlockNode {
+  const HeadingBlockNode({
+    required super.span,
+    required super.children,
+    required super.openDirective,
+    required this.level,
+    required this.display,
+    super.closeDirective,
+    super.isClosed,
+  });
+
+  final HeadingLevel level;
+  final HeadingDisplay display;
+
+  @override
+  String get debugType => 'headingBlock';
+
+  @override
+  Map<String, Object?> toDebugMap() {
+    final map = debugBase();
+    map['level'] = level.name;
+    map['display'] = display.name;
+    fillDebugMap(map);
     return map;
   }
 }
@@ -330,6 +623,68 @@ class GaijiNode extends InlineNode {
   }
 }
 
+class UnresolvedGaijiNode extends InlineNode {
+  const UnresolvedGaijiNode({
+    required SourceSpan span,
+    required this.rawNotation,
+    required this.text,
+    this.sourceDirective,
+  }) : super(span);
+
+  final String rawNotation;
+  final String text;
+  final SourceDirective? sourceDirective;
+
+  @override
+  String get debugType => 'unresolvedGaiji';
+
+  @override
+  Map<String, Object?> toDebugMap() {
+    final map = debugBase();
+    map['rawNotation'] = rawNotation;
+    map['text'] = text;
+    map['sourceDirective'] = sourceDirective?.toDebugMap();
+    return map;
+  }
+}
+
+class ImageNode extends InlineNode {
+  const ImageNode({
+    required SourceSpan span,
+    required this.source,
+    this.alt,
+    this.className,
+    this.width,
+    this.height,
+    this.attributes = const <String, String>{},
+    this.sourceDirective,
+  }) : super(span);
+
+  final String source;
+  final String? alt;
+  final String? className;
+  final int? width;
+  final int? height;
+  final AstAttributes attributes;
+  final SourceDirective? sourceDirective;
+
+  @override
+  String get debugType => 'image';
+
+  @override
+  Map<String, Object?> toDebugMap() {
+    final map = debugBase();
+    map['source'] = source;
+    map['alt'] = alt;
+    map['className'] = className;
+    map['width'] = width;
+    map['height'] = height;
+    map['attributes'] = Map<String, String>.from(attributes);
+    map['sourceDirective'] = sourceDirective?.toDebugMap();
+    return map;
+  }
+}
+
 class RubyNode extends InlineNode {
   const RubyNode({
     required SourceSpan span,
@@ -361,66 +716,343 @@ class RubyNode extends InlineNode {
   }
 }
 
-class InlineContainerNode extends InlineNode {
-  const InlineContainerNode({
-    required SourceSpan span,
+class DirectionInlineNode extends DirectiveContainerInlineNode {
+  const DirectionInlineNode({
+    required super.span,
+    required super.children,
+    required super.openDirective,
     required this.kind,
-    required this.children,
-    required this.openDirective,
-    this.variant,
-    this.attributes = const <String, String>{},
-    this.closeDirective,
-    this.isClosed = true,
-  }) : super(span);
+    super.closeDirective,
+    super.isClosed,
+  });
 
-  final String kind;
-  final String? variant;
-  final AstAttributes attributes;
-  final List<InlineNode> children;
-  final SourceDirective openDirective;
-  final SourceDirective? closeDirective;
-  final bool isClosed;
+  final DirectionKind kind;
 
   @override
-  String get debugType => 'inlineContainer';
+  String get debugType => 'directionInline';
 
   @override
   Map<String, Object?> toDebugMap() {
     final map = debugBase();
-    map['kind'] = kind;
-    map['variant'] = variant;
-    map['attributes'] = Map<String, String>.from(attributes);
-    map['isClosed'] = isClosed;
-    map['openDirective'] = openDirective.toDebugMap();
-    map['closeDirective'] = closeDirective?.toDebugMap();
-    map['children'] = children.map((node) => node.toDebugMap()).toList();
+    map['kind'] = kind.name;
+    fillDebugMap(map);
     return map;
   }
 }
 
-class InlineAnnotationNode extends InlineNode {
-  const InlineAnnotationNode({
-    required SourceSpan span,
+class FlowInlineNode extends DirectiveContainerInlineNode {
+  const FlowInlineNode({
+    required super.span,
+    required super.children,
+    required super.openDirective,
     required this.kind,
-    required this.text,
-    this.attributes = const <String, String>{},
-    this.sourceDirective,
-  }) : super(span);
+    super.closeDirective,
+    super.isClosed,
+  });
 
-  final String kind;
-  final String text;
-  final AstAttributes attributes;
-  final SourceDirective? sourceDirective;
+  final FlowKind kind;
 
   @override
-  String get debugType => 'inlineAnnotation';
+  String get debugType => 'flowInline';
 
   @override
   Map<String, Object?> toDebugMap() {
     final map = debugBase();
-    map['kind'] = kind;
+    map['kind'] = kind.name;
+    fillDebugMap(map);
+    return map;
+  }
+}
+
+class CaptionInlineNode extends DirectiveContainerInlineNode {
+  const CaptionInlineNode({
+    required super.span,
+    required super.children,
+    required super.openDirective,
+    super.closeDirective,
+    super.isClosed,
+  });
+
+  @override
+  String get debugType => 'captionInline';
+
+  @override
+  Map<String, Object?> toDebugMap() {
+    final map = debugBase();
+    fillDebugMap(map);
+    return map;
+  }
+}
+
+class FrameInlineNode extends DirectiveContainerInlineNode {
+  const FrameInlineNode({
+    required super.span,
+    required super.children,
+    required super.openDirective,
+    required this.kind,
+    this.borderWidth = 1,
+    super.closeDirective,
+    super.isClosed,
+  });
+
+  final FrameKind kind;
+  final int borderWidth;
+
+  @override
+  String get debugType => 'frameInline';
+
+  @override
+  Map<String, Object?> toDebugMap() {
+    final map = debugBase();
+    map['kind'] = kind.name;
+    map['borderWidth'] = borderWidth;
+    fillDebugMap(map);
+    return map;
+  }
+}
+
+class NoteInlineNode extends DirectiveContainerInlineNode {
+  const NoteInlineNode({
+    required super.span,
+    required super.children,
+    required super.openDirective,
+    required this.kind,
+    super.closeDirective,
+    super.isClosed,
+  });
+
+  final NoteKind kind;
+
+  @override
+  String get debugType => 'noteInline';
+
+  @override
+  Map<String, Object?> toDebugMap() {
+    final map = debugBase();
+    map['kind'] = kind.name;
+    fillDebugMap(map);
+    return map;
+  }
+}
+
+class StyledInlineNode extends DirectiveContainerInlineNode {
+  const StyledInlineNode({
+    required super.span,
+    required super.children,
+    required super.openDirective,
+    required this.style,
+    super.closeDirective,
+    super.isClosed,
+  });
+
+  final TextStyleKind style;
+
+  @override
+  String get debugType => 'styledInline';
+
+  @override
+  Map<String, Object?> toDebugMap() {
+    final map = debugBase();
+    map['style'] = style.name;
+    fillDebugMap(map);
+    return map;
+  }
+}
+
+class FontSizeInlineNode extends DirectiveContainerInlineNode {
+  const FontSizeInlineNode({
+    required super.span,
+    required super.children,
+    required super.openDirective,
+    required this.kind,
+    required this.steps,
+    super.closeDirective,
+    super.isClosed,
+  });
+
+  final FontSizeKind kind;
+  final int steps;
+
+  @override
+  String get debugType => 'fontSizeInline';
+
+  @override
+  Map<String, Object?> toDebugMap() {
+    final map = debugBase();
+    map['kind'] = kind.name;
+    map['steps'] = steps;
+    fillDebugMap(map);
+    return map;
+  }
+}
+
+class HeadingInlineNode extends DirectiveContainerInlineNode {
+  const HeadingInlineNode({
+    required super.span,
+    required super.children,
+    required super.openDirective,
+    required this.level,
+    required this.display,
+    super.closeDirective,
+    super.isClosed,
+  });
+
+  final HeadingLevel level;
+  final HeadingDisplay display;
+
+  @override
+  String get debugType => 'headingInline';
+
+  @override
+  Map<String, Object?> toDebugMap() {
+    final map = debugBase();
+    map['level'] = level.name;
+    map['display'] = display.name;
+    fillDebugMap(map);
+    return map;
+  }
+}
+
+class EmphasisInlineNode extends DirectiveContainerInlineNode {
+  const EmphasisInlineNode({
+    required super.span,
+    required super.children,
+    required super.openDirective,
+    required this.mark,
+    this.side = EmphasisSide.auto,
+    super.closeDirective,
+    super.isClosed,
+  });
+
+  final EmphasisMark mark;
+  final EmphasisSide side;
+
+  @override
+  String get debugType => 'emphasisInline';
+
+  @override
+  Map<String, Object?> toDebugMap() {
+    final map = debugBase();
+    map['mark'] = mark.name;
+    map['side'] = side.name;
+    fillDebugMap(map);
+    return map;
+  }
+}
+
+class DecorationInlineNode extends DirectiveContainerInlineNode {
+  const DecorationInlineNode({
+    required super.span,
+    required super.children,
+    required super.openDirective,
+    required this.kind,
+    this.side = DecorationSide.auto,
+    super.closeDirective,
+    super.isClosed,
+  });
+
+  final DecorationKind kind;
+  final DecorationSide side;
+
+  @override
+  String get debugType => 'decorationInline';
+
+  @override
+  Map<String, Object?> toDebugMap() {
+    final map = debugBase();
+    map['kind'] = kind.name;
+    map['side'] = side.name;
+    fillDebugMap(map);
+    return map;
+  }
+}
+
+class ScriptInlineNode extends InlineNode {
+  const ScriptInlineNode({
+    required SourceSpan span,
+    required this.kind,
+    required this.text,
+    this.sourceDirective,
+  }) : super(span);
+
+  final ScriptKind kind;
+  final String text;
+  final SourceDirective? sourceDirective;
+
+  @override
+  String get debugType => 'scriptInline';
+
+  @override
+  Map<String, Object?> toDebugMap() {
+    final map = debugBase();
+    map['kind'] = kind.name;
     map['text'] = text;
-    map['attributes'] = Map<String, String>.from(attributes);
+    map['sourceDirective'] = sourceDirective?.toDebugMap();
+    return map;
+  }
+}
+
+class KaeritenNode extends InlineNode {
+  const KaeritenNode({
+    required SourceSpan span,
+    required this.text,
+    this.sourceDirective,
+  }) : super(span);
+
+  final String text;
+  final SourceDirective? sourceDirective;
+
+  @override
+  String get debugType => 'kaeriten';
+
+  @override
+  Map<String, Object?> toDebugMap() {
+    final map = debugBase();
+    map['text'] = text;
+    map['sourceDirective'] = sourceDirective?.toDebugMap();
+    return map;
+  }
+}
+
+class OkuriganaNode extends InlineNode {
+  const OkuriganaNode({
+    required SourceSpan span,
+    required this.text,
+    this.sourceDirective,
+  }) : super(span);
+
+  final String text;
+  final SourceDirective? sourceDirective;
+
+  @override
+  String get debugType => 'okurigana';
+
+  @override
+  Map<String, Object?> toDebugMap() {
+    final map = debugBase();
+    map['text'] = text;
+    map['sourceDirective'] = sourceDirective?.toDebugMap();
+    return map;
+  }
+}
+
+class EditorNoteNode extends InlineNode {
+  const EditorNoteNode({
+    required SourceSpan span,
+    required this.text,
+    this.sourceDirective,
+  }) : super(span);
+
+  final String text;
+  final SourceDirective? sourceDirective;
+
+  @override
+  String get debugType => 'editorNote';
+
+  @override
+  Map<String, Object?> toDebugMap() {
+    final map = debugBase();
+    map['text'] = text;
     map['sourceDirective'] = sourceDirective?.toDebugMap();
     return map;
   }
@@ -429,11 +1061,11 @@ class InlineAnnotationNode extends InlineNode {
 class LineBreakNode extends InlineNode {
   const LineBreakNode({
     required SourceSpan span,
-    this.reason = 'explicit',
+    this.kind = LineBreakKind.explicit,
     this.sourceDirective,
   }) : super(span);
 
-  final String reason;
+  final LineBreakKind kind;
   final SourceDirective? sourceDirective;
 
   @override
@@ -442,29 +1074,24 @@ class LineBreakNode extends InlineNode {
   @override
   Map<String, Object?> toDebugMap() {
     final map = debugBase();
-    map['reason'] = reason;
+    map['kind'] = kind.name;
     map['sourceDirective'] = sourceDirective?.toDebugMap();
     return map;
   }
 }
 
-class DirectiveInlineNode extends InlineNode {
-  const DirectiveInlineNode({
-    required SourceSpan span,
-    required this.directive,
-    this.classification = 'opaque',
-  }) : super(span);
+class OpaqueInlineNode extends InlineNode {
+  const OpaqueInlineNode({required SourceSpan span, required this.directive})
+    : super(span);
 
   final SourceDirective directive;
-  final String classification;
 
   @override
-  String get debugType => 'directiveInline';
+  String get debugType => 'opaqueInline';
 
   @override
   Map<String, Object?> toDebugMap() {
     final map = debugBase();
-    map['classification'] = classification;
     map['directive'] = directive.toDebugMap();
     return map;
   }
