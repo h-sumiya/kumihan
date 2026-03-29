@@ -21,6 +21,7 @@ class KumihanThemeData {
     this.internalLinkColor = defaultKumihanInternalLinkColor,
     this.paperTexture,
     this.paperTextureOpacity = 0.18,
+    this.backPageOpacity = 0.08,
     Color? rubyColor,
   }) : rubyColor = rubyColor ?? textColor;
 
@@ -32,6 +33,7 @@ class KumihanThemeData {
   final Color internalLinkColor;
   final ImageProvider<Object>? paperTexture;
   final double paperTextureOpacity;
+  final double backPageOpacity;
 
   bool get isDark => paperColor.computeLuminance() < 0.35;
 
@@ -44,6 +46,7 @@ class KumihanThemeData {
     Color? internalLinkColor,
     Object? paperTexture = _unsetPaperTexture,
     double? paperTextureOpacity,
+    double? backPageOpacity,
   }) {
     return KumihanThemeData(
       paperColor: paperColor ?? this.paperColor,
@@ -56,6 +59,7 @@ class KumihanThemeData {
           ? this.paperTexture
           : paperTexture as ImageProvider<Object>?,
       paperTextureOpacity: paperTextureOpacity ?? this.paperTextureOpacity,
+      backPageOpacity: backPageOpacity ?? this.backPageOpacity,
     );
   }
 
@@ -69,7 +73,8 @@ class KumihanThemeData {
         other.linkColor == linkColor &&
         other.internalLinkColor == internalLinkColor &&
         other.paperTexture == paperTexture &&
-        other.paperTextureOpacity == paperTextureOpacity;
+        other.paperTextureOpacity == paperTextureOpacity &&
+        other.backPageOpacity == backPageOpacity;
   }
 
   @override
@@ -82,5 +87,6 @@ class KumihanThemeData {
     internalLinkColor,
     paperTexture,
     paperTextureOpacity,
+    backPageOpacity,
   );
 }

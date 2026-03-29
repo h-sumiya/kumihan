@@ -830,10 +830,10 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
     } else {
       final desiredTop = useCustomPadding
           ? customPadding.top + _headerReservedExtent
-        : math.max(_height * 0.07, 3 * _fontSize);
+          : math.max(_height * 0.07, 3 * _fontSize);
       final desiredBottom = useCustomPadding
           ? customPadding.bottom + _pageNumberReservedExtent
-        : math.max(_height * 0.07, 2.5 * _fontSize);
+          : math.max(_height * 0.07, 2.5 * _fontSize);
       final maxMarginTotal = math.max(_height - minPageHeight, 0);
       final marginTotal = desiredTop + desiredBottom;
       final marginFactor = marginTotal > maxMarginTotal && marginTotal > 0
@@ -3301,6 +3301,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
     }
 
     if (backPage) {
+      final backPageOpacity = clampDouble(_theme.backPageOpacity, 0, 1);
       canvas.saveLayer(
         Rect.fromLTWH(0, 0, _width, _height),
         Paint()
@@ -3308,7 +3309,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
               (_theme.isDark
                       ? const Color(0xff000000)
                       : const Color(0xffffffff))
-                  .withValues(alpha: _settings.backPageAlpha),
+                  .withValues(alpha: backPageOpacity),
       );
     }
 

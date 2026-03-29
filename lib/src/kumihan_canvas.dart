@@ -290,6 +290,9 @@ class _KumihanCanvasState extends State<KumihanCanvas> {
         setState(() {});
       },
       onSnapshot: (snapshot) {
+        if (!mounted) {
+          return;
+        }
         widget.controller?.updateSnapshot(snapshot);
         widget.onSnapshotChanged?.call(snapshot);
       },
