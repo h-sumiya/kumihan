@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kumihan/kumihan.dart';
+import 'package:kumihan_v1/kumihan.dart';
 
 void main() {
   group('LayoutResultBuilder', () {

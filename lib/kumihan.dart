@@ -4,3 +4,6 @@ export 'src/layout_ir/ast_to_layout_ir.dart';
 export 'src/layout_ir/layout_ir.dart';
 export 'src/layout_result/layout_result.dart';
 export 'src/layout_result/layout_result_builder.dart';
+export 'src/rendering/kumihan_layout_painter.dart';
+export 'src/rendering/kumihan_render_theme.dart';
+export 'src/rendering/kumihan_view.dart';
