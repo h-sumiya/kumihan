@@ -30,7 +30,7 @@ class AozoraAstParser {
   static const String _accentClose = '〕';
 
   DocumentNode parse(String source) {
-    final normalized = source.replaceAll(RegExp(r'\r\n?'), '\n');
+    final normalized = _preprocessSource(source);
     final mapper = _SourceMapper(normalized);
     final diagnostics = <AstDiagnostic>[];
     final rootBlocks = <BlockNode>[];
@@ -126,13 +126,63 @@ class AozoraAstParser {
     );
   }
 
-  ParagraphNode _parseParagraph(
+  String _preprocessSource(String source) {
+    var normalized = source.replaceAll(RegExp(r'\r\n?'), '\n');
+    normalized = normalized.replaceAllMapped(
+      RegExp(r'(.)［＃地'),
+      (match) => '${match[1]}\n‌［＃地',
+    );
+    normalized = normalized.replaceAll(RegExp('[\u2014\u2015]'), '─');
+    normalized = normalized.replaceAllMapped(
+      RegExp(r'─(─+)'),
+      (match) => '─⁠${match[1]}',
+    );
+    normalized = normalized.replaceAllMapped(
+      RegExp(r'…(…+)'),
+      (match) => '…⁠${match[1]}',
+    );
+    normalized = normalized.replaceAll('\u3099', '゛');
+    normalized = normalized.replaceAll('\u309a', '゜');
+    normalized = normalized.replaceFirst(RegExp(r'\n$'), '');
+    return normalized;
+  }
+
+  BlockNode _parseParagraph(
     String line,
     int lineStartOffset,
     _SourceMapper mapper,
     List<AstDiagnostic> diagnostics, {
     bool keepWithPrevious = false,
   }) {
+    final prefixes = <_ParagraphPrefix>[];
+    var content = line;
+    var contentStartOffset = lineStartOffset;
+
+    while (content.startsWith(_directiveOpen)) {
+      final directiveEnd = _findDirectiveEnd(content, 0);
+      if (directiveEnd < 0) {
+        break;
+      }
+      final raw = content.substring(0, directiveEnd + 1);
+      final body = content.substring(2, directiveEnd);
+      final directive = SourceDirective(
+        format: 'aozora',
+        rawText: raw,
+        body: body,
+        span: mapper.span(
+          contentStartOffset,
+          contentStartOffset + directiveEnd + 1,
+        ),
+      );
+      final prefix = _parseParagraphPrefix(directive);
+      if (prefix == null) {
+        break;
+      }
+      prefixes.add(prefix);
+      contentStartOffset += directiveEnd + 1;
+      content = content.substring(directiveEnd + 1);
+    }
+
     final root = _InlineFrame.root();
     final stack = <_InlineFrame>[root];
     var explicitRubyStartIndex = -1;
@@ -149,25 +199,28 @@ class AozoraAstParser {
       }
       addInline(
         TextNode(
-          span: mapper.span(lineStartOffset + start, lineStartOffset + end),
+          span: mapper.span(
+            contentStartOffset + start,
+            contentStartOffset + end,
+          ),
           text: text,
         ),
       );
     }
 
-    while (index < line.length) {
-      if (line.startsWith('※$_directiveOpen', index)) {
-        final directiveEnd = _findDirectiveEnd(line, index + 1);
+    while (index < content.length) {
+      if (content.startsWith('※$_directiveOpen', index)) {
+        final directiveEnd = _findDirectiveEnd(content, index + 1);
         if (directiveEnd >= 0) {
-          final raw = line.substring(index, directiveEnd + 1);
-          final body = line.substring(index + 3, directiveEnd);
+          final raw = content.substring(index, directiveEnd + 1);
+          final body = content.substring(index + 3, directiveEnd);
           addInline(
             _buildGaijiOrUnresolvedNode(
               mapper: mapper,
               raw: raw,
               body: body,
-              start: lineStartOffset + index,
-              end: lineStartOffset + directiveEnd + 1,
+              start: contentStartOffset + index,
+              end: contentStartOffset + directiveEnd + 1,
             ),
           );
           index = directiveEnd + 1;
@@ -175,18 +228,18 @@ class AozoraAstParser {
         }
       }
 
-      if (line.startsWith(_directiveOpen, index)) {
-        final directiveEnd = _findDirectiveEnd(line, index);
+      if (content.startsWith(_directiveOpen, index)) {
+        final directiveEnd = _findDirectiveEnd(content, index);
         if (directiveEnd >= 0) {
-          final raw = line.substring(index, directiveEnd + 1);
-          final body = line.substring(index + 2, directiveEnd);
+          final raw = content.substring(index, directiveEnd + 1);
+          final body = content.substring(index + 2, directiveEnd);
           final directive = SourceDirective(
             format: 'aozora',
             rawText: raw,
             body: body,
             span: mapper.span(
-              lineStartOffset + index,
-              lineStartOffset + directiveEnd + 1,
+              contentStartOffset + index,
+              contentStartOffset + directiveEnd + 1,
             ),
           );
           final handled = _handleInlineDirective(
@@ -208,13 +261,13 @@ class AozoraAstParser {
         }
       }
 
-      if (line.startsWith(_accentOpen, index)) {
-        final accentEnd = line.indexOf(_accentClose, index + 1);
+      if (content.startsWith(_accentOpen, index)) {
+        final accentEnd = content.indexOf(_accentClose, index + 1);
         if (accentEnd >= 0) {
-          final content = line.substring(index + 1, accentEnd);
+          final accentContent = content.substring(index + 1, accentEnd);
           final nodes = _parseAccentNodes(
-            content: content,
-            contentStartOffset: lineStartOffset + index + 1,
+            content: accentContent,
+            contentStartOffset: contentStartOffset + index + 1,
             mapper: mapper,
           );
           for (final node in nodes) {
@@ -229,26 +282,26 @@ class AozoraAstParser {
             message: 'Accent bracket was not closed before end of line.',
             severity: AstDiagnosticSeverity.warning,
             span: mapper.span(
-              lineStartOffset + index,
-              lineStartOffset + line.length,
+              contentStartOffset + index,
+              contentStartOffset + content.length,
             ),
           ),
         );
-        addTextRange(line.substring(index), index, line.length);
-        index = line.length;
+        addTextRange(content.substring(index), index, content.length);
+        index = content.length;
         continue;
       }
 
-      if (line.startsWith(_rubyExplicitMarker, index)) {
+      if (content.startsWith(_rubyExplicitMarker, index)) {
         explicitRubyStartIndex = stack.last.children.length;
         index += _rubyExplicitMarker.length;
         continue;
       }
 
-      if (line.startsWith(_rubyOpen, index)) {
-        final rubyEnd = line.indexOf(_rubyClose, index + 1);
+      if (content.startsWith(_rubyOpen, index)) {
+        final rubyEnd = content.indexOf(_rubyClose, index + 1);
         if (rubyEnd >= 0) {
-          final rubyText = line.substring(index + 1, rubyEnd);
+          final rubyText = content.substring(index + 1, rubyEnd);
           final base = _takeRubyBase(
             stack.last.children,
             explicitRubyStartIndex: explicitRubyStartIndex,
@@ -261,8 +314,8 @@ class AozoraAstParser {
                 span: mapper.mergeSpans(
                   base.span,
                   mapper.span(
-                    lineStartOffset + index,
-                    lineStartOffset + rubyEnd + 1,
+                    contentStartOffset + index,
+                    contentStartOffset + rubyEnd + 1,
                   ),
                 ),
                 base: base.nodes,
@@ -280,16 +333,16 @@ class AozoraAstParser {
               message: 'Ruby text has no preceding base text.',
               severity: AstDiagnosticSeverity.warning,
               span: mapper.span(
-                lineStartOffset + index,
-                lineStartOffset + rubyEnd + 1,
+                contentStartOffset + index,
+                contentStartOffset + rubyEnd + 1,
               ),
             ),
           );
         }
       }
 
-      final next = _findNextSpecialIndex(line, index + 1);
-      addTextRange(line.substring(index, next), index, next);
+      final next = _findNextSpecialIndex(content, index + 1);
+      addTextRange(content.substring(index, next), index, next);
       index = next;
     }
 
@@ -330,11 +383,39 @@ class AozoraAstParser {
       );
     }
 
-    return ParagraphNode(
-      span: mapper.span(lineStartOffset, lineStartOffset + line.length),
+    BlockNode block = ParagraphNode(
+      span: mapper.span(
+        contentStartOffset,
+        contentStartOffset + content.length,
+      ),
       children: List<InlineNode>.unmodifiable(root.children),
       keepWithPrevious: keepWithPrevious,
     );
+    for (final prefix in prefixes.reversed) {
+      block = prefix.wrap(block, mapper);
+    }
+    return block;
+  }
+
+  _ParagraphPrefix? _parseParagraphPrefix(SourceDirective directive) {
+    final body = directive.body;
+    final indentBody = body.startsWith('天から')
+        ? body.substring('天から'.length)
+        : body;
+    final indent = _parseIndent(indentBody);
+    if (indent != null) {
+      return _ParagraphPrefix.indent(directive, indent);
+    }
+    if (body == '地付き') {
+      return _ParagraphPrefix.alignment(
+        directive,
+        BlockAlignmentKind.chitsuki,
+      );
+    }
+    if (body == '字上げ' || body.endsWith('字上げ')) {
+      return _ParagraphPrefix.alignment(directive, BlockAlignmentKind.jiage);
+    }
+    return null;
   }
 
   bool _handleDirectiveLine(
@@ -2020,6 +2101,44 @@ class _ParsedDecoration {
 
   final _InlineScopeKind scopeKind;
   final _BuildInlineNode buildNode;
+}
+
+class _ParagraphPrefix {
+  const _ParagraphPrefix._({required this.directive, this.width, this.kind});
+
+  const _ParagraphPrefix.indent(SourceDirective directive, int width)
+    : this._(directive: directive, width: width);
+
+  const _ParagraphPrefix.alignment(
+    SourceDirective directive,
+    BlockAlignmentKind kind,
+  ) : this._(directive: directive, kind: kind);
+
+  final SourceDirective directive;
+  final int? width;
+  final BlockAlignmentKind? kind;
+
+  BlockNode wrap(BlockNode child, _SourceMapper mapper) {
+    final span = mapper.mergeSpans(directive.span, child.span);
+    if (width != null) {
+      return IndentBlockNode(
+        span: span,
+        children: <BlockNode>[child],
+        openDirective: directive,
+        closeDirective: directive,
+        isClosed: true,
+        width: width,
+      );
+    }
+    return AlignmentBlockNode(
+      span: span,
+      children: <BlockNode>[child],
+      openDirective: directive,
+      closeDirective: directive,
+      isClosed: true,
+      kind: kind!,
+    );
+  }
 }
 
 class _RubyBase {

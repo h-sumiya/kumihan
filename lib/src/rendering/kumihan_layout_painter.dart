@@ -7,14 +7,10 @@ import '../ast/ast.dart';
 import '../layout_result/layout_result.dart';
 import '../presentation/page_projection.dart';
 import 'kumihan_render_theme.dart';
+import 'vertical_glyph_layout.dart';
 
 class KumihanLayoutPainter extends CustomPainter {
   const KumihanLayoutPainter({required this.result, required this.theme});
-
-  static const String _verticalSmallGlyphs =
-      'ぁぃぅぇぉっゃゅょゎゕゖァィゥェォッャュョヮヵヶㇰㇱㇲㇳㇴㇵㇶㇷㇸㇹㇺㇻㇼㇽㇾㇿ';
-  static const String _verticalPunctuationGlyphs = '，、。﹐﹑﹒，．';
-  static const String _dakutenGlyphs = '゛゜';
 
   final LayoutResult result;
   final KumihanRenderThemeData theme;
@@ -564,34 +560,16 @@ class KumihanLayoutPainter extends CustomPainter {
     String text,
     TextStyle style,
   ) {
-    final painter = TextPainter(
-      text: TextSpan(text: text, style: style),
-      textDirection: TextDirection.ltr,
-      textAlign: TextAlign.center,
-      maxLines: 1,
-    )..layout(maxWidth: rect.width * 2);
-
-    var dx = rect.left + rect.width / 2;
-    var dy = rect.top;
-    final fontSize = style.fontSize ?? theme.fontSize;
-
-    if (_verticalSmallGlyphs.contains(text)) {
-      dx += fontSize / 8;
-      dy -= fontSize / 8;
-    } else if (_verticalPunctuationGlyphs.contains(text)) {
-      dx += 0.68 * fontSize;
-      dy -= 0.65 * fontSize;
+    final layout = computeVerticalGlyphLayout(rect, text, style, theme);
+    if (layout.isRotated) {
+      canvas.save();
+      canvas.translate(layout.translateX, layout.translateY);
+      canvas.rotate(layout.rotation);
+      layout.painter.paint(canvas, layout.paintOffset);
+      canvas.restore();
+      return;
     }
-
-    if (_dakutenGlyphs.contains(text)) {
-      dx += 0.74 * fontSize;
-      dy -= fontSize;
-    }
-
-    painter.paint(
-      canvas,
-      Offset(dx - painter.width / 2, dy + fontSize / 2 - painter.height / 2),
-    );
+    layout.painter.paint(canvas, layout.paintOffset);
   }
 
   void _paintCenteredText(

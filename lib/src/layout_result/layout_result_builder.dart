@@ -490,6 +490,7 @@ class LayoutResultBuilder {
         span,
         model,
         lineDraft,
+        breakPositions,
         context,
         lineInlineOffset: lineInlineOffset,
       );
@@ -602,6 +603,7 @@ class LayoutResultBuilder {
     SourceSpan span,
     _ParagraphModel model,
     _TakenLineDraft draft,
+    Set<int> breakPositions,
     _BlockContext context, {
     required double lineInlineOffset,
   }) {
@@ -611,6 +613,7 @@ class LayoutResultBuilder {
     final trackingAdjustments = _resolveTrackingAdjustments(
       model.atoms,
       draft,
+      breakPositions,
       context,
     );
     final justifiedTextExtent =
@@ -626,6 +629,12 @@ class LayoutResultBuilder {
       final atom = model.atoms[index];
       if (atom.kind == _AtomKind.lineBreak) {
         continue;
+      }
+      if (index == draft.start &&
+          draft.start > 0 &&
+          atom.kind == _AtomKind.text &&
+          _openingBrackets.contains(atom.text)) {
+        blockCursor -= atom.blockExtent / 2;
       }
       if (index > draft.start) {
         blockCursor += trackingAdjustments[index] ?? 0;
@@ -738,6 +747,7 @@ class LayoutResultBuilder {
   Map<int, double> _resolveTrackingAdjustments(
     List<_Atom> atoms,
     _TakenLineDraft draft,
+    Set<int> breakPositions,
     _BlockContext context,
   ) {
     if (draft.nextCursor >= atoms.length) {
@@ -754,8 +764,7 @@ class LayoutResultBuilder {
       if (atom.kind.isMarkerOnly || atom.kind == _AtomKind.lineBreak) {
         continue;
       }
-      final breakClass = atom.breakClassStart;
-      if (breakClass != null && _lineStartForbidden.contains(breakClass)) {
+      if (!breakPositions.contains(index)) {
         continue;
       }
       adjustable.add(index);

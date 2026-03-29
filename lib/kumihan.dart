@@ -8,3 +8,4 @@ export 'src/presentation/page_projection.dart';
 export 'src/rendering/kumihan_layout_painter.dart';
 export 'src/rendering/kumihan_render_theme.dart';
 export 'src/rendering/kumihan_view.dart';
+export 'src/rendering/vertical_glyph_layout.dart';
