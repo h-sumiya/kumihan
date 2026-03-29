@@ -614,6 +614,14 @@ class LayoutResultBuilder {
     final fragments = <LayoutFragment>[];
     final hitRegions = <LayoutHitRegion>[];
     final atomPlacements = <int, _FragmentPlacement>{};
+    final trackingAdjustments = _resolveTrackingAdjustments(
+      model.atoms,
+      draft,
+      context,
+    );
+    final justifiedTextExtent =
+        draft.textExtent +
+        trackingAdjustments.values.fold<double>(0, (sum, value) => sum + value);
 
     final contentShift = context.alignToFarEdge
         ? math.max(context.resolvedLineExtent - draft.textExtent, 0).toDouble()
@@ -624,6 +632,9 @@ class LayoutResultBuilder {
       final atom = model.atoms[index];
       if (atom.kind == _AtomKind.lineBreak) {
         continue;
+      }
+      if (index > draft.start) {
+        blockCursor += trackingAdjustments[index] ?? 0;
       }
       if (atom.kind.isMarkerOnly) {
         atomPlacements[index] = _FragmentPlacement(
@@ -721,13 +732,47 @@ class LayoutResultBuilder {
         blockOffset: 0,
         inlineExtent: context.crossExtent,
         blockExtent: context.resolvedLineExtent,
-        textExtent: draft.textExtent,
+        textExtent: justifiedTextExtent,
         fragments: List<LayoutFragment>.unmodifiable(fragments),
         rubies: List<LayoutRubyPlacement>.unmodifiable(rubies),
         markers: List<LayoutMarker>.unmodifiable(markers),
       ),
       hitRegions: hitRegions,
     );
+  }
+
+  Map<int, double> _resolveTrackingAdjustments(
+    List<_Atom> atoms,
+    _TakenLineDraft draft,
+    _BlockContext context,
+  ) {
+    if (draft.nextCursor >= atoms.length) {
+      return const <int, double>{};
+    }
+    final slack = context.resolvedLineExtent - draft.textExtent;
+    if (slack <= 0) {
+      return const <int, double>{};
+    }
+
+    final adjustable = <int>[];
+    for (var index = draft.start + 1; index < draft.end; index += 1) {
+      final atom = atoms[index];
+      if (atom.kind.isMarkerOnly || atom.kind == _AtomKind.lineBreak) {
+        continue;
+      }
+      final breakClass = atom.breakClassStart;
+      if (breakClass != null && _lineStartForbidden.contains(breakClass)) {
+        continue;
+      }
+      adjustable.add(index);
+    }
+
+    if (adjustable.isEmpty) {
+      return const <int, double>{};
+    }
+
+    final addition = slack / adjustable.length;
+    return <int, double>{for (final index in adjustable) index: addition};
   }
 
   LayoutFragment? _buildFragment(

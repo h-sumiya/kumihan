@@ -5,6 +5,7 @@ import 'package:flutter/rendering.dart';
 
 import '../ast/ast.dart';
 import '../layout_result/layout_result.dart';
+import '../presentation/page_projection.dart';
 import 'kumihan_render_theme.dart';
 
 class KumihanLayoutPainter extends CustomPainter {
@@ -22,6 +23,11 @@ class KumihanLayoutPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final pageRect = Offset.zero & size;
     final contentRect = theme.pagePadding.deflateRect(pageRect);
+    final projection = KumihanPageProjection.resolve(
+      result: result,
+      theme: theme,
+      size: size,
+    );
     canvas.drawRect(pageRect, Paint()..color = theme.paperColor);
 
     if (theme.showGuides) {
@@ -33,6 +39,7 @@ class KumihanLayoutPainter extends CustomPainter {
         canvas,
         block,
         contentRect,
+        projection: projection,
         baseInlineOffset: 0,
         baseBlockOffset: 0,
       );
@@ -51,6 +58,7 @@ class KumihanLayoutPainter extends CustomPainter {
     Canvas canvas,
     LayoutBlockResult block,
     Rect contentRect, {
+    required KumihanPageProjection projection,
     required double baseInlineOffset,
     required double baseBlockOffset,
   }) {
@@ -63,6 +71,7 @@ class KumihanLayoutPainter extends CustomPainter {
           canvas,
           block.lineGroup,
           contentRect,
+          projection: projection,
           baseInlineOffset: baseInlineOffset,
           baseBlockOffset: blockOffset,
         );
@@ -71,6 +80,7 @@ class KumihanLayoutPainter extends CustomPainter {
           canvas,
           block.lineGroup,
           contentRect,
+          projection: projection,
           baseInlineOffset: baseInlineOffset,
           baseBlockOffset: blockOffset,
         );
@@ -79,17 +89,21 @@ class KumihanLayoutPainter extends CustomPainter {
           canvas,
           block,
           contentRect,
+          projection: projection,
           baseInlineOffset: inlineOffset,
           baseBlockOffset: blockOffset,
         );
       case LayoutUnsupportedBlockResult():
-        final rect = _logicalRect(
+        final rect = projection.projectLogicalRect(
           contentRect,
           inlineOffset: inlineOffset,
           blockOffset: blockOffset,
           inlineExtent: block.inlineExtent,
           blockExtent: math.max(block.blockExtent, 1),
         );
+        if (rect == null) {
+          return;
+        }
         canvas.drawRect(
           rect,
           Paint()..color = theme.markerColor.withValues(alpha: 0.1),
@@ -107,16 +121,20 @@ class KumihanLayoutPainter extends CustomPainter {
     Canvas canvas,
     LayoutTableResult table,
     Rect contentRect, {
+    required KumihanPageProjection projection,
     required double baseInlineOffset,
     required double baseBlockOffset,
   }) {
-    final tableRect = _logicalRect(
+    final tableRect = projection.projectLogicalRect(
       contentRect,
       inlineOffset: baseInlineOffset,
       blockOffset: baseBlockOffset,
       inlineExtent: table.inlineExtent,
       blockExtent: table.blockExtent,
     );
+    if (tableRect == null) {
+      return;
+    }
     canvas.drawRect(
       tableRect,
       Paint()
@@ -126,13 +144,16 @@ class KumihanLayoutPainter extends CustomPainter {
     );
 
     for (final row in table.rows) {
-      final rowRect = _logicalRect(
+      final rowRect = projection.projectLogicalRect(
         contentRect,
         inlineOffset: baseInlineOffset + row.inlineOffset,
         blockOffset: baseBlockOffset + row.blockOffset,
         inlineExtent: row.inlineExtent,
         blockExtent: row.blockExtent,
       );
+      if (rowRect == null) {
+        continue;
+      }
       canvas.drawRect(
         rowRect,
         Paint()
@@ -146,13 +167,16 @@ class KumihanLayoutPainter extends CustomPainter {
             baseInlineOffset + row.inlineOffset + cell.inlineOffset;
         final cellBlockOffset =
             baseBlockOffset + row.blockOffset + cell.blockOffset;
-        final cellRect = _logicalRect(
+        final cellRect = projection.projectLogicalRect(
           contentRect,
           inlineOffset: cellInlineOffset,
           blockOffset: cellBlockOffset,
           inlineExtent: cell.inlineExtent,
           blockExtent: cell.blockExtent,
         );
+        if (cellRect == null) {
+          continue;
+        }
         canvas.drawRect(
           cellRect,
           Paint()
@@ -165,6 +189,7 @@ class KumihanLayoutPainter extends CustomPainter {
             canvas,
             child,
             contentRect,
+            projection: projection,
             baseInlineOffset: cellInlineOffset,
             baseBlockOffset: cellBlockOffset,
           );
@@ -177,10 +202,17 @@ class KumihanLayoutPainter extends CustomPainter {
     Canvas canvas,
     LayoutLineGroup group,
     Rect contentRect, {
+    required KumihanPageProjection projection,
     required double baseInlineOffset,
     required double baseBlockOffset,
   }) {
     for (final line in group.lines) {
+      if (!projection.overlapsInline(
+        baseInlineOffset + line.inlineOffset,
+        line.inlineExtent,
+      )) {
+        continue;
+      }
       final lineBlockOffset = baseBlockOffset + line.blockOffset;
 
       for (final marker in line.markers) {
@@ -188,6 +220,7 @@ class KumihanLayoutPainter extends CustomPainter {
           canvas,
           marker,
           contentRect,
+          projection: projection,
           baseInlineOffset: baseInlineOffset,
           baseBlockOffset: lineBlockOffset,
         );
@@ -197,6 +230,7 @@ class KumihanLayoutPainter extends CustomPainter {
           canvas,
           fragment,
           contentRect,
+          projection: projection,
           baseInlineOffset: baseInlineOffset,
           baseBlockOffset: lineBlockOffset,
         );
@@ -206,6 +240,7 @@ class KumihanLayoutPainter extends CustomPainter {
           canvas,
           ruby,
           contentRect,
+          projection: projection,
           baseInlineOffset: baseInlineOffset,
           baseBlockOffset: lineBlockOffset,
         );
@@ -217,16 +252,20 @@ class KumihanLayoutPainter extends CustomPainter {
     Canvas canvas,
     LayoutFragment fragment,
     Rect contentRect, {
+    required KumihanPageProjection projection,
     required double baseInlineOffset,
     required double baseBlockOffset,
   }) {
-    final rect = _logicalRect(
+    final rect = projection.projectLogicalRect(
       contentRect,
       inlineOffset: baseInlineOffset + fragment.inlineOffset,
       blockOffset: baseBlockOffset + fragment.blockOffset,
       inlineExtent: math.max(fragment.inlineExtent, 1),
       blockExtent: math.max(fragment.blockExtent, 1),
     );
+    if (rect == null) {
+      return;
+    }
 
     switch (fragment) {
       case LayoutTextFragment():
@@ -318,6 +357,7 @@ class KumihanLayoutPainter extends CustomPainter {
     Canvas canvas,
     LayoutRubyPlacement ruby,
     Rect contentRect, {
+    required KumihanPageProjection projection,
     required double baseInlineOffset,
     required double baseBlockOffset,
   }) {
@@ -328,13 +368,16 @@ class KumihanLayoutPainter extends CustomPainter {
     final crossExtent = ruby.inlineExtent;
     final inlineOffset =
         baseInlineOffset + ruby.lineInlineOffset - ruby.crossOffset;
-    final rect = _logicalRect(
+    final rect = projection.projectLogicalRect(
       contentRect,
       inlineOffset: inlineOffset,
       blockOffset: baseBlockOffset + ruby.blockOffset,
       inlineExtent: math.max(crossExtent, theme.rubyScale),
       blockExtent: math.max(ruby.blockExtent, theme.rubyScale),
     );
+    if (rect == null) {
+      return;
+    }
     final style = _textStyle(
       fontScale: theme.rubyScale,
       color: theme.rubyColor,
@@ -359,10 +402,11 @@ class KumihanLayoutPainter extends CustomPainter {
     Canvas canvas,
     LayoutMarker marker,
     Rect contentRect, {
+    required KumihanPageProjection projection,
     required double baseInlineOffset,
     required double baseBlockOffset,
   }) {
-    final rect = _logicalRect(
+    final rect = projection.projectLogicalRect(
       contentRect,
       inlineOffset:
           baseInlineOffset + marker.lineInlineOffset - marker.crossOffset,
@@ -370,6 +414,9 @@ class KumihanLayoutPainter extends CustomPainter {
       inlineExtent: math.max(marker.inlineExtent, 0.35),
       blockExtent: math.max(marker.blockExtent, 0.35),
     );
+    if (rect == null) {
+      return;
+    }
     final stroke = Paint()
       ..style = PaintingStyle.stroke
       ..color = theme.markerColor
@@ -581,22 +628,6 @@ class KumihanLayoutPainter extends CustomPainter {
       height: 1,
       leadingDistribution: TextLeadingDistribution.even,
       textBaseline: TextBaseline.ideographic,
-    );
-  }
-
-  Rect _logicalRect(
-    Rect contentRect, {
-    required double inlineOffset,
-    required double blockOffset,
-    required double inlineExtent,
-    required double blockExtent,
-  }) {
-    final unit = theme.fontSize;
-    return Rect.fromLTWH(
-      contentRect.right - (inlineOffset + inlineExtent) * unit,
-      contentRect.top + blockOffset * unit,
-      inlineExtent * unit,
-      blockExtent * unit,
     );
   }
 
