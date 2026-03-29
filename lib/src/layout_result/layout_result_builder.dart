@@ -2,6 +2,8 @@ import 'dart:math' as math;
 
 import '../ast/ast.dart';
 import '../layout_ir/layout_ir.dart';
+import 'compat/gaiji_resolver.dart';
+import 'compat/line_breaker.dart';
 import 'layout_result.dart';
 
 class LayoutResultBuilder {
@@ -16,6 +18,8 @@ class LayoutResultBuilder {
   static const String _lineStartForbidden =
       '、。，．・：；！？)]｝〕〉》」』】〙〗ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮー゛゜';
   static const String _lineEndForbidden = '([｛〔〈《「『【〘〖';
+
+  final GaijiResolver _gaijiResolver = const GaijiResolver();
 
   LayoutResult build(LayoutDocument document) {
     final flow = _layoutBlocks(
@@ -46,8 +50,8 @@ class LayoutResultBuilder {
     var blockExtent = 0.0;
     var emitted = false;
 
-    void append(_LeafLayout leaf) {
-      if (emitted) {
+    void append(_LeafLayout leaf, {required bool keepWithPrevious}) {
+      if (emitted && !keepWithPrevious) {
         cursor += constraints.blockGap;
       }
       results.add(leaf.block);
@@ -57,11 +61,11 @@ class LayoutResultBuilder {
       emitted = true;
     }
 
-    void appendFlow(_FlowLayout flow) {
+    void appendFlow(_FlowLayout flow, {required bool keepWithPrevious}) {
       if (flow.blocks.isEmpty) {
         return;
       }
-      if (emitted) {
+      if (emitted && !keepWithPrevious) {
         cursor += constraints.blockGap;
       }
       results.addAll(flow.blocks);
@@ -74,11 +78,20 @@ class LayoutResultBuilder {
     for (final block in blocks) {
       switch (block) {
         case LayoutParagraph():
-          append(_layoutParagraph(block, context, inlineOffset: cursor));
+          append(
+            _layoutParagraph(block, context, inlineOffset: cursor),
+            keepWithPrevious: block.keepWithPrevious,
+          );
         case LayoutEmptyLine():
-          append(_layoutEmptyLine(block, context, inlineOffset: cursor));
+          append(
+            _layoutEmptyLine(block, context, inlineOffset: cursor),
+            keepWithPrevious: false,
+          );
         case LayoutUnsupportedBlock():
-          append(_layoutUnsupportedBlock(block, context, inlineOffset: cursor));
+          append(
+            _layoutUnsupportedBlock(block, context, inlineOffset: cursor),
+            keepWithPrevious: false,
+          );
         case LayoutIndentBlock():
           appendFlow(
             _layoutBlocks(
@@ -86,6 +99,7 @@ class LayoutResultBuilder {
               context.withIndent(block.width?.toDouble() ?? 0),
               baseInlineOffset: cursor,
             ),
+            keepWithPrevious: false,
           );
         case LayoutAlignmentBlock():
           appendFlow(
@@ -94,6 +108,7 @@ class LayoutResultBuilder {
               context.withAlignment(block.kind),
               baseInlineOffset: cursor,
             ),
+            keepWithPrevious: false,
           );
         case LayoutJizumeBlock():
           appendFlow(
@@ -102,6 +117,7 @@ class LayoutResultBuilder {
               context.withJizume(block.width?.toDouble()),
               baseInlineOffset: cursor,
             ),
+            keepWithPrevious: false,
           );
         case LayoutFlowBlock():
           appendFlow(
@@ -110,6 +126,7 @@ class LayoutResultBuilder {
               context.withFlow(block.kind),
               baseInlineOffset: cursor,
             ),
+            keepWithPrevious: false,
           );
         case LayoutCaptionBlock():
           appendFlow(
@@ -118,6 +135,7 @@ class LayoutResultBuilder {
               context.withCaption(),
               baseInlineOffset: cursor,
             ),
+            keepWithPrevious: false,
           );
         case LayoutFrameBlock():
           appendFlow(
@@ -126,6 +144,7 @@ class LayoutResultBuilder {
               context.withFrame(block.kind, block.borderWidth),
               baseInlineOffset: cursor,
             ),
+            keepWithPrevious: false,
           );
         case LayoutStyledBlock():
           appendFlow(
@@ -134,6 +153,7 @@ class LayoutResultBuilder {
               context.withTextStyle(block.style),
               baseInlineOffset: cursor,
             ),
+            keepWithPrevious: false,
           );
         case LayoutFontSizeBlock():
           appendFlow(
@@ -142,6 +162,7 @@ class LayoutResultBuilder {
               context.withFontSize(block.kind, block.steps),
               baseInlineOffset: cursor,
             ),
+            keepWithPrevious: false,
           );
         case LayoutHeadingBlock():
           appendFlow(
@@ -150,9 +171,13 @@ class LayoutResultBuilder {
               context.withHeading(block.level, block.display),
               baseInlineOffset: cursor,
             ),
+            keepWithPrevious: false,
           );
         case LayoutTableBlock():
-          append(_layoutTable(block, context, inlineOffset: cursor));
+          append(
+            _layoutTable(block, context, inlineOffset: cursor),
+            keepWithPrevious: false,
+          );
       }
     }
 
@@ -191,7 +216,7 @@ class LayoutResultBuilder {
       blockOffset: 0,
       inlineExtent: group.inlineExtent,
       blockExtent: group.blockExtent,
-      style: context.publicStyle,
+      style: _blockStyle(context, keepWithPrevious: block.keepWithPrevious),
       lineGroup: group,
       issues: block.issues,
     );
@@ -235,7 +260,7 @@ class LayoutResultBuilder {
         blockOffset: 0,
         inlineExtent: group.inlineExtent,
         blockExtent: group.blockExtent,
-        style: context.publicStyle,
+        style: _blockStyle(context),
         lineGroup: group,
         issues: block.issues,
       ),
@@ -255,7 +280,7 @@ class LayoutResultBuilder {
         blockOffset: 0,
         inlineExtent: 0,
         blockExtent: 0,
-        style: context.publicStyle,
+        style: _blockStyle(context),
         directive: block.directive,
         issues: block.issues,
       ),
@@ -394,7 +419,7 @@ class LayoutResultBuilder {
       blockOffset: 0,
       inlineExtent: tableInlineExtent,
       blockExtent: rowBlockOffset,
-      style: context.publicStyle,
+      style: _blockStyle(context),
       rows: List<LayoutTableRowResult>.unmodifiable(rowResults),
       attributes: block.attributes,
       issues: block.issues,
@@ -410,6 +435,7 @@ class LayoutResultBuilder {
   }) {
     final lines = <LayoutLine>[];
     final hitRegions = <LayoutHitRegion>[];
+    final breakPositions = _computeLineBreakOpportunities(model.atoms);
     var lineInlineOffset = groupInlineOffset;
     var atomCursor = 0;
     var lineIndex = 0;
@@ -452,6 +478,7 @@ class LayoutResultBuilder {
       final lineDraft = _takeLineDraft(
         model.atoms,
         atomCursor,
+        breakPositions,
         context,
         firstLine: firstLine,
       );
@@ -487,6 +514,7 @@ class LayoutResultBuilder {
   _TakenLineDraft _takeLineDraft(
     List<_Atom> atoms,
     int start,
+    Set<int> breakPositions,
     _BlockContext context, {
     required bool firstLine,
   }) {
@@ -515,6 +543,7 @@ class LayoutResultBuilder {
         final nextCursor = _nextVisibleAtomCursor(atoms, cursor + 1);
         if (nextCursor >= 0 &&
             nextCursor < atoms.length &&
+            breakPositions.contains(nextCursor) &&
             _mayBreakBetween(atom, atoms[nextCursor])) {
           lastBreakCursor = nextCursor;
           extentAtLastBreak = visibleExtent;
@@ -650,6 +679,24 @@ class LayoutResultBuilder {
         context,
       ),
     ];
+    hitRegions.addAll(
+      _buildLinkHitRegionsForLine(
+        model,
+        atomPlacements,
+        draft.start,
+        draft.end,
+        lineInlineOffset,
+      ),
+    );
+    hitRegions.addAll(
+      _buildAnchorHitRegionsForLine(
+        model,
+        atomPlacements,
+        draft.start,
+        draft.end,
+        lineInlineOffset,
+      ),
+    );
 
     return _MaterializedLine(
       line: LayoutLine(
@@ -722,6 +769,8 @@ class LayoutResultBuilder {
         style: atom.style,
         noteKind: atom.noteKind!,
         text: atom.text,
+        upperText: _splitWarichuText(atom.text).$1,
+        lowerText: _splitWarichuText(atom.text).$2,
         issues: atom.issues,
       ),
       _AtomKind.unsupported => LayoutUnsupportedFragment(
@@ -784,6 +833,10 @@ class LayoutResultBuilder {
           blockOffset: blockStart,
           blockExtent: math.max(blockEnd - blockStart, 0),
           inlineExtent: inlineExtent,
+          interCharacterSpacing: _rubyInterCharacterSpacing(
+            segmentText,
+            math.max(blockEnd - blockStart, 0),
+          ),
           issues: ruby.issues,
         ),
       );
@@ -944,6 +997,78 @@ class LayoutResultBuilder {
     ];
   }
 
+  List<LayoutHitRegion> _buildLinkHitRegionsForLine(
+    _ParagraphModel model,
+    Map<int, _FragmentPlacement> placements,
+    int lineStart,
+    int lineEnd,
+    double lineInlineOffset,
+  ) {
+    final regions = <LayoutHitRegion>[];
+    for (final link in model.links) {
+      final segmentStart = math.max(link.start, lineStart);
+      final segmentEnd = math.min(link.end, lineEnd);
+      if (segmentEnd <= segmentStart) {
+        continue;
+      }
+      final anchored = <int>[
+        for (var index = segmentStart; index < segmentEnd; index += 1)
+          if (placements[index] case final _?) index,
+      ];
+      if (anchored.isEmpty) {
+        continue;
+      }
+      final first = placements[anchored.first]!;
+      final last = placements[anchored.last]!;
+      regions.add(
+        LayoutHitRegion(
+          kind: LayoutHitRegionKind.link,
+          span: link.span,
+          inlineOffset: lineInlineOffset,
+          blockOffset: first.blockOffset,
+          inlineExtent: first.inlineExtent,
+          blockExtent:
+              (last.blockOffset + last.blockExtent) - first.blockOffset,
+          data: link.target,
+        ),
+      );
+    }
+    return regions;
+  }
+
+  List<LayoutHitRegion> _buildAnchorHitRegionsForLine(
+    _ParagraphModel model,
+    Map<int, _FragmentPlacement> placements,
+    int lineStart,
+    int lineEnd,
+    double lineInlineOffset,
+  ) {
+    final regions = <LayoutHitRegion>[];
+    for (final anchor in model.anchors) {
+      if (anchor.atomIndex < lineStart || anchor.atomIndex >= lineEnd) {
+        continue;
+      }
+      final placement =
+          placements[anchor.atomIndex] ??
+          _nearestPlacement(placements, anchor.atomIndex);
+      if (placement == null) {
+        continue;
+      }
+      regions.add(
+        LayoutHitRegion(
+          kind: LayoutHitRegionKind.anchor,
+          span: anchor.span,
+          inlineOffset: lineInlineOffset,
+          blockOffset: placement.blockOffset,
+          inlineExtent: 0,
+          blockExtent: placement.blockExtent,
+          data: anchor.name,
+        ),
+      );
+    }
+    return regions;
+  }
+
   _FragmentPlacement? _nearestPlacement(
     Map<int, _FragmentPlacement> placements,
     int atomIndex,
@@ -984,17 +1109,21 @@ class LayoutResultBuilder {
             );
           }
         case LayoutGaijiInline():
-          final char = _resolvedGaijiText(node);
+          final resolved = _gaijiResolver.resolve(
+            description: node.description,
+            jisCode: node.jisCode,
+            unicodeCodePoint: node.unicodeCodePoint,
+          );
           model.atoms.add(
             _Atom.gaiji(
               span: node.span,
-              text: char,
+              text: resolved.text,
               style: context.publicStyle,
               blockExtent: context.fontScale,
               inlineExtent: context.fontScale,
               rawNotation: node.rawNotation,
               description: node.description,
-              resolved: char != _fallbackGaiji,
+              resolved: resolved.resolved,
               jisCode: node.jisCode,
               unicodeCodePoint: node.unicodeCodePoint,
               issues: node.issues,
@@ -1029,6 +1158,30 @@ class LayoutResultBuilder {
               imageWidth: node.width,
               imageHeight: node.height,
               attributes: node.attributes,
+              issues: node.issues,
+            ),
+          );
+        case LayoutLinkInline():
+          _wrapLinkRange(
+            model,
+            node.span,
+            node.target,
+            () => _emitInlines(node.children, model, context),
+            node.issues,
+          );
+        case LayoutAnchorInline():
+          model.atoms.add(
+            _Atom.marker(
+              span: node.span,
+              style: context.publicStyle,
+              issues: node.issues,
+            ),
+          );
+          model.anchors.add(
+            _AnchorPoint(
+              span: node.span,
+              atomIndex: model.atoms.length - 1,
+              name: node.name,
               issues: node.issues,
             ),
           );
@@ -1258,15 +1411,37 @@ class LayoutResultBuilder {
     }
   }
 
-  String _resolvedGaijiText(LayoutGaijiInline node) {
-    final hex = node.unicodeCodePoint;
-    if (hex != null) {
-      final codePoint = int.tryParse(hex, radix: 16);
-      if (codePoint != null) {
-        return String.fromCharCode(codePoint);
-      }
+  void _wrapLinkRange(
+    _ParagraphModel model,
+    SourceSpan span,
+    String target,
+    void Function() emit,
+    List<LayoutIssue> issues,
+  ) {
+    final start = model.atoms.length;
+    emit();
+    final end = model.atoms.length;
+    if (end > start) {
+      model.links.add(
+        _LinkRange(
+          span: span,
+          start: start,
+          end: end,
+          target: target,
+          issues: issues,
+        ),
+      );
     }
-    return _fallbackGaiji;
+  }
+
+  String _resolvedGaijiText(LayoutGaijiInline node) {
+    return _gaijiResolver
+        .resolve(
+          description: node.description,
+          jisCode: node.jisCode,
+          unicodeCodePoint: node.unicodeCodePoint,
+        )
+        .text;
   }
 
   double _resolveImageBlockExtent(
@@ -1311,6 +1486,12 @@ class LayoutResultBuilder {
           buffer.write(_fallbackGaiji);
         case LayoutImageInline():
           buffer.write('￼');
+        case LayoutLinkInline():
+          for (final child in node.children) {
+            visit(child);
+          }
+        case LayoutAnchorInline():
+          break;
         case LayoutRubyInline():
           for (final child in node.base) {
             visit(child);
@@ -1361,8 +1542,64 @@ class LayoutResultBuilder {
     return buffer.toString();
   }
 
+  (String?, String?) _splitWarichuText(String text) {
+    if (text.isEmpty) {
+      return (null, null);
+    }
+    final explicitLines = text.split('\n');
+    if (explicitLines.length >= 2) {
+      return (
+        explicitLines.first.trim().isEmpty ? null : explicitLines.first.trim(),
+        explicitLines.skip(1).join(' ').trim().isEmpty
+            ? null
+            : explicitLines.skip(1).join(' ').trim(),
+      );
+    }
+    final characters = _splitCharacters(text);
+    if (characters.length <= 1) {
+      return (text, null);
+    }
+    final midpoint = (characters.length / 2).ceil();
+    return (characters.take(midpoint).join(), characters.skip(midpoint).join());
+  }
+
   List<String> _splitCharacters(String text) {
     return text.runes.map(String.fromCharCode).toList(growable: false);
+  }
+
+  Set<int> _computeLineBreakOpportunities(List<_Atom> atoms) {
+    final buffer = StringBuffer();
+    final boundaries = <int, int>{};
+    var visibleCount = 0;
+    for (var index = 0; index < atoms.length; index += 1) {
+      final atom = atoms[index];
+      if (atom.kind.isMarkerOnly || atom.kind == _AtomKind.lineBreak) {
+        continue;
+      }
+      final breakText = atom.breakText;
+      buffer.write(breakText);
+      visibleCount += 1;
+      boundaries[buffer.length] = index + 1;
+    }
+    if (buffer.length == 0) {
+      return const <int>{};
+    }
+    final result = <int>{};
+    final breaker = UnicodeLineBreaker(buffer.toString());
+    while (true) {
+      final lineBreak = breaker.nextBreak();
+      if (lineBreak == null) {
+        break;
+      }
+      final cursor = boundaries[lineBreak.position];
+      if (cursor != null) {
+        result.add(cursor);
+      }
+    }
+    if (visibleCount > 0) {
+      result.add(atoms.length);
+    }
+    return result;
   }
 
   bool _mayBreakBetween(_Atom previous, _Atom next) {
@@ -1427,6 +1664,15 @@ class LayoutResultBuilder {
     };
   }
 
+  double _rubyInterCharacterSpacing(String text, double baseExtent) {
+    final characters = _splitCharacters(text);
+    if (characters.length <= 1) {
+      return 0;
+    }
+    final rubyGlyphExtent = characters.length * constraints.rubyScale;
+    return (baseExtent - rubyGlyphExtent) / (characters.length - 1);
+  }
+
   double _crossOffsetForMarker(_RangeMarker marker, _BlockContext context) {
     return switch (marker.kind) {
       LayoutMarkerKind.emphasis => switch (marker.emphasisSide ??
@@ -1468,6 +1714,28 @@ class LayoutResultBuilder {
       return 0;
     }
     return extents.reduce((a, b) => a + b) + gap * (extents.length - 1);
+  }
+
+  LayoutBlockStyle _blockStyle(
+    _BlockContext context, {
+    bool keepWithPrevious = false,
+  }) {
+    return LayoutBlockStyle(
+      keepWithPrevious: keepWithPrevious,
+      firstIndent: context.firstIndent,
+      restIndent: context.restIndent,
+      lineExtent: context.explicitLineExtent,
+      alignToFarEdge: context.alignToFarEdge,
+      flowKind: context.flowKind,
+      frameKind: context.frameKind,
+      frameBorderWidth: context.frameBorderWidth,
+      caption: context.caption,
+      bold: context.bold,
+      italic: context.italic,
+      fontScale: context.fontScale,
+      headingLevel: context.headingLevel,
+      headingDisplay: context.headingDisplay,
+    );
   }
 }
 
@@ -1568,12 +1836,16 @@ class _ParagraphModel {
     : atoms = <_Atom>[],
       rubies = <_RubyRange>[],
       rangeMarkers = <_RangeMarker>[],
-      pointMarkers = <_PointMarker>[];
+      pointMarkers = <_PointMarker>[],
+      links = <_LinkRange>[],
+      anchors = <_AnchorPoint>[];
 
   final List<_Atom> atoms;
   final List<_RubyRange> rubies;
   final List<_RangeMarker> rangeMarkers;
   final List<_PointMarker> pointMarkers;
+  final List<_LinkRange> links;
+  final List<_AnchorPoint> anchors;
   final SourceSpan span;
 }
 
@@ -1766,18 +2038,29 @@ class _Atom {
   final Map<String, String> attributes;
   final List<LayoutIssue> issues;
 
+  String get breakText {
+    return switch (kind) {
+      _AtomKind.image => '￼',
+      _AtomKind.note => '（',
+      _AtomKind.unsupported || _AtomKind.marker || _AtomKind.lineBreak => '',
+      _ => text,
+    };
+  }
+
   String? get breakClassStart {
-    if (text.isEmpty) {
+    final effectiveText = breakText;
+    if (effectiveText.isEmpty) {
       return null;
     }
-    return String.fromCharCode(text.runes.first);
+    return String.fromCharCode(effectiveText.runes.first);
   }
 
   String? get breakClassEnd {
-    if (text.isEmpty) {
+    final effectiveText = breakText;
+    if (effectiveText.isEmpty) {
       return null;
     }
-    return String.fromCharCode(text.runes.last);
+    return String.fromCharCode(effectiveText.runes.last);
   }
 }
 
@@ -1798,6 +2081,36 @@ class _RubyRange {
   final String text;
   final RubyKind kind;
   final RubyPosition position;
+  final List<LayoutIssue> issues;
+}
+
+class _LinkRange {
+  const _LinkRange({
+    required this.span,
+    required this.start,
+    required this.end,
+    required this.target,
+    required this.issues,
+  });
+
+  final SourceSpan span;
+  final int start;
+  final int end;
+  final String target;
+  final List<LayoutIssue> issues;
+}
+
+class _AnchorPoint {
+  const _AnchorPoint({
+    required this.span,
+    required this.atomIndex,
+    required this.name,
+    required this.issues,
+  });
+
+  final SourceSpan span;
+  final int atomIndex;
+  final String name;
   final List<LayoutIssue> issues;
 }
 

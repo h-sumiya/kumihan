@@ -249,10 +249,14 @@ class DocumentNode extends AstNode {
 }
 
 class ParagraphNode extends BlockNode {
-  const ParagraphNode({required SourceSpan span, required this.children})
-    : super(span);
+  const ParagraphNode({
+    required SourceSpan span,
+    required this.children,
+    this.keepWithPrevious = false,
+  }) : super(span);
 
   final List<InlineNode> children;
+  final bool keepWithPrevious;
 
   @override
   String get debugType => 'paragraph';
@@ -260,6 +264,7 @@ class ParagraphNode extends BlockNode {
   @override
   Map<String, Object?> toDebugMap() {
     final map = debugBase();
+    map['keepWithPrevious'] = keepWithPrevious;
     map['children'] = children.map((node) => node.toDebugMap()).toList();
     return map;
   }
@@ -680,6 +685,56 @@ class ImageNode extends InlineNode {
     map['width'] = width;
     map['height'] = height;
     map['attributes'] = Map<String, String>.from(attributes);
+    map['sourceDirective'] = sourceDirective?.toDebugMap();
+    return map;
+  }
+}
+
+class LinkNode extends InlineNode {
+  const LinkNode({
+    required SourceSpan span,
+    required this.children,
+    required this.target,
+    this.sourceDirective,
+    this.isClosed = true,
+  }) : super(span);
+
+  final List<InlineNode> children;
+  final String target;
+  final SourceDirective? sourceDirective;
+  final bool isClosed;
+
+  @override
+  String get debugType => 'link';
+
+  @override
+  Map<String, Object?> toDebugMap() {
+    final map = debugBase();
+    map['target'] = target;
+    map['sourceDirective'] = sourceDirective?.toDebugMap();
+    map['children'] = children.map((node) => node.toDebugMap()).toList();
+    map['isClosed'] = isClosed;
+    return map;
+  }
+}
+
+class AnchorNode extends InlineNode {
+  const AnchorNode({
+    required SourceSpan span,
+    required this.name,
+    this.sourceDirective,
+  }) : super(span);
+
+  final String name;
+  final SourceDirective? sourceDirective;
+
+  @override
+  String get debugType => 'anchor';
+
+  @override
+  Map<String, Object?> toDebugMap() {
+    final map = debugBase();
+    map['name'] = name;
     map['sourceDirective'] = sourceDirective?.toDebugMap();
     return map;
   }

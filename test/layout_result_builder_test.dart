@@ -55,9 +55,9 @@ void main() {
               ),
               LayoutGaijiInline(
                 span: _span(15),
-                rawNotation: '※［＃丸数字1、U+2460］',
-                description: '丸数字1',
-                unicodeCodePoint: '2460',
+                rawNotation: '※［＃二の字点、1-2-22］',
+                description: '二の字点、1-2-22',
+                jisCode: '1-2-22',
               ),
               LayoutUnresolvedGaijiInline(
                 span: _span(16),
@@ -70,6 +70,14 @@ void main() {
                 width: 20,
                 height: 30,
               ),
+              LayoutLinkInline(
+                span: _span(23),
+                target: '#foo',
+                children: <LayoutInline>[
+                  LayoutTextInline(span: _span(24), text: '関連'),
+                ],
+              ),
+              LayoutAnchorInline(span: _span(25), name: 'foo'),
               LayoutScriptInline(
                 span: _span(18),
                 kind: ScriptKind.superscript,
@@ -90,7 +98,7 @@ void main() {
       final result = builder.build(document);
 
       expect(result.blocks, hasLength(1));
-      expect(result.hitRegions, hasLength(1));
+      expect(result.hitRegions, hasLength(3));
 
       final paragraph = result.blocks.single as LayoutParagraphResult;
       expect(paragraph.lineGroup.lines.length, greaterThan(1));
@@ -104,6 +112,7 @@ void main() {
       final rubies = paragraph.lineGroup.lines
           .expand((line) => line.rubies)
           .toList(growable: false);
+      final notes = fragments.whereType<LayoutNoteFragment>().toList();
 
       expect(
         fragments.whereType<LayoutTextFragment>().any(
@@ -120,7 +129,7 @@ void main() {
       );
       expect(
         fragments.whereType<LayoutGaijiFragment>().any(
-          (fragment) => fragment.resolved && fragment.displayText == '①',
+          (fragment) => fragment.resolved && fragment.displayText == '〻',
         ),
         isTrue,
       );
@@ -131,7 +140,9 @@ void main() {
         isTrue,
       );
       expect(fragments.whereType<LayoutImageFragment>(), hasLength(1));
-      expect(fragments.whereType<LayoutNoteFragment>(), hasLength(1));
+      expect(notes, hasLength(1));
+      expect(notes.single.upperText, '東');
+      expect(notes.single.lowerText, '西');
 
       expect(
         markers.any((marker) => marker.kind == LayoutMarkerKind.emphasis),
@@ -162,7 +173,59 @@ void main() {
         isTrue,
       );
       expect(rubies, isNotEmpty);
-      expect(result.hitRegions.single.data, 'foo.png');
+      expect(rubies.any((ruby) => ruby.interCharacterSpacing != 0), isTrue);
+      expect(
+        result.hitRegions.map((region) => region.kind),
+        containsAll(<LayoutHitRegionKind>[
+          LayoutHitRegionKind.image,
+          LayoutHitRegionKind.link,
+          LayoutHitRegionKind.anchor,
+        ]),
+      );
+    });
+
+    test('uses unicode line breaking and keep-with-previous block spacing', () {
+      final builder = LayoutResultBuilder(
+        constraints: const LayoutConstraints(lineExtent: 2, blockGap: 1),
+      );
+      final document = LayoutDocument(
+        span: _span(200),
+        children: <LayoutBlock>[
+          LayoutParagraph(
+            span: _span(201),
+            children: <LayoutInline>[
+              LayoutTextInline(span: _span(202), text: '前'),
+            ],
+          ),
+          LayoutParagraph(
+            span: _span(203),
+            keepWithPrevious: true,
+            children: <LayoutInline>[
+              LayoutTextInline(span: _span(204), text: '「あい」'),
+            ],
+          ),
+        ],
+      );
+
+      final result = builder.build(document);
+      final paragraphs = result.blocks
+          .whereType<LayoutParagraphResult>()
+          .toList();
+
+      expect(paragraphs, hasLength(2));
+      expect(paragraphs[1].inlineOffset, paragraphs[0].inlineExtent);
+      expect(paragraphs[1].style.keepWithPrevious, isTrue);
+
+      final secondLineTexts = paragraphs[1].lineGroup.lines
+          .map(
+            (line) => line.fragments
+                .whereType<LayoutTextFragment>()
+                .map((fragment) => fragment.text)
+                .join(),
+          )
+          .toList(growable: false);
+      expect(secondLineTexts.first, '「あ');
+      expect(secondLineTexts.last, 'い」');
     });
 
     test('processes block containers and tables into leaf block results', () {

@@ -49,8 +49,14 @@ class AozoraAstParser {
       while (lineStart < normalized.length) {
         final lineEnd = normalized.indexOf('\n', lineStart);
         final endOffset = lineEnd >= 0 ? lineEnd : normalized.length;
-        final line = normalized.substring(lineStart, endOffset);
+        var line = normalized.substring(lineStart, endOffset);
         final lineSpan = mapper.span(lineStart, endOffset);
+        var keepWithPrevious = false;
+
+        if (line.startsWith('‌')) {
+          keepWithPrevious = true;
+          line = line.substring(1);
+        }
 
         if (line.isEmpty) {
           addBlock(EmptyLineNode(span: lineSpan));
@@ -70,7 +76,15 @@ class AozoraAstParser {
               );
             }
           } else {
-            addBlock(_parseParagraph(line, lineStart, mapper, diagnostics));
+            addBlock(
+              _parseParagraph(
+                line,
+                lineStart,
+                mapper,
+                diagnostics,
+                keepWithPrevious: keepWithPrevious,
+              ),
+            );
           }
         }
 
@@ -116,8 +130,9 @@ class AozoraAstParser {
     String line,
     int lineStartOffset,
     _SourceMapper mapper,
-    List<AstDiagnostic> diagnostics,
-  ) {
+    List<AstDiagnostic> diagnostics, {
+    bool keepWithPrevious = false,
+  }) {
     final root = _InlineFrame.root();
     final stack = <_InlineFrame>[root];
     var explicitRubyStartIndex = -1;
@@ -318,6 +333,7 @@ class AozoraAstParser {
     return ParagraphNode(
       span: mapper.span(lineStartOffset, lineStartOffset + line.length),
       children: List<InlineNode>.unmodifiable(root.children),
+      keepWithPrevious: keepWithPrevious,
     );
   }
 
@@ -1622,6 +1638,7 @@ class AozoraAstParser {
       GaijiNode() => true,
       UnresolvedGaijiNode() => true,
       DirectionInlineNode() => true,
+      LinkNode() => true,
       FlowInlineNode() => true,
       CaptionInlineNode() => true,
       FrameInlineNode() => true,
@@ -1723,6 +1740,7 @@ class AozoraAstParser {
       TextNode(:final text) => text,
       GaijiNode(:final rawNotation) => rawNotation,
       UnresolvedGaijiNode(:final rawNotation) => rawNotation,
+      LinkNode(:final children) => children.map(_plainText).join(),
       DirectionInlineNode(:final children) => children.map(_plainText).join(),
       FlowInlineNode(:final children) => children.map(_plainText).join(),
       CaptionInlineNode(:final children) => children.map(_plainText).join(),

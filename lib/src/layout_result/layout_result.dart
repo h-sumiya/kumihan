@@ -3,7 +3,7 @@ import '../layout_ir/layout_ir.dart';
 
 enum LayoutWritingMode { vertical, horizontal }
 
-enum LayoutHitRegionKind { image }
+enum LayoutHitRegionKind { image, link, anchor }
 
 enum LayoutMarkerKind {
   emphasis,
@@ -64,6 +64,7 @@ class LayoutResult {
 
 class LayoutBlockStyle {
   const LayoutBlockStyle({
+    this.keepWithPrevious = false,
     this.firstIndent = 0,
     this.restIndent = 0,
     this.lineExtent,
@@ -79,6 +80,7 @@ class LayoutBlockStyle {
     this.headingDisplay,
   });
 
+  final bool keepWithPrevious;
   final double firstIndent;
   final double restIndent;
   final double? lineExtent;
@@ -371,6 +373,38 @@ class LayoutImageFragment extends LayoutFragment {
   final Map<String, String> attributes;
 }
 
+class LayoutLinkFragment extends LayoutFragment {
+  const LayoutLinkFragment({
+    required super.span,
+    required super.inlineOffset,
+    required super.blockOffset,
+    required super.inlineExtent,
+    required super.blockExtent,
+    required super.style,
+    required this.target,
+    required this.children,
+    super.issues,
+  });
+
+  final String target;
+  final List<LayoutFragment> children;
+}
+
+class LayoutAnchorFragment extends LayoutFragment {
+  const LayoutAnchorFragment({
+    required super.span,
+    required super.inlineOffset,
+    required super.blockOffset,
+    required super.inlineExtent,
+    required super.blockExtent,
+    required super.style,
+    required this.name,
+    super.issues,
+  });
+
+  final String name;
+}
+
 class LayoutNoteFragment extends LayoutFragment {
   const LayoutNoteFragment({
     required super.span,
@@ -381,11 +415,15 @@ class LayoutNoteFragment extends LayoutFragment {
     required super.style,
     required this.noteKind,
     required this.text,
+    this.upperText,
+    this.lowerText,
     super.issues,
   });
 
   final NoteKind noteKind;
   final String text;
+  final String? upperText;
+  final String? lowerText;
 }
 
 class LayoutUnsupportedFragment extends LayoutFragment {
@@ -414,6 +452,7 @@ class LayoutRubyPlacement {
     required this.blockOffset,
     required this.blockExtent,
     required this.inlineExtent,
+    this.interCharacterSpacing = 0,
     this.issues = const <LayoutIssue>[],
   });
 
@@ -426,6 +465,7 @@ class LayoutRubyPlacement {
   final double blockOffset;
   final double blockExtent;
   final double inlineExtent;
+  final double interCharacterSpacing;
   final List<LayoutIssue> issues;
 }
 

@@ -34,6 +34,38 @@ void main() {
       },
     );
 
+    test('preserves keep-with-previous and link/anchor inline nodes', () {
+      final document = DocumentNode(
+        span: _span(0),
+        children: <BlockNode>[
+          ParagraphNode(
+            span: _span(1),
+            keepWithPrevious: true,
+            children: <InlineNode>[
+              LinkNode(
+                span: _span(2),
+                target: '#chapter-1',
+                children: <InlineNode>[TextNode(span: _span(3), text: '参照')],
+              ),
+              AnchorNode(span: _span(4), name: 'chapter-1'),
+            ],
+          ),
+        ],
+      );
+
+      final ir = converter.convert(document);
+
+      final paragraph = ir.children.single as LayoutParagraph;
+      expect(paragraph.keepWithPrevious, isTrue);
+      expect(paragraph.children.first, isA<LayoutLinkInline>());
+      expect(paragraph.children.last, isA<LayoutAnchorInline>());
+
+      final link = paragraph.children.first as LayoutLinkInline;
+      final anchor = paragraph.children.last as LayoutAnchorInline;
+      expect(link.target, '#chapter-1');
+      expect(anchor.name, 'chapter-1');
+    });
+
     test('converts all AST node kinds and records unsupported v0 patterns', () {
       final textSpan = _span(0);
       final inlineParagraph = ParagraphNode(

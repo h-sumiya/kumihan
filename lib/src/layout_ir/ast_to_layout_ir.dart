@@ -22,6 +22,7 @@ class AstToLayoutIrConverter {
       ParagraphNode() => LayoutParagraph(
         span: node.span,
         children: _convertInlines(node.children),
+        keepWithPrevious: node.keepWithPrevious,
       ),
       EmptyLineNode() => LayoutEmptyLine(span: node.span),
       OpaqueBlockNode() => LayoutUnsupportedBlock(
@@ -169,6 +170,18 @@ class AstToLayoutIrConverter {
         width: node.width,
         height: node.height,
         attributes: Map<String, String>.unmodifiable(node.attributes),
+        sourceDirective: node.sourceDirective,
+      ),
+      LinkNode() => LayoutLinkInline(
+        span: node.span,
+        children: _convertInlines(node.children),
+        target: node.target,
+        sourceDirective: node.sourceDirective,
+        isClosed: node.isClosed,
+      ),
+      AnchorNode() => LayoutAnchorInline(
+        span: node.span,
+        name: node.name,
         sourceDirective: node.sourceDirective,
       ),
       RubyNode() => LayoutRubyInline(

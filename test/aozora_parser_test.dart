@@ -90,6 +90,20 @@ void main() {
       expect((container.children.last as TextNode).text, '西は');
     });
 
+    test('preserves keep-with-previous marker on paragraphs', () {
+      final document = parser.parse('前\n‌後');
+
+      expect(document.children, hasLength(2));
+      expect(
+        (document.children.first as ParagraphNode).keepWithPrevious,
+        isFalse,
+      );
+      expect(
+        (document.children.last as ParagraphNode).keepWithPrevious,
+        isTrue,
+      );
+    });
+
     test('preserves unknown directives and reports unclosed blocks', () {
       final document = parser.parse('未知［＃未対応注記］です\n［＃ここから太字］\n未閉鎖');
 

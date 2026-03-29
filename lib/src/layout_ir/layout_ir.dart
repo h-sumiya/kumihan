@@ -75,10 +75,12 @@ class LayoutParagraph extends LayoutBlock {
   const LayoutParagraph({
     required super.span,
     required this.children,
+    this.keepWithPrevious = false,
     super.issues,
   });
 
   final List<LayoutInline> children;
+  final bool keepWithPrevious;
 }
 
 class LayoutEmptyLine extends LayoutBlock {
@@ -301,6 +303,32 @@ class LayoutImageInline extends LayoutInline {
   final int? width;
   final int? height;
   final LayoutIrAttributes attributes;
+  final SourceDirective? sourceDirective;
+}
+
+class LayoutLinkInline extends LayoutContainerInline {
+  const LayoutLinkInline({
+    required super.span,
+    required super.children,
+    required this.target,
+    this.sourceDirective,
+    super.isClosed,
+    super.issues,
+  });
+
+  final String target;
+  final SourceDirective? sourceDirective;
+}
+
+class LayoutAnchorInline extends LayoutInline {
+  const LayoutAnchorInline({
+    required super.span,
+    required this.name,
+    this.sourceDirective,
+    super.issues,
+  });
+
+  final String name;
   final SourceDirective? sourceDirective;
 }
 
