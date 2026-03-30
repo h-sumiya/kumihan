@@ -118,7 +118,9 @@ class LayoutResultBuilder {
           appendFlow(
             _layoutBlocks(
               block.children,
-              context.withIndent(block.width?.toDouble() ?? 0),
+              context.withIndent(
+                _resolveLegacyDirectiveWidth(block.width, context),
+              ),
               baseInlineOffset: cursor,
             ),
           );
@@ -136,7 +138,11 @@ class LayoutResultBuilder {
           appendFlow(
             _layoutBlocks(
               block.children,
-              context.withJizume(block.width?.toDouble()),
+              context.withJizume(
+                block.width == null
+                    ? null
+                    : _resolveLegacyDirectiveWidth(block.width, context),
+              ),
               baseInlineOffset: cursor,
             ),
           );
@@ -550,11 +556,13 @@ class LayoutResultBuilder {
     final indent = firstLine ? context.firstIndent : context.restIndent;
     final available = math.max(context.resolvedLineExtent - indent, 1.0);
     var cursor = start;
-    var visibleExtent = 0.0;
-    var hadVisible = false;
-    var lastBreakCursor = -1;
-    var extentAtLastBreak = 0.0;
-    var appliedHangingAtLineEnd = false;
+    var trackedWidth = 0.0;
+    var lastBreakWidth = 0.0;
+    var breakIndex = start;
+    var lastAtomWidth = 0.0;
+    var firstVisibleIndex = -1;
+    var endedByExplicitLineBreak = false;
+
     bool isHangingLineEndAtom(_Atom atom) {
       if (atom.text.isEmpty) {
         return false;
@@ -563,65 +571,74 @@ class LayoutResultBuilder {
       return _hangingLineEndGlyphs.contains(lastCharacter);
     }
 
-    while (cursor < atoms.length) {
-      final atom = atoms[cursor];
+    for (var index = start; index < atoms.length; index += 1) {
+      final atom = atoms[index];
       if (atom.kind == _AtomKind.lineBreak) {
-        cursor += 1;
+        cursor = index + 1;
+        endedByExplicitLineBreak = true;
         break;
       }
       if (atom.kind.isMarkerOnly) {
-        cursor += 1;
         continue;
       }
+
       if (!atom.legacyKinsoku) {
-        lastBreakCursor = cursor;
-        extentAtLastBreak = visibleExtent;
+        lastBreakWidth = trackedWidth;
+        breakIndex = index;
       }
-      final leadingOpenAdjustment =
-          cursor == start &&
-              start > 0 &&
-              atom.kind == _AtomKind.text &&
-              _openingBrackets.contains(atom.text)
-          ? -atom.inlineExtent / 2
-          : 0.0;
-      final nextExtent =
-          visibleExtent +
-          leadingOpenAdjustment +
-          (baseBoundaryAdjustments[cursor] ?? 0) +
-          atom.blockExtent;
-      if (nextExtent <= available || !hadVisible) {
-        visibleExtent = nextExtent;
-        hadVisible = true;
-        cursor += 1;
-        continue;
+
+      final atomWidth = atom.inlineExtent;
+      lastAtomWidth = atomWidth;
+
+      var boundaryAdjustment = baseBoundaryAdjustments[index] ?? 0.0;
+      if (firstVisibleIndex < 0 &&
+          start > 0 &&
+          atom.kind == _AtomKind.text &&
+          _openingBrackets.contains(atom.text)) {
+        boundaryAdjustment -= atom.inlineExtent / 2;
       }
-      if (isHangingLineEndAtom(atom) &&
-          visibleExtent + atom.inlineExtent / 2 <= available) {
-        visibleExtent = nextExtent - atom.inlineExtent / 2;
-        hadVisible = true;
-        appliedHangingAtLineEnd = true;
-        cursor += 1;
-        break;
+
+      trackedWidth += atom.blockExtent + boundaryAdjustment;
+      if (firstVisibleIndex < 0) {
+        firstVisibleIndex = index;
       }
-      if (lastBreakCursor > start) {
-        cursor = lastBreakCursor;
-        visibleExtent = extentAtLastBreak;
+
+      if (trackedWidth > available && breakIndex != start) {
+        if (!isHangingLineEndAtom(atom)) {
+          cursor = index;
+          break;
+        }
+        if (trackedWidth - atomWidth / 2 > available) {
+          cursor = index;
+          break;
+        }
       }
-      break;
+
+      cursor = index + 1;
+      if (index >= atoms.length - 1) {
+        lastBreakWidth = trackedWidth;
+        breakIndex = index + 1;
+      }
     }
 
-    if (hadVisible && !appliedHangingAtLineEnd) {
-      final lastVisibleIndex = _previousVisibleAtomCursor(atoms, cursor - 1);
+    if (endedByExplicitLineBreak) {
+      if (firstVisibleIndex >= 0) {
+        lastBreakWidth = trackedWidth;
+        breakIndex = cursor - 1;
+      } else {
+        breakIndex = start;
+      }
+    }
+
+    if (breakIndex != start) {
+      final lastVisibleIndex = _previousVisibleAtomCursor(atoms, breakIndex - 1);
       if (lastVisibleIndex >= start &&
           isHangingLineEndAtom(atoms[lastVisibleIndex])) {
-        visibleExtent = math.max(
-          visibleExtent - atoms[lastVisibleIndex].inlineExtent / 2,
-          0,
-        );
+        lastBreakWidth = math.max(lastBreakWidth - lastAtomWidth / 2, 0);
       }
     }
 
-    if (cursor == start && start < atoms.length) {
+    if (breakIndex == start && start < atoms.length) {
       final atom = atoms[start];
       if (atom.kind == _AtomKind.lineBreak) {
         return _TakenLineDraft(
@@ -633,31 +650,38 @@ class LayoutResultBuilder {
         );
       }
       final end = _consumeLeadingMarkers(atoms, start + 1);
-      final leadingOpenAdjustment =
-          start > 0 &&
-              atom.kind == _AtomKind.text &&
-              _openingBrackets.contains(atom.text)
-          ? -atom.inlineExtent / 2
-          : 0.0;
+      var boundaryAdjustment = baseBoundaryAdjustments[start] ?? 0.0;
+      if (start > 0 &&
+          atom.kind == _AtomKind.text &&
+          _openingBrackets.contains(atom.text)) {
+        boundaryAdjustment -= atom.inlineExtent / 2;
+      }
       return _TakenLineDraft(
         start: start,
         end: end,
         nextCursor: end,
         indent: indent,
-        textExtent:
-            atom.blockExtent +
-            (baseBoundaryAdjustments[start] ?? 0) +
-            leadingOpenAdjustment,
+        textExtent: atom.blockExtent + boundaryAdjustment,
       );
     }
 
     return _TakenLineDraft(
       start: start,
-      end: cursor,
-      nextCursor: cursor,
+      end: breakIndex,
+      nextCursor: endedByExplicitLineBreak ? cursor : breakIndex,
       indent: indent,
-      textExtent: visibleExtent,
+      textExtent: lastBreakWidth,
     );
+  }
+
+  double _resolveLegacyDirectiveWidth(int? width, _BlockContext context) {
+    if (width == null || width <= 0) {
+      return 0;
+    }
+    if (width > 5) {
+      return width * context.resolvedLineExtent / 40;
+    }
+    return width * context.fontScale;
   }
 
   _MaterializedLine _materializeLine(
@@ -1756,13 +1780,14 @@ class LayoutResultBuilder {
     _ParagraphModel model,
     _InlineContext context,
   ) {
-    final characters = _splitCharacters(node.text);
+    final normalizedText = _normalizeLegacyText(node.text, context);
+    final characters = _splitCharacters(normalizedText);
     if (characters.isEmpty) {
       return;
     }
 
     if (context.flowKind == FlowKind.yokogumi) {
-      _emitSidewaysRun(node.text, node, model, context);
+      _emitSidewaysRun(normalizedText, node, model, context);
       return;
     }
 
@@ -1841,6 +1866,17 @@ class LayoutResultBuilder {
     flushSideways();
   }
 
+  String _normalizeLegacyText(String text, _InlineContext context) {
+    var normalized = text;
+    if (context.flowKind == FlowKind.yokogumi) {
+      return normalized
+          .replaceAll('／＼', '／$_wordJoiner＼')
+          .replaceAll('／″＼', '／$_wordJoiner"$_wordJoiner＼');
+    }
+    normalized = normalized.replaceAll('／＼', '〳〵').replaceAll('／″＼', '〴〵');
+    return normalized.replaceAll('“', '〝').replaceAll('”', '〟');
+  }
+
   void _emitSidewaysTextAtoms(
     LayoutTextInline node,
     _ParagraphModel model,
@@ -1859,7 +1895,23 @@ class LayoutResultBuilder {
       return;
     }
 
-    final breaker = UnicodeLineBreaker(text);
+    var remaining = text;
+    while (remaining.startsWith(' ')) {
+      model.atoms.add(
+        _legacyDraftToAtom(
+          const _LegacyAtomDraft(' '),
+          context,
+          node.span,
+          node.issues,
+        ),
+      );
+      remaining = remaining.substring(1);
+    }
+    if (remaining.isEmpty) {
+      return;
+    }
+
+    final breaker = UnicodeLineBreaker(remaining);
     var segmentStart = 0;
 
     while (true) {
@@ -1867,7 +1919,7 @@ class LayoutResultBuilder {
       if (breakpoint == null) {
         break;
       }
-      final segment = text.substring(segmentStart, breakpoint.position);
+      final segment = remaining.substring(segmentStart, breakpoint.position);
       if (segment.isNotEmpty) {
         model.atoms.add(
           _legacyDraftToAtom(
@@ -1935,6 +1987,7 @@ class LayoutResultBuilder {
     var segmentStart = 0;
     var previousAllowed = true;
     var previousJoin = false;
+    String? previousText;
     for (final entry in visible) {
       if (entry.offset != 0 && breaks.contains(entry.offset)) {
         segmentStart = entry.offset;
@@ -1957,7 +2010,11 @@ class LayoutResultBuilder {
           isRotated ||
           _legacySidewaysCloseGlyphs.contains(firstChar);
       final startsAtom = previousAllowed || allowsBreak;
-      final legacyKinsoku = startsAtom
+      final latinAfterSpace =
+          previousText == ' ' && _containsLatinLetter(text);
+      final legacyKinsoku = latinAfterSpace
+          ? false
+          : startsAtom
           ? previousJoin ||
                 (entry.offset != segmentStart && !isOpening && !isRotated)
           : true;
@@ -1966,6 +2023,7 @@ class LayoutResultBuilder {
       );
       previousAllowed = allowsBreak;
       previousJoin = text.endsWith('⁠');
+      previousText = text;
     }
   }
 
@@ -2258,7 +2316,7 @@ class LayoutResultBuilder {
       textDirection: TextDirection.ltr,
       maxLines: 1,
     )..layout();
-    return math.max(painter.width / fontSize, context.fontScale);
+    return painter.width / fontSize;
   }
 
   Set<int> _computeLineBreakOpportunities(List<_Atom> atoms) {
