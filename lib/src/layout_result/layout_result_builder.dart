@@ -816,9 +816,7 @@ class LayoutResultBuilder {
           _openingBrackets.contains(atom.text)) {
         blockCursor -= atom.blockExtent / 2;
       }
-      if (index > draft.start) {
-        blockCursor += boundaryAdjustments[index] ?? 0;
-      }
+      blockCursor += boundaryAdjustments[index] ?? 0;
       if (atom.kind.isMarkerOnly) {
         atomPlacements[index] = _FragmentPlacement(
           blockOffset: blockCursor,
@@ -898,26 +896,17 @@ class LayoutResultBuilder {
 
       final tracking = overflow / baseAtoms.length;
       for (final atomIndex in baseAtoms) {
-        final boundaryIndex = _nextVisibleAtomCursorInRange(
-          model.atoms,
-          atomIndex + 1,
-          lineEnd,
+        boundaryAdjustments.update(
+          atomIndex,
+          (current) => current + tracking,
+          ifAbsent: () => tracking,
         );
-        if (boundaryIndex >= 0) {
-          boundaryAdjustments.update(
-            boundaryIndex,
-            (current) => current + tracking,
-            ifAbsent: () => tracking,
-          );
-        } else {
-          trailingExtent += tracking;
-        }
       }
     }
 
     return _RubyBaseTrackingAdjustments(
       boundaryAdjustments: boundaryAdjustments,
-      trailingExtent: trailingExtent,
+      trailingExtent: 0,
     );
   }
 
@@ -1024,9 +1013,13 @@ class LayoutResultBuilder {
       if (segmentText.isEmpty) {
         continue;
       }
+      final unjustifiedBaseExtent = baseAtoms.fold<double>(
+        0.0,
+        (sum, index) => sum + placements[index]!.blockExtent,
+      );
       final interCharacterSpacing = _rubyInterCharacterSpacing(
         segmentText,
-        math.max(blockEnd - blockStart, 0),
+        unjustifiedBaseExtent,
       );
       final rubyBlockExtent = _rubyTextExtent(
         segmentText,
