@@ -1,11 +1,12 @@
 import 'dart:math' as math;
 
+import 'package:characters/characters.dart';
 import 'package:flutter/painting.dart';
 
+import '../layout_result/compat/utr50.dart';
 import 'kumihan_render_theme.dart';
 
-const String _verticalSmallGlyphs =
-    'ぁぃぅぇぉっゃゅょゎゕゖァィゥェォッャュョヮヵヶㇰㇱㇲㇳㇴㇵㇶㇷㇸㇹㇺㇻㇼㇽㇾㇿ';
+const String _verticalSmallGlyphs = 'ぁぃぅぇぉっゃゅょゎゕゖァィゥェォッャュョヮヵヶㇰㇱㇲㇳㇴㇵㇶㇷㇸㇹㇺㇻㇼㇽㇾㇿ';
 const String _verticalPunctuationGlyphs = '，、。﹐﹑﹒，．';
 const String _dakutenGlyphs = '゛゜';
 const String _rotatedGlyphs =
@@ -14,7 +15,7 @@ const String _rotatedGlyphs =
     '()[]{}'
     '（）〔〕［］｛｝'
     '〈〉《》「」『』【】｟｠〘〙〖〗«»〝〟'
-    '…ー';
+    '…ー─';
 
 class VerticalGlyphLayout {
   const VerticalGlyphLayout({
@@ -48,34 +49,34 @@ VerticalGlyphLayout computeVerticalGlyphLayout(
   TextStyle style,
   KumihanRenderThemeData theme,
 ) {
-  final normalizedText = text == '─' ? '―' : text;
+  final rotate = _shouldRotate(text);
   final painter = TextPainter(
-    text: TextSpan(text: normalizedText, style: style),
+    text: TextSpan(text: text, style: style),
     textDirection: TextDirection.ltr,
     textAlign: TextAlign.center,
     maxLines: 1,
-  )..layout(maxWidth: rect.width * 2);
+  )..layout(maxWidth: rotate ? 100000 : rect.width * 2);
 
   final fontSize = style.fontSize ?? theme.fontSize;
   var dx = rect.left + rect.width / 2;
   var dy = rect.top;
 
-  if (_verticalSmallGlyphs.contains(normalizedText)) {
+  if (_verticalSmallGlyphs.contains(text)) {
     dx += fontSize / 8;
     dy -= fontSize / 8;
-  } else if (_verticalPunctuationGlyphs.contains(normalizedText)) {
+  } else if (_verticalPunctuationGlyphs.contains(text)) {
     dx += 0.68 * fontSize;
     dy -= 0.65 * fontSize;
   }
 
-  if (_dakutenGlyphs.contains(normalizedText)) {
+  if (_dakutenGlyphs.contains(text)) {
     dx += 0.74 * fontSize;
     dy -= fontSize;
   }
 
-  if (_shouldRotate(normalizedText)) {
+  if (rotate) {
     return VerticalGlyphLayout(
-      text: normalizedText,
+      text: text,
       painter: painter,
       fontSize: fontSize,
       paintOffset: Offset(0, -painter.height / 2),
@@ -92,7 +93,7 @@ VerticalGlyphLayout computeVerticalGlyphLayout(
     dy + fontSize / 2 - painter.height / 2,
   );
   return VerticalGlyphLayout(
-    text: normalizedText,
+    text: text,
     painter: painter,
     fontSize: fontSize,
     paintOffset: paintOffset,
@@ -104,9 +105,31 @@ VerticalGlyphLayout computeVerticalGlyphLayout(
   );
 }
 
+bool shouldRotateVerticalGlyph(String text) => _shouldRotate(text);
+
 bool _shouldRotate(String text) {
   if (text.isEmpty) {
     return false;
   }
-  return _rotatedGlyphs.contains(text) || text == '\u2060';
+  if (text == '―') {
+    return false;
+  }
+  var sawSideways = false;
+  for (final character in text.characters) {
+    if (character == '\u2060') {
+      sawSideways = true;
+      continue;
+    }
+    if (_rotatedGlyphs.contains(character)) {
+      sawSideways = true;
+      continue;
+    }
+    final type = getUtr50Type(character.runes.firstOrNull);
+    if (type == 'R' || type == 'r') {
+      sawSideways = true;
+      continue;
+    }
+    return false;
+  }
+  return sawSideways;
 }

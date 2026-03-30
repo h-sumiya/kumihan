@@ -555,12 +555,20 @@ class KumihanLayoutPainter extends CustomPainter {
     }
     final fontScale = forcedFontScale ?? style.fontScale;
     final horizontalRun =
-        style.flowKind == FlowKind.yokogumi ||
-        style.directionKind == DirectionKind.tateChuYoko ||
-        sanitized.characters.length > 1 && rect.height <= theme.fontSize * 1.5;
+        style.directionKind == DirectionKind.tateChuYoko;
 
     if (horizontalRun) {
       _paintCenteredText(
+        canvas,
+        rect,
+        sanitized,
+        _textStyle(fontScale: fontScale, color: color, style: style),
+      );
+      return;
+    }
+
+    if (sanitized.characters.length > 1 && shouldRotateVerticalGlyph(sanitized)) {
+      _paintVerticalGlyph(
         canvas,
         rect,
         sanitized,

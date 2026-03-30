@@ -1,5 +1,7 @@
 import 'dart:math' as math;
 
+import 'package:flutter/painting.dart';
+
 import '../ast/ast.dart';
 import '../layout_ir/layout_ir.dart';
 import 'compat/gaiji_resolver.dart';
@@ -32,6 +34,16 @@ class LayoutResultBuilder {
       '$_closingBrackets$_punctuationMarks・￼゛゜';
   static const String _legacyRotatedAtomTypes = '…─';
   static final RegExp _cjkIdeographPattern = RegExp(r'[⺀-⻳㐁-䶮一-龻豈-龎仝々〆〇ヶ]');
+  static const String _wordJoiner = '\u2060';
+  static const String _measurementFontFamily = 'WebFontMincho';
+  static const String _measurementFontPackage = 'kumihan';
+  static const String _sidewaysRotatedGlyphs =
+      ' '
+      '‘’“”'
+      '()[]{}'
+      '（）〔〕［］｛｝'
+      '〈〉《》「」『』【】｟｠〘〙〖〗«»〝〟'
+      '…ー';
 
   final GaijiResolver _gaijiResolver = const GaijiResolver();
 
@@ -203,11 +215,14 @@ class LayoutResultBuilder {
     final model = _ParagraphModel(span: block.span);
     _emitInlines(block.children, model, context.inlineContext);
     _applyLegacyKinsoku(model.atoms);
+    final rubyTracking = _resolveLegacyRubyTrackingAdjustments(model);
     final lines = _buildLines(
       block.span,
       model,
       context,
       groupInlineOffset: inlineOffset,
+      rubyBoundaryAdjustments: rubyTracking.boundaryAdjustments,
+      rubyTrailingExtent: rubyTracking.trailingExtent,
     );
     final group = LayoutLineGroup(
       span: block.span,
@@ -439,6 +454,8 @@ class LayoutResultBuilder {
     _ParagraphModel model,
     _BlockContext context, {
     required double groupInlineOffset,
+    required Map<int, double> rubyBoundaryAdjustments,
+    required double rubyTrailingExtent,
   }) {
     final lines = <LayoutLine>[];
     final hitRegions = <LayoutHitRegion>[];
@@ -488,6 +505,7 @@ class LayoutResultBuilder {
         breakPositions,
         context,
         firstLine: firstLine,
+        baseBoundaryAdjustments: rubyBoundaryAdjustments,
       );
       atomCursor = lineDraft.nextCursor;
       final line = _materializeLine(
@@ -497,6 +515,8 @@ class LayoutResultBuilder {
         breakPositions,
         context,
         lineInlineOffset: lineInlineOffset,
+        baseBoundaryAdjustments: rubyBoundaryAdjustments,
+        baseTrailingExtent: rubyTrailingExtent,
       );
       lines.add(line.line);
       hitRegions.addAll(line.hitRegions);
@@ -525,6 +545,7 @@ class LayoutResultBuilder {
     Set<int> breakPositions,
     _BlockContext context, {
     required bool firstLine,
+    required Map<int, double> baseBoundaryAdjustments,
   }) {
     final indent = firstLine ? context.firstIndent : context.restIndent;
     final available = math.max(context.resolvedLineExtent - indent, 1.0);
@@ -544,7 +565,10 @@ class LayoutResultBuilder {
         cursor += 1;
         continue;
       }
-      final nextExtent = visibleExtent + atom.blockExtent;
+      final nextExtent =
+          visibleExtent +
+          (baseBoundaryAdjustments[cursor] ?? 0) +
+          atom.blockExtent;
       if (nextExtent <= available || !hadVisible) {
         visibleExtent = nextExtent;
         hadVisible = true;
@@ -590,7 +614,8 @@ class LayoutResultBuilder {
         end: end,
         nextCursor: end,
         indent: indent,
-        textExtent: atom.blockExtent,
+        textExtent:
+            atom.blockExtent + (baseBoundaryAdjustments[start] ?? 0),
       );
     }
 
@@ -610,47 +635,35 @@ class LayoutResultBuilder {
     Set<int> breakPositions,
     _BlockContext context, {
     required double lineInlineOffset,
+    required Map<int, double> baseBoundaryAdjustments,
+    required double baseTrailingExtent,
   }) {
     final hitRegions = <LayoutHitRegion>[];
     final trackingAdjustments = _resolveTrackingAdjustments(
       model.atoms,
       draft,
       context,
+      baseBoundaryAdjustments: baseBoundaryAdjustments,
+      baseTrailingExtent: baseTrailingExtent,
     );
     final initialPlacements = _buildAtomPlacements(
       model.atoms,
       draft,
       context,
-      boundaryAdjustments: trackingAdjustments,
+      boundaryAdjustments: _mergeBoundaryAdjustments(
+        baseBoundaryAdjustments,
+        trackingAdjustments,
+      ),
     );
-    final rubyAdjustments = _resolveRubyBaseTrackingAdjustments(
-      model,
-      initialPlacements,
-      draft.start,
-      draft.end,
+    final combinedBoundaryAdjustments = _mergeBoundaryAdjustments(
+      baseBoundaryAdjustments,
+      trackingAdjustments,
     );
-    final combinedBoundaryAdjustments = <int, double>{...trackingAdjustments};
-    for (final entry in rubyAdjustments.boundaryAdjustments.entries) {
-      combinedBoundaryAdjustments.update(
-        entry.key,
-        (current) => current + entry.value,
-        ifAbsent: () => entry.value,
-      );
-    }
-    final atomPlacements =
-        rubyAdjustments.boundaryAdjustments.isEmpty &&
-            rubyAdjustments.trailingExtent == 0
-        ? initialPlacements
-        : _buildAtomPlacements(
-            model.atoms,
-            draft,
-            context,
-            boundaryAdjustments: combinedBoundaryAdjustments,
-          );
+    final atomPlacements = initialPlacements;
     final justifiedTextExtent =
         draft.textExtent +
         combinedBoundaryAdjustments.values.fold<double>(
-          rubyAdjustments.trailingExtent,
+          baseTrailingExtent,
           (sum, value) => sum + value,
         );
     final fragments = <LayoutFragment>[];
@@ -764,11 +777,22 @@ class LayoutResultBuilder {
     List<_Atom> atoms,
     _TakenLineDraft draft,
     _BlockContext context,
+    {
+    required Map<int, double> baseBoundaryAdjustments,
+    required double baseTrailingExtent,
+  }
   ) {
     if (draft.nextCursor >= atoms.length) {
       return const <int, double>{};
     }
-    final slack = context.resolvedLineExtent - draft.textExtent;
+    var occupied = draft.textExtent;
+    for (var index = draft.start; index < draft.end; index += 1) {
+      occupied += baseBoundaryAdjustments[index] ?? 0;
+    }
+    if (draft.end >= atoms.length) {
+      occupied += baseTrailingExtent;
+    }
+    final slack = context.resolvedLineExtent - occupied;
     if (slack <= 0) {
       return const <int, double>{};
     }
@@ -791,6 +815,27 @@ class LayoutResultBuilder {
 
     final addition = slack / adjustable.length;
     return <int, double>{for (final index in adjustable) index: addition};
+  }
+
+  Map<int, double> _mergeBoundaryAdjustments(
+    Map<int, double> base,
+    Map<int, double> extra,
+  ) {
+    if (base.isEmpty) {
+      return extra;
+    }
+    if (extra.isEmpty) {
+      return base;
+    }
+    final merged = <int, double>{...base};
+    for (final entry in extra.entries) {
+      merged.update(
+        entry.key,
+        (current) => current + entry.value,
+        ifAbsent: () => entry.value,
+      );
+    }
+    return merged;
   }
 
   Map<int, _FragmentPlacement> _buildAtomPlacements(
@@ -1309,26 +1354,7 @@ class LayoutResultBuilder {
     for (final node in nodes) {
       switch (node) {
         case LayoutTextInline():
-          final characters = _splitCharacters(node.text);
-          for (var index = 0; index < characters.length; index += 1) {
-            final char = characters[index];
-            model.atoms.add(
-              _Atom.text(
-                span: node.span,
-                text: char,
-                style: context.publicStyle,
-                blockExtent: _resolveTextBlockExtent(
-                  char,
-                  nextText: index + 1 < characters.length
-                      ? characters[index + 1]
-                      : null,
-                  context: context,
-                ),
-                inlineExtent: context.fontScale,
-                issues: node.issues,
-              ),
-            );
-          }
+          _emitTextInline(node, model, context);
         case LayoutGaijiInline():
           final resolved = _gaijiResolver.resolve(
             description: node.description,
@@ -1618,6 +1644,159 @@ class LayoutResultBuilder {
     );
   }
 
+  void _emitTextInline(
+    LayoutTextInline node,
+    _ParagraphModel model,
+    _InlineContext context,
+  ) {
+    final characters = _splitCharacters(node.text);
+    if (characters.isEmpty) {
+      return;
+    }
+
+    if (context.flowKind == FlowKind.yokogumi) {
+      _emitSidewaysRun(node.text, node, model, context);
+      return;
+    }
+
+    final plainBuffer = StringBuffer();
+    final sidewaysBuffer = StringBuffer();
+
+    void flushPlain() {
+      final text = plainBuffer.toString();
+      if (text.isEmpty) {
+        return;
+      }
+      final plainChars = _splitCharacters(text);
+      for (var index = 0; index < plainChars.length; index += 1) {
+        final char = plainChars[index];
+        model.atoms.add(
+          _Atom.text(
+            span: node.span,
+            text: char,
+            style: context.publicStyle,
+            blockExtent: _resolveTextBlockExtent(
+              char,
+              nextText: index + 1 < plainChars.length ? plainChars[index + 1] : null,
+              context: context,
+            ),
+            inlineExtent: context.fontScale,
+            issues: node.issues,
+          ),
+        );
+      }
+      plainBuffer.clear();
+    }
+
+    void flushSideways() {
+      final text = sidewaysBuffer.toString();
+      if (text.isEmpty) {
+        return;
+      }
+      if (_containsLatinLetter(text)) {
+        _emitSidewaysRun(text, node, model, context);
+      } else {
+        final chars = _splitCharacters(text);
+        for (var index = 0; index < chars.length; index += 1) {
+          final char = chars[index];
+          model.atoms.add(
+            _Atom.text(
+              span: node.span,
+              text: char,
+              style: context.publicStyle,
+              blockExtent: _resolveTextBlockExtent(
+                char,
+                nextText: index + 1 < chars.length ? chars[index + 1] : null,
+                context: context,
+              ),
+              inlineExtent: context.fontScale,
+              issues: node.issues,
+            ),
+          );
+        }
+      }
+      sidewaysBuffer.clear();
+    }
+
+    for (final character in characters) {
+      if (_isSidewaysCharacter(character)) {
+        flushPlain();
+        sidewaysBuffer.write(character);
+      } else {
+        flushSideways();
+        plainBuffer.write(character);
+      }
+    }
+
+    flushPlain();
+    flushSideways();
+  }
+
+  void _emitSidewaysTextAtoms(
+    LayoutTextInline node,
+    _ParagraphModel model,
+    _InlineContext context,
+  ) {
+    _emitSidewaysRun(node.text, node, model, context);
+  }
+
+  void _emitSidewaysRun(
+    String text,
+    LayoutTextInline node,
+    _ParagraphModel model,
+    _InlineContext context,
+  ) {
+    if (node.text.isEmpty) {
+      return;
+    }
+
+    final breaker = UnicodeLineBreaker(text);
+    var segmentStart = 0;
+
+    while (true) {
+      final breakpoint = breaker.nextBreak();
+      if (breakpoint == null) {
+        break;
+      }
+      final segment = text.substring(segmentStart, breakpoint.position);
+      if (segment.isNotEmpty) {
+        model.atoms.add(
+          _legacyDraftToAtom(
+            _LegacyAtomDraft(segment),
+            context,
+            node.span,
+            node.issues,
+          ),
+        );
+      }
+      segmentStart = breakpoint.position;
+    }
+  }
+
+  _Atom _legacyDraftToAtom(
+    _LegacyAtomDraft draft,
+    _InlineContext context,
+    SourceSpan span,
+    List<LayoutIssue> issues,
+  ) {
+    final nextText = draft.text.runes.length == 1 ? null : null;
+    final blockExtent = _isSidewaysAtomText(draft.text)
+        ? _measureSidewaysTextExtent(draft.text, context)
+        : _resolveTextBlockExtent(
+            draft.text,
+            nextText: nextText,
+            context: context,
+          );
+    return _Atom.text(
+      span: span,
+      text: draft.text,
+      style: context.publicStyle,
+      blockExtent: blockExtent,
+      inlineExtent: context.fontScale,
+      issues: issues,
+    );
+  }
+
   void _applyLegacyKinsoku(List<_Atom> atoms) {
     final visible = <({int atomIndex, int offset, String text})>[];
     var offset = 0;
@@ -1849,6 +2028,11 @@ class LayoutResultBuilder {
     required String? nextText,
     required _InlineContext context,
   }) {
+    if (text.runes.length > 1) {
+      return _isSidewaysAtomText(text)
+          ? _measureSidewaysTextExtent(text, context)
+          : context.fontScale * text.runes.length;
+    }
     if (_zeroExtentGlyphs.contains(text)) {
       return 0;
     }
@@ -1872,6 +2056,95 @@ class LayoutResultBuilder {
     }
 
     return context.fontScale;
+  }
+
+  bool _isSidewaysAtomText(String text) {
+    if (text.isEmpty) {
+      return false;
+    }
+    var sawSideways = false;
+    for (final character in _splitCharacters(text)) {
+      if (character == _wordJoiner) {
+        sawSideways = true;
+        continue;
+      }
+      if (character == ' ') {
+        sawSideways = true;
+        continue;
+      }
+      if (_sidewaysRotatedGlyphs.contains(character)) {
+        sawSideways = true;
+        continue;
+      }
+      final type = getUtr50Type(character.runes.firstOrNull);
+      if (type == 'R' || type == 'r') {
+        sawSideways = true;
+        continue;
+      }
+      return false;
+    }
+    return sawSideways;
+  }
+
+  bool _isSidewaysCharacter(String character) {
+    if (character.isEmpty || character == '―') {
+      return false;
+    }
+    if (character == _wordJoiner || character == ' ') {
+      return true;
+    }
+    final rune = character.runes.firstOrNull ?? 0;
+    final isAsciiLetterOrDigit =
+        (rune >= 0x30 && rune <= 0x39) ||
+        (rune >= 0x41 && rune <= 0x5a) ||
+        (rune >= 0x61 && rune <= 0x7a);
+    final isFullwidthLetterOrDigit =
+        (rune >= 0xff10 && rune <= 0xff19) ||
+        (rune >= 0xff21 && rune <= 0xff3a) ||
+        (rune >= 0xff41 && rune <= 0xff5a);
+    const sidewaysPunctuation = '.,:;!?\'"()[]{}&+-/';
+    const fullwidthSidewaysPunctuation = '．，：；！？（）［］｛｝＆＋－／';
+    return isAsciiLetterOrDigit ||
+        isFullwidthLetterOrDigit ||
+        sidewaysPunctuation.contains(character) ||
+        fullwidthSidewaysPunctuation.contains(character);
+  }
+
+  bool _containsLatinLetter(String text) {
+    for (final rune in text.runes) {
+      if ((rune >= 0x41 && rune <= 0x5a) ||
+          (rune >= 0x61 && rune <= 0x7a) ||
+          (rune >= 0xff21 && rune <= 0xff3a) ||
+          (rune >= 0xff41 && rune <= 0xff5a)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  double _measureSidewaysTextExtent(String text, _InlineContext context) {
+    final fontSize = context.fontScale * constraints.baseFontSize;
+    if (fontSize <= 0) {
+      return context.fontScale;
+    }
+    final painter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+          fontSize: fontSize,
+          fontFamily: _measurementFontFamily,
+          package: _measurementFontPackage,
+          height: 1,
+          leadingDistribution: TextLeadingDistribution.even,
+          textBaseline: TextBaseline.ideographic,
+          fontWeight: context.bold ? FontWeight.w700 : FontWeight.w400,
+          fontStyle: context.italic ? FontStyle.italic : FontStyle.normal,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+    )..layout();
+    return math.max(painter.width / fontSize, context.fontScale);
   }
 
   Set<int> _computeLineBreakOpportunities(List<_Atom> atoms) {
@@ -2016,6 +2289,91 @@ class LayoutResultBuilder {
     }
     return characters.length * constraints.rubyScale +
         (characters.length - 1) * interCharacterSpacing;
+  }
+
+  _RubyBaseTrackingAdjustments _resolveLegacyRubyTrackingAdjustments(
+    _ParagraphModel model,
+  ) {
+    final boundaryAdjustments = <int, double>{};
+    var trailingExtent = 0.0;
+
+    for (final ruby in model.rubies) {
+      final start = ruby.start;
+      final end = ruby.end;
+      if (end <= start) {
+        continue;
+      }
+
+      final baseExtent = model.atoms
+          .sublist(start, end)
+          .fold<double>(0, (sum, atom) => sum + atom.blockExtent);
+      final rubyExtent = _rubyTextExtent(
+        ruby.text,
+        _rubyInterCharacterSpacing(ruby.text, math.max(baseExtent, 0)),
+      );
+      var overflow = rubyExtent - baseExtent;
+      if (overflow <= 0) {
+        continue;
+      }
+
+      var startPadding = 0.0;
+      var endPadding = 0.0;
+      if (start > 0) {
+        final overlapsStart = model.rubies.any(
+          (candidate) =>
+              candidate.kind == ruby.kind &&
+              candidate.start < ruby.start &&
+              candidate.end >= ruby.start,
+        );
+        final previousText = model.atoms[start - 1].breakText;
+        if (!overlapsStart &&
+            previousText.isNotEmpty &&
+            !_cjkIdeographPattern.hasMatch(
+              String.fromCharCode(previousText.runes.last),
+            )) {
+          startPadding = constraints.baseFontSize / 2;
+        }
+      }
+
+      final overlapsEnd = model.rubies.any(
+        (candidate) =>
+            candidate.kind == ruby.kind &&
+            candidate.start <= ruby.end &&
+            candidate.end > ruby.end,
+      );
+      if (!overlapsEnd && end < model.atoms.length) {
+        final nextText = model.atoms[end].breakText;
+        if (nextText.isNotEmpty &&
+            !_cjkIdeographPattern.hasMatch(
+              String.fromCharCode(nextText.runes.first),
+            )) {
+          endPadding = constraints.baseFontSize / 2;
+        }
+      }
+
+      overflow -= startPadding + endPadding;
+      if (overflow <= 0) {
+        continue;
+      }
+
+      final tracking = overflow / (end - start + 1);
+      for (var index = start; index <= end; index += 1) {
+        if (index < model.atoms.length) {
+          boundaryAdjustments.update(
+            index,
+            (current) => current + tracking,
+            ifAbsent: () => tracking,
+          );
+        } else {
+          trailingExtent += tracking;
+        }
+      }
+    }
+
+    return _RubyBaseTrackingAdjustments(
+      boundaryAdjustments: boundaryAdjustments,
+      trailingExtent: trailingExtent,
+    );
   }
 
   double _crossOffsetForMarker(_RangeMarker marker, _BlockContext context) {
@@ -2682,6 +3040,12 @@ class _RubyBaseTrackingAdjustments {
 
   final Map<int, double> boundaryAdjustments;
   final double trailingExtent;
+}
+
+class _LegacyAtomDraft {
+  const _LegacyAtomDraft(this.text);
+
+  final String text;
 }
 
 class _BlockContext {
