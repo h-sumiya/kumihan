@@ -34,6 +34,7 @@ class LayoutResultBuilder {
       '$_closingBrackets$_punctuationMarks・￼゛゜';
   static const String _legacyRotatedAtomTypes = '…─';
   static final RegExp _cjkIdeographPattern = RegExp(r'[⺀-⻳㐁-䶮一-龻豈-龎仝々〆〇ヶ]');
+  static final RegExp _hiraganaPattern = RegExp(r'[ぁ-んゝゞ]');
   static const String _wordJoiner = '\u2060';
   static const String _measurementFontFamily = 'WebFontMincho';
   static const String _measurementFontPackage = 'kumihan';
@@ -455,6 +456,9 @@ class LayoutResultBuilder {
     final lines = <LayoutLine>[];
     final hitRegions = <LayoutHitRegion>[];
     final breakPositions = _computeLineBreakOpportunities(model.atoms);
+    final rubyTrackingAdjustments = _resolveLegacyRubyTrackingAdjustments(
+      model,
+    );
     var lineInlineOffset = groupInlineOffset;
     var atomCursor = 0;
     var lineIndex = 0;
@@ -501,7 +505,7 @@ class LayoutResultBuilder {
         breakPositions,
         context,
         firstLine: firstLine,
-        baseBoundaryAdjustments: const <int, double>{},
+        baseBoundaryAdjustments: rubyTrackingAdjustments.boundaryAdjustments,
       );
       atomCursor = lineDraft.nextCursor;
       final line = _materializeLine(
@@ -511,8 +515,8 @@ class LayoutResultBuilder {
         breakPositions,
         context,
         lineInlineOffset: lineInlineOffset,
-        baseBoundaryAdjustments: const <int, double>{},
-        baseTrailingExtent: 0,
+        baseBoundaryAdjustments: rubyTrackingAdjustments.boundaryAdjustments,
+        baseTrailingExtent: rubyTrackingAdjustments.trailingExtent,
       );
       lines.add(line.line);
       hitRegions.addAll(line.hitRegions);
@@ -687,30 +691,18 @@ class LayoutResultBuilder {
       baseBoundaryAdjustments,
       trackingAdjustments,
     );
-    final rubyTrackingAdjustments = _resolveRubyBaseTrackingAdjustments(
-      model,
-      initialPlacements,
-      draft.start,
-      draft.end,
-    );
-    final combinedBoundaryAdjustments = _mergeBoundaryAdjustments(
-      lineBoundaryAdjustments,
-      rubyTrackingAdjustments.boundaryAdjustments,
-    );
-    final atomPlacements = rubyTrackingAdjustments.boundaryAdjustments.isEmpty
-        ? initialPlacements
-        : _buildAtomPlacements(
-            model.atoms,
-            draft,
-            context,
-            boundaryAdjustments: combinedBoundaryAdjustments,
-          );
+    final combinedBoundaryAdjustments = lineBoundaryAdjustments;
+    final atomPlacements = initialPlacements;
+    final lineBoundaryAdjustmentExtent = combinedBoundaryAdjustments.entries
+        .where((entry) => entry.key >= draft.start && entry.key < draft.end)
+        .fold<double>(0, (sum, entry) => sum + entry.value);
+    final trailingAdjustmentExtent = draft.end >= model.atoms.length
+        ? baseTrailingExtent
+        : 0;
     final justifiedTextExtent =
         draft.textExtent +
-        combinedBoundaryAdjustments.values.fold<double>(
-          baseTrailingExtent + rubyTrackingAdjustments.trailingExtent,
-          (sum, value) => sum + value,
-        );
+        lineBoundaryAdjustmentExtent +
+        trailingAdjustmentExtent;
     final fragments = <LayoutFragment>[];
     for (var index = draft.start; index < draft.end; index += 1) {
       final atom = model.atoms[index];
@@ -823,12 +815,10 @@ class LayoutResultBuilder {
   Map<int, double> _resolveTrackingAdjustments(
     List<_Atom> atoms,
     _TakenLineDraft draft,
-    _BlockContext context,
-    {
+    _BlockContext context, {
     required Map<int, double> baseBoundaryAdjustments,
     required double baseTrailingExtent,
-  }
-  ) {
+  }) {
     if (draft.nextCursor >= atoms.length) {
       return const <int, double>{};
     }
@@ -1007,11 +997,15 @@ class LayoutResultBuilder {
     _FragmentPlacement placement,
     double lineInlineOffset,
   ) {
+    final legacyTcyBlockOffset =
+        atom.style.directionKind == DirectionKind.tateChuYoko
+        ? 0.05 * atom.style.fontScale
+        : 0.0;
     return switch (atom.kind) {
       _AtomKind.text => LayoutTextFragment(
         span: atom.span,
         inlineOffset: lineInlineOffset,
-        blockOffset: placement.blockOffset,
+        blockOffset: placement.blockOffset + legacyTcyBlockOffset,
         inlineExtent: placement.inlineExtent,
         blockExtent: placement.blockExtent,
         style: atom.style,
@@ -1081,11 +1075,9 @@ class LayoutResultBuilder {
     int lineStart,
     int lineEnd,
     double lineInlineOffset,
-    _BlockContext context,
-    {
+    _BlockContext context, {
     required Map<int, double> boundaryAdjustments,
-  }
-  ) {
+  }) {
     final rubies = <LayoutRubyPlacement>[];
     final rubyBottomByKind = <String, double>{};
     for (final ruby in model.rubies) {
@@ -1094,17 +1086,32 @@ class LayoutResultBuilder {
       if (segmentEnd <= segmentStart) {
         continue;
       }
-      final baseAtoms = <int>[
+      var baseAtoms = <int>[
         for (var index = segmentStart; index < segmentEnd; index += 1)
           if (placements[index] != null) index,
       ];
       if (baseAtoms.isEmpty) {
         continue;
       }
+      var trimmedLeadingHiraganaForGaiji = false;
+      if (baseAtoms.length >= 2 && ruby.kind == RubyKind.phonetic) {
+        final firstAtom = model.atoms[baseAtoms.first];
+        final secondAtom = model.atoms[baseAtoms[1]];
+        final firstIsHiraganaText =
+            firstAtom.kind == _AtomKind.text &&
+            firstAtom.text.runes.length == 1 &&
+            _hiraganaPattern.hasMatch(firstAtom.text);
+        final secondIsGaiji =
+            secondAtom.kind == _AtomKind.gaiji ||
+            secondAtom.kind == _AtomKind.unsupported;
+        if (firstIsHiraganaText && secondIsGaiji) {
+          baseAtoms = baseAtoms.sublist(1);
+          trimmedLeadingHiraganaForGaiji = true;
+        }
+      }
       final first = placements[baseAtoms.first]!;
       final last = placements[baseAtoms.last]!;
       final segmentStartsRuby = segmentStart == ruby.start;
-      final leadingAdjustment = boundaryAdjustments[baseAtoms.first] ?? 0;
       final blockStart = first.blockOffset;
       final blockEnd = last.blockOffset + last.blockExtent;
       final segmentText = _sliceRubyTextForLine(ruby, lineStart, lineEnd);
@@ -1124,13 +1131,15 @@ class LayoutResultBuilder {
         interCharacterSpacing,
       );
       final baseExtent = math.max(blockEnd - blockStart, 0);
-      final edgePadding = _legacyRubyEdgePadding(model, ruby);
+      var edgePadding = _legacyRubyEdgePadding(model, ruby);
+      if (trimmedLeadingHiraganaForGaiji) {
+        edgePadding = (startPadding: 0.0, endPadding: 0.0);
+      }
       final inlineExtent = math.max(
         context.crossExtent * constraints.rubyScale,
         constraints.baseFontSize * constraints.rubyScale,
       );
-      var rubyBlockOffset =
-          blockStart + (baseExtent - rubyBlockExtent) / 2;
+      var rubyBlockOffset = blockStart + (baseExtent - rubyBlockExtent) / 2;
       final rubyKindKey = '${ruby.kind.name}:${ruby.position.name}';
       final previousBottom = rubyBottomByKind[rubyKindKey] ?? 0;
       if (segmentStartsRuby && rubyBlockExtent > baseExtent) {
@@ -1178,11 +1187,9 @@ class LayoutResultBuilder {
     int lineStart,
     int lineEnd,
     double lineInlineOffset,
-    _BlockContext context,
-    {
+    _BlockContext context, {
     required Map<int, double> boundaryAdjustments,
-  }
-  ) {
+  }) {
     final markers = <LayoutMarker>[];
     for (final marker in model.rangeMarkers) {
       final segmentStart = math.max(marker.start, lineStart);
@@ -1207,8 +1214,7 @@ class LayoutResultBuilder {
               lineInlineOffset: lineInlineOffset,
               crossOffset: _crossOffsetForMarker(marker, context),
               blockOffset:
-                  placement.blockOffset -
-                  (boundaryAdjustments[atomIndex] ?? 0),
+                  placement.blockOffset - (boundaryAdjustments[atomIndex] ?? 0),
               blockExtent: placement.blockExtent,
               inlineExtent: _markerInlineExtent(marker, context),
               emphasisMark: marker.emphasisMark,
@@ -1778,7 +1784,9 @@ class LayoutResultBuilder {
             style: context.publicStyle,
             blockExtent: _resolveTextBlockExtent(
               char,
-              nextText: index + 1 < plainChars.length ? plainChars[index + 1] : null,
+              nextText: index + 1 < plainChars.length
+                  ? plainChars[index + 1]
+                  : null,
               context: context,
             ),
             inlineExtent: context.fontScale,
@@ -1930,6 +1938,13 @@ class LayoutResultBuilder {
     for (final entry in visible) {
       if (entry.offset != 0 && breaks.contains(entry.offset)) {
         segmentStart = entry.offset;
+      }
+      final atom = atoms[entry.atomIndex];
+      if (atom.style.directionKind == DirectionKind.tateChuYoko) {
+        atoms[entry.atomIndex] = atom.copyWith(legacyKinsoku: false);
+        previousAllowed = true;
+        previousJoin = false;
+        continue;
       }
       final text = entry.text;
       final firstChar = String.fromCharCode(text.runes.first);
@@ -2204,11 +2219,9 @@ class LayoutResultBuilder {
         (rune >= 0xff21 && rune <= 0xff3a) ||
         (rune >= 0xff41 && rune <= 0xff5a);
     const sidewaysPunctuation = '.,:;!?\'"()[]{}&+-/';
-    const fullwidthSidewaysPunctuation = '．，：；！？（）［］｛｝＆＋－／';
     return isAsciiLetterOrDigit ||
         isFullwidthLetterOrDigit ||
-        sidewaysPunctuation.contains(character) ||
-        fullwidthSidewaysPunctuation.contains(character);
+        sidewaysPunctuation.contains(character);
   }
 
   bool _containsLatinLetter(String text) {

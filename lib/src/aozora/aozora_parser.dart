@@ -407,10 +407,7 @@ class AozoraAstParser {
       return _ParagraphPrefix.indent(directive, indent);
     }
     if (body == '地付き') {
-      return _ParagraphPrefix.alignment(
-        directive,
-        BlockAlignmentKind.chitsuki,
-      );
+      return _ParagraphPrefix.alignment(directive, BlockAlignmentKind.chitsuki);
     }
     if (body == '字上げ' || body.endsWith('字上げ')) {
       return _ParagraphPrefix.alignment(directive, BlockAlignmentKind.jiage);
