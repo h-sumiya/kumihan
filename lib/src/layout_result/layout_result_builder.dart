@@ -215,14 +215,11 @@ class LayoutResultBuilder {
     final model = _ParagraphModel(span: block.span);
     _emitInlines(block.children, model, context.inlineContext);
     _applyLegacyKinsoku(model.atoms);
-    final rubyTracking = _resolveLegacyRubyTrackingAdjustments(model);
     final lines = _buildLines(
       block.span,
       model,
       context,
       groupInlineOffset: inlineOffset,
-      rubyBoundaryAdjustments: rubyTracking.boundaryAdjustments,
-      rubyTrailingExtent: rubyTracking.trailingExtent,
     );
     final group = LayoutLineGroup(
       span: block.span,
@@ -454,8 +451,6 @@ class LayoutResultBuilder {
     _ParagraphModel model,
     _BlockContext context, {
     required double groupInlineOffset,
-    required Map<int, double> rubyBoundaryAdjustments,
-    required double rubyTrailingExtent,
   }) {
     final lines = <LayoutLine>[];
     final hitRegions = <LayoutHitRegion>[];
@@ -480,6 +475,7 @@ class LayoutResultBuilder {
           0,
           lineInlineOffset,
           context,
+          boundaryAdjustments: const <int, double>{},
         ),
         markers: _frameMarkersForEmptyLine(
           span,
@@ -505,7 +501,7 @@ class LayoutResultBuilder {
         breakPositions,
         context,
         firstLine: firstLine,
-        baseBoundaryAdjustments: rubyBoundaryAdjustments,
+        baseBoundaryAdjustments: const <int, double>{},
       );
       atomCursor = lineDraft.nextCursor;
       final line = _materializeLine(
@@ -515,8 +511,8 @@ class LayoutResultBuilder {
         breakPositions,
         context,
         lineInlineOffset: lineInlineOffset,
-        baseBoundaryAdjustments: rubyBoundaryAdjustments,
-        baseTrailingExtent: rubyTrailingExtent,
+        baseBoundaryAdjustments: const <int, double>{},
+        baseTrailingExtent: 0,
       );
       lines.add(line.line);
       hitRegions.addAll(line.hitRegions);
@@ -554,6 +550,14 @@ class LayoutResultBuilder {
     var hadVisible = false;
     var lastBreakCursor = -1;
     var extentAtLastBreak = 0.0;
+    var appliedHangingAtLineEnd = false;
+    bool isHangingLineEndAtom(_Atom atom) {
+      if (atom.text.isEmpty) {
+        return false;
+      }
+      final lastCharacter = String.fromCharCode(atom.text.runes.last);
+      return _hangingLineEndGlyphs.contains(lastCharacter);
+    }
 
     while (cursor < atoms.length) {
       final atom = atoms[cursor];
@@ -565,28 +569,33 @@ class LayoutResultBuilder {
         cursor += 1;
         continue;
       }
+      if (!atom.legacyKinsoku) {
+        lastBreakCursor = cursor;
+        extentAtLastBreak = visibleExtent;
+      }
+      final leadingOpenAdjustment =
+          cursor == start &&
+              start > 0 &&
+              atom.kind == _AtomKind.text &&
+              _openingBrackets.contains(atom.text)
+          ? -atom.inlineExtent / 2
+          : 0.0;
       final nextExtent =
           visibleExtent +
+          leadingOpenAdjustment +
           (baseBoundaryAdjustments[cursor] ?? 0) +
           atom.blockExtent;
       if (nextExtent <= available || !hadVisible) {
         visibleExtent = nextExtent;
         hadVisible = true;
-        final nextCursor = _nextVisibleAtomCursor(atoms, cursor + 1);
-        if (nextCursor >= 0 &&
-            nextCursor < atoms.length &&
-            breakPositions.contains(nextCursor) &&
-            _mayBreakBetween(atom, atoms[nextCursor])) {
-          lastBreakCursor = nextCursor;
-          extentAtLastBreak = visibleExtent;
-        }
         cursor += 1;
         continue;
       }
-      if (_hangingLineEndGlyphs.contains(atom.text) &&
-          visibleExtent + atom.blockExtent / 2 <= available) {
-        visibleExtent = nextExtent - atom.blockExtent / 2;
+      if (isHangingLineEndAtom(atom) &&
+          visibleExtent + atom.inlineExtent / 2 <= available) {
+        visibleExtent = nextExtent - atom.inlineExtent / 2;
         hadVisible = true;
+        appliedHangingAtLineEnd = true;
         cursor += 1;
         break;
       }
@@ -595,6 +604,17 @@ class LayoutResultBuilder {
         visibleExtent = extentAtLastBreak;
       }
       break;
+    }
+
+    if (hadVisible && !appliedHangingAtLineEnd) {
+      final lastVisibleIndex = _previousVisibleAtomCursor(atoms, cursor - 1);
+      if (lastVisibleIndex >= start &&
+          isHangingLineEndAtom(atoms[lastVisibleIndex])) {
+        visibleExtent = math.max(
+          visibleExtent - atoms[lastVisibleIndex].inlineExtent / 2,
+          0,
+        );
+      }
     }
 
     if (cursor == start && start < atoms.length) {
@@ -609,13 +629,21 @@ class LayoutResultBuilder {
         );
       }
       final end = _consumeLeadingMarkers(atoms, start + 1);
+      final leadingOpenAdjustment =
+          start > 0 &&
+              atom.kind == _AtomKind.text &&
+              _openingBrackets.contains(atom.text)
+          ? -atom.inlineExtent / 2
+          : 0.0;
       return _TakenLineDraft(
         start: start,
         end: end,
         nextCursor: end,
         indent: indent,
         textExtent:
-            atom.blockExtent + (baseBoundaryAdjustments[start] ?? 0),
+            atom.blockExtent +
+            (baseBoundaryAdjustments[start] ?? 0) +
+            leadingOpenAdjustment,
       );
     }
 
@@ -655,15 +683,32 @@ class LayoutResultBuilder {
         trackingAdjustments,
       ),
     );
-    final combinedBoundaryAdjustments = _mergeBoundaryAdjustments(
+    final lineBoundaryAdjustments = _mergeBoundaryAdjustments(
       baseBoundaryAdjustments,
       trackingAdjustments,
     );
-    final atomPlacements = initialPlacements;
+    final rubyTrackingAdjustments = _resolveRubyBaseTrackingAdjustments(
+      model,
+      initialPlacements,
+      draft.start,
+      draft.end,
+    );
+    final combinedBoundaryAdjustments = _mergeBoundaryAdjustments(
+      lineBoundaryAdjustments,
+      rubyTrackingAdjustments.boundaryAdjustments,
+    );
+    final atomPlacements = rubyTrackingAdjustments.boundaryAdjustments.isEmpty
+        ? initialPlacements
+        : _buildAtomPlacements(
+            model.atoms,
+            draft,
+            context,
+            boundaryAdjustments: combinedBoundaryAdjustments,
+          );
     final justifiedTextExtent =
         draft.textExtent +
         combinedBoundaryAdjustments.values.fold<double>(
-          baseTrailingExtent,
+          baseTrailingExtent + rubyTrackingAdjustments.trailingExtent,
           (sum, value) => sum + value,
         );
     final fragments = <LayoutFragment>[];
@@ -711,6 +756,7 @@ class LayoutResultBuilder {
       draft.end,
       lineInlineOffset,
       context,
+      boundaryAdjustments: combinedBoundaryAdjustments,
     );
     final markers = <LayoutMarker>[
       ..._buildRangeMarkersForLine(
@@ -720,6 +766,7 @@ class LayoutResultBuilder {
         draft.end,
         lineInlineOffset,
         context,
+        boundaryAdjustments: combinedBoundaryAdjustments,
       ),
       ..._buildPointMarkersForLine(
         model,
@@ -859,7 +906,7 @@ class LayoutResultBuilder {
           draft.start > 0 &&
           atom.kind == _AtomKind.text &&
           _openingBrackets.contains(atom.text)) {
-        blockCursor -= atom.blockExtent / 2;
+        blockCursor -= atom.inlineExtent / 2;
       }
       blockCursor += boundaryAdjustments[index] ?? 0;
       if (atom.kind.isMarkerOnly) {
@@ -928,12 +975,12 @@ class LayoutResultBuilder {
       );
       if (previousIndex >= 0 &&
           !_cjkIdeographPattern.hasMatch(model.atoms[previousIndex].text)) {
-        overflow -= 0.5;
+        overflow -= constraints.baseFontSize / 2;
       }
       final nextIndex = _nextVisibleAtomCursor(model.atoms, baseAtoms.last + 1);
       if (nextIndex >= 0 &&
           !_cjkIdeographPattern.hasMatch(model.atoms[nextIndex].text)) {
-        overflow -= 0.5;
+        overflow -= constraints.baseFontSize / 2;
       }
       if (overflow <= 0) {
         continue;
@@ -1035,8 +1082,12 @@ class LayoutResultBuilder {
     int lineEnd,
     double lineInlineOffset,
     _BlockContext context,
+    {
+    required Map<int, double> boundaryAdjustments,
+  }
   ) {
     final rubies = <LayoutRubyPlacement>[];
+    final rubyBottomByKind = <String, double>{};
     for (final ruby in model.rubies) {
       final segmentStart = math.max(ruby.start, lineStart);
       final segmentEnd = math.min(ruby.end, lineEnd);
@@ -1052,6 +1103,8 @@ class LayoutResultBuilder {
       }
       final first = placements[baseAtoms.first]!;
       final last = placements[baseAtoms.last]!;
+      final segmentStartsRuby = segmentStart == ruby.start;
+      final leadingAdjustment = boundaryAdjustments[baseAtoms.first] ?? 0;
       final blockStart = first.blockOffset;
       final blockEnd = last.blockOffset + last.blockExtent;
       final segmentText = _sliceRubyTextForLine(ruby, lineStart, lineEnd);
@@ -1070,9 +1123,31 @@ class LayoutResultBuilder {
         segmentText,
         interCharacterSpacing,
       );
+      final baseExtent = math.max(blockEnd - blockStart, 0);
+      final edgePadding = _legacyRubyEdgePadding(model, ruby);
       final inlineExtent = math.max(
         context.crossExtent * constraints.rubyScale,
         constraints.baseFontSize * constraints.rubyScale,
+      );
+      var rubyBlockOffset =
+          blockStart + (baseExtent - rubyBlockExtent) / 2;
+      final rubyKindKey = '${ruby.kind.name}:${ruby.position.name}';
+      final previousBottom = rubyBottomByKind[rubyKindKey] ?? 0;
+      if (segmentStartsRuby && rubyBlockExtent > baseExtent) {
+        final startWithoutTrailing = first.blockOffset;
+        if (edgePadding.startPadding == 0 && edgePadding.endPadding > 0) {
+          rubyBlockOffset = math.max(
+            rubyBlockOffset,
+            math.max(startWithoutTrailing, previousBottom),
+          );
+        } else if (edgePadding.startPadding > 0 &&
+            edgePadding.endPadding == 0) {
+          rubyBlockOffset = startWithoutTrailing - edgePadding.startPadding;
+        }
+      }
+      rubyBottomByKind[rubyKindKey] = math.max(
+        previousBottom,
+        rubyBlockOffset + rubyBlockExtent,
       );
       rubies.add(
         LayoutRubyPlacement(
@@ -1086,9 +1161,7 @@ class LayoutResultBuilder {
             inlineExtent,
             context,
           ),
-          blockOffset:
-              blockStart +
-              (math.max(blockEnd - blockStart, 0) - rubyBlockExtent) / 2,
+          blockOffset: rubyBlockOffset,
           blockExtent: rubyBlockExtent,
           inlineExtent: inlineExtent,
           interCharacterSpacing: interCharacterSpacing,
@@ -1106,6 +1179,9 @@ class LayoutResultBuilder {
     int lineEnd,
     double lineInlineOffset,
     _BlockContext context,
+    {
+    required Map<int, double> boundaryAdjustments,
+  }
   ) {
     final markers = <LayoutMarker>[];
     for (final marker in model.rangeMarkers) {
@@ -1119,6 +1195,33 @@ class LayoutResultBuilder {
           if (placements[index] case final _?) index,
       ];
       if (anchored.isEmpty) {
+        continue;
+      }
+      if (marker.kind == LayoutMarkerKind.emphasis) {
+        for (final atomIndex in anchored) {
+          final placement = placements[atomIndex]!;
+          markers.add(
+            LayoutMarker(
+              kind: marker.kind,
+              span: marker.span,
+              lineInlineOffset: lineInlineOffset,
+              crossOffset: _crossOffsetForMarker(marker, context),
+              blockOffset:
+                  placement.blockOffset -
+                  (boundaryAdjustments[atomIndex] ?? 0),
+              blockExtent: placement.blockExtent,
+              inlineExtent: _markerInlineExtent(marker, context),
+              emphasisMark: marker.emphasisMark,
+              emphasisSide: marker.emphasisSide,
+              decorationKind: marker.decorationKind,
+              decorationSide: marker.decorationSide,
+              noteKind: marker.noteKind,
+              frameKind: marker.frameKind,
+              repeatCount: 1,
+              issues: marker.issues,
+            ),
+          );
+        }
         continue;
       }
       final first = placements[anchored.first]!;
@@ -1139,9 +1242,7 @@ class LayoutResultBuilder {
           decorationSide: marker.decorationSide,
           noteKind: marker.noteKind,
           frameKind: marker.frameKind,
-          repeatCount: marker.kind == LayoutMarkerKind.emphasis
-              ? anchored.length
-              : null,
+          repeatCount: null,
           issues: marker.issues,
         ),
       );
@@ -2260,7 +2361,7 @@ class LayoutResultBuilder {
   ) {
     return switch (position) {
       RubyPosition.over || RubyPosition.left => extent,
-      RubyPosition.under || RubyPosition.right => context.crossExtent,
+      RubyPosition.under || RubyPosition.right => extent,
     };
   }
 
@@ -2316,40 +2417,9 @@ class LayoutResultBuilder {
         continue;
       }
 
-      var startPadding = 0.0;
-      var endPadding = 0.0;
-      if (start > 0) {
-        final overlapsStart = model.rubies.any(
-          (candidate) =>
-              candidate.kind == ruby.kind &&
-              candidate.start < ruby.start &&
-              candidate.end >= ruby.start,
-        );
-        final previousText = model.atoms[start - 1].breakText;
-        if (!overlapsStart &&
-            previousText.isNotEmpty &&
-            !_cjkIdeographPattern.hasMatch(
-              String.fromCharCode(previousText.runes.last),
-            )) {
-          startPadding = constraints.baseFontSize / 2;
-        }
-      }
-
-      final overlapsEnd = model.rubies.any(
-        (candidate) =>
-            candidate.kind == ruby.kind &&
-            candidate.start <= ruby.end &&
-            candidate.end > ruby.end,
-      );
-      if (!overlapsEnd && end < model.atoms.length) {
-        final nextText = model.atoms[end].breakText;
-        if (nextText.isNotEmpty &&
-            !_cjkIdeographPattern.hasMatch(
-              String.fromCharCode(nextText.runes.first),
-            )) {
-          endPadding = constraints.baseFontSize / 2;
-        }
-      }
+      final edgePadding = _legacyRubyEdgePadding(model, ruby);
+      final startPadding = edgePadding.startPadding;
+      final endPadding = edgePadding.endPadding;
 
       overflow -= startPadding + endPadding;
       if (overflow <= 0) {
@@ -2376,12 +2446,58 @@ class LayoutResultBuilder {
     );
   }
 
+  ({double startPadding, double endPadding}) _legacyRubyEdgePadding(
+    _ParagraphModel model,
+    _RubyRange ruby,
+  ) {
+    var startPadding = 0.0;
+    var endPadding = 0.0;
+
+    if (ruby.start > 0) {
+      final overlapsStart = model.rubies.any(
+        (candidate) =>
+            candidate.kind == ruby.kind &&
+            candidate.start < ruby.start &&
+            candidate.end >= ruby.start,
+      );
+      final previousText = model.atoms[ruby.start - 1].breakText;
+      if (!overlapsStart &&
+          previousText.isNotEmpty &&
+          !_cjkIdeographPattern.hasMatch(
+            String.fromCharCode(previousText.runes.last),
+          )) {
+        startPadding = constraints.baseFontSize / 2;
+      }
+    }
+
+    final overlapsEnd = model.rubies.any(
+      (candidate) =>
+          candidate.kind == ruby.kind &&
+          candidate.start <= ruby.end &&
+          candidate.end > ruby.end,
+    );
+    if (!overlapsEnd && ruby.end < model.atoms.length) {
+      final nextText = model.atoms[ruby.end].breakText;
+      if (nextText.isNotEmpty &&
+          !_cjkIdeographPattern.hasMatch(
+            String.fromCharCode(nextText.runes.first),
+          )) {
+        endPadding = constraints.baseFontSize / 2;
+      }
+    }
+
+    return (startPadding: startPadding, endPadding: endPadding);
+  }
+
   double _crossOffsetForMarker(_RangeMarker marker, _BlockContext context) {
     return switch (marker.kind) {
       LayoutMarkerKind.emphasis => switch (marker.emphasisSide ??
           EmphasisSide.auto) {
-        EmphasisSide.under || EmphasisSide.right => context.crossExtent,
-        _ => -_markerInlineExtent(marker, context),
+        EmphasisSide.auto =>
+          context.crossExtent - _markerInlineExtent(marker, context),
+        EmphasisSide.under || EmphasisSide.right =>
+          context.crossExtent - _markerInlineExtent(marker, context),
+        _ => 0,
       },
       LayoutMarkerKind.decoration => switch (marker.decorationSide ??
           DecorationSide.auto) {
@@ -2397,7 +2513,7 @@ class LayoutResultBuilder {
     return switch (marker) {
       _RangeMarker(kind: LayoutMarkerKind.frame) => context.crossExtent,
       _RangeMarker(kind: LayoutMarkerKind.emphasis) => math.max(
-        context.crossExtent * constraints.noteScale,
+        context.crossExtent * 0.5066666667,
         0.4,
       ),
       _RangeMarker(kind: LayoutMarkerKind.decoration) => math.max(

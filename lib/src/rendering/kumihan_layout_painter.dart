@@ -432,12 +432,16 @@ class KumihanLayoutPainter extends CustomPainter {
         final emphasisGlyph = _emphasisGlyph(marker.emphasisMark);
         final count = math.max(marker.repeatCount ?? 0, 1);
         final step = rect.height / count;
+        const emphasisScale = 0.48;
+        final markerFontSize = theme.fontSize * emphasisScale;
         for (var index = 0; index < count; index += 1) {
+          final centeredTop =
+              rect.top + step * index + (step - markerFontSize) / 2;
           final cellRect = Rect.fromLTWH(
             rect.left,
-            rect.top + step * index,
+            centeredTop,
             rect.width,
-            step,
+            markerFontSize,
           );
           _paintVerticalText(
             canvas,
@@ -450,7 +454,7 @@ class KumihanLayoutPainter extends CustomPainter {
               caption: false,
             ),
             color: theme.textColor,
-            forcedFontScale: 0.48,
+            forcedFontScale: emphasisScale,
           );
         }
       case LayoutMarkerKind.note ||
