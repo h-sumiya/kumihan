@@ -1652,6 +1652,25 @@ class AozoraAstParser {
         siblings.add(candidate);
         break;
       }
+      if (candidate is GaijiNode || candidate is UnresolvedGaijiNode) {
+        matched.insert(0, candidate);
+        if (siblings.isNotEmpty && siblings.last is TextNode) {
+          final previous = siblings.last as TextNode;
+          final split = _splitRubyText(previous, mapper);
+          if (split.matched case final TextNode matchedText) {
+            final tail = matchedText.text;
+            if (tail.isNotEmpty &&
+                _rubyBaseClass(tail[tail.length - 1]) == _RubyBaseClass.kanji) {
+              siblings.removeLast();
+              if (split.remaining != null) {
+                siblings.add(split.remaining!);
+              }
+              matched.insert(0, matchedText);
+            }
+          }
+        }
+        break;
+      }
       if (_isRubyEligibleNode(candidate)) {
         matched.insert(0, candidate);
         continue;

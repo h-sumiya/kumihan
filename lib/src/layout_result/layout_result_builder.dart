@@ -1142,6 +1142,7 @@ class LayoutResultBuilder {
       if (segmentText.isEmpty) {
         continue;
       }
+      final segmentCharacters = _splitCharacters(segmentText);
       final unjustifiedBaseExtent = baseAtoms.fold<double>(
         0.0,
         (sum, index) => sum + placements[index]!.blockExtent,
@@ -1164,6 +1165,17 @@ class LayoutResultBuilder {
         constraints.baseFontSize * constraints.rubyScale,
       );
       var rubyBlockOffset = blockStart + (baseExtent - rubyBlockExtent) / 2;
+      if (!segmentStartsRuby &&
+          segmentCharacters.length == 1 &&
+          blockStart == 0) {
+        rubyBlockOffset += constraints.baseFontSize / 4;
+      } else if (segmentStartsRuby &&
+          segmentStart == lineStart &&
+          baseAtoms.length == 1 &&
+          segmentCharacters.length > 1 &&
+          blockStart > 0) {
+        rubyBlockOffset -= blockStart;
+      }
       final rubyKindKey = '${ruby.kind.name}:${ruby.position.name}';
       final previousBottom = rubyBottomByKind[rubyKindKey] ?? 0;
       if (segmentStartsRuby && rubyBlockExtent > baseExtent) {
