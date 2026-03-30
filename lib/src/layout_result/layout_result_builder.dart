@@ -4,6 +4,7 @@ import '../ast/ast.dart';
 import '../layout_ir/layout_ir.dart';
 import 'compat/gaiji_resolver.dart';
 import 'compat/line_breaker.dart';
+import 'compat/utr50.dart';
 import 'layout_result.dart';
 
 class LayoutResultBuilder {
@@ -27,9 +28,10 @@ class LayoutResultBuilder {
       '$_punctuationMarks$_openingBrackets$_closingBrackets・';
   static const String _halfWidthNextToOpening = '$_openingBrackets・';
   static const String _zeroExtentGlyphs = '⁠￼゛゜';
-  static final RegExp _cjkIdeographPattern = RegExp(
-    r'[⺀-⻳㐁-䶮一-龻豈-龎仝々〆〇ヶ]',
-  );
+  static const String _legacySidewaysCloseGlyphs =
+      '$_closingBrackets$_punctuationMarks・￼゛゜';
+  static const String _legacyRotatedAtomTypes = '…─';
+  static final RegExp _cjkIdeographPattern = RegExp(r'[⺀-⻳㐁-䶮一-龻豈-龎仝々〆〇ヶ]');
 
   final GaijiResolver _gaijiResolver = const GaijiResolver();
 
@@ -97,9 +99,7 @@ class LayoutResultBuilder {
           append(_layoutEmptyLine(block, context, inlineOffset: cursor));
         case LayoutUnsupportedBlock():
           applyGap(false);
-          append(
-            _layoutUnsupportedBlock(block, context, inlineOffset: cursor),
-          );
+          append(_layoutUnsupportedBlock(block, context, inlineOffset: cursor));
         case LayoutIndentBlock():
           applyGap(false);
           appendFlow(
@@ -202,6 +202,7 @@ class LayoutResultBuilder {
   }) {
     final model = _ParagraphModel(span: block.span);
     _emitInlines(block.children, model, context.inlineContext);
+    _applyLegacyKinsoku(model.atoms);
     final lines = _buildLines(
       block.span,
       model,
@@ -614,7 +615,6 @@ class LayoutResultBuilder {
     final trackingAdjustments = _resolveTrackingAdjustments(
       model.atoms,
       draft,
-      breakPositions,
       context,
     );
     final initialPlacements = _buildAtomPlacements(
@@ -637,7 +637,8 @@ class LayoutResultBuilder {
         ifAbsent: () => entry.value,
       );
     }
-    final atomPlacements = rubyAdjustments.boundaryAdjustments.isEmpty &&
+    final atomPlacements =
+        rubyAdjustments.boundaryAdjustments.isEmpty &&
             rubyAdjustments.trailingExtent == 0
         ? initialPlacements
         : _buildAtomPlacements(
@@ -762,7 +763,6 @@ class LayoutResultBuilder {
   Map<int, double> _resolveTrackingAdjustments(
     List<_Atom> atoms,
     _TakenLineDraft draft,
-    Set<int> breakPositions,
     _BlockContext context,
   ) {
     if (draft.nextCursor >= atoms.length) {
@@ -779,12 +779,7 @@ class LayoutResultBuilder {
       if (atom.kind.isMarkerOnly || atom.kind == _AtomKind.lineBreak) {
         continue;
       }
-      if (!breakPositions.contains(index)) {
-        continue;
-      }
-      final previousIndex = _previousVisibleAtomCursor(atoms, index - 1);
-      if (previousIndex >= 0 &&
-          !_mayBreakBetween(atoms[previousIndex], atom)) {
+      if (atom.legacyKinsoku) {
         continue;
       }
       adjustable.add(index);
@@ -1630,6 +1625,62 @@ class LayoutResultBuilder {
     );
   }
 
+  void _applyLegacyKinsoku(List<_Atom> atoms) {
+    final visible = <({int atomIndex, int offset, String text})>[];
+    var offset = 0;
+    for (var index = 0; index < atoms.length; index += 1) {
+      final breakText = atoms[index].breakText;
+      if (breakText.isEmpty) {
+        continue;
+      }
+      visible.add((atomIndex: index, offset: offset, text: breakText));
+      offset += breakText.length;
+    }
+    if (visible.isEmpty) {
+      return;
+    }
+
+    final joined = visible.map((entry) => entry.text).join();
+    final breaks = <int>{};
+    final breaker = UnicodeLineBreaker(joined);
+    while (true) {
+      final next = breaker.nextBreak();
+      if (next == null) {
+        break;
+      }
+      breaks.add(next.position);
+    }
+
+    var segmentStart = 0;
+    var previousAllowed = true;
+    var previousJoin = false;
+    for (final entry in visible) {
+      if (entry.offset != 0 && breaks.contains(entry.offset)) {
+        segmentStart = entry.offset;
+      }
+      final text = entry.text;
+      final firstChar = String.fromCharCode(text.runes.first);
+      final characterType = getUtr50Type(firstChar.runes.firstOrNull);
+      final isOpening = _openingBrackets.contains(firstChar);
+      final isRotated = _legacyRotatedAtomTypes.contains(firstChar);
+      final allowsBreak =
+          characterType != 'R' ||
+          isOpening ||
+          isRotated ||
+          _legacySidewaysCloseGlyphs.contains(firstChar);
+      final startsAtom = previousAllowed || allowsBreak;
+      final legacyKinsoku = startsAtom
+          ? previousJoin ||
+                (entry.offset != segmentStart && !isOpening && !isRotated)
+          : true;
+      atoms[entry.atomIndex] = atoms[entry.atomIndex].copyWith(
+        legacyKinsoku: legacyKinsoku,
+      );
+      previousAllowed = allowsBreak;
+      previousJoin = text.endsWith('⁠');
+    }
+  }
+
   void _wrapRangeMarker(
     _ParagraphModel model,
     SourceSpan span,
@@ -2170,6 +2221,7 @@ class _Atom {
     required this.style,
     required this.blockExtent,
     required this.inlineExtent,
+    this.legacyKinsoku = false,
     this.rawNotation,
     this.description,
     this.resolved = true,
@@ -2191,6 +2243,7 @@ class _Atom {
     required LayoutInlineStyle style,
     required double blockExtent,
     required double inlineExtent,
+    bool legacyKinsoku = false,
     List<LayoutIssue> issues = const <LayoutIssue>[],
   }) : this(
          kind: _AtomKind.text,
@@ -2199,6 +2252,7 @@ class _Atom {
          style: style,
          blockExtent: blockExtent,
          inlineExtent: inlineExtent,
+         legacyKinsoku: legacyKinsoku,
          issues: issues,
        );
 
@@ -2325,6 +2379,7 @@ class _Atom {
   final LayoutInlineStyle style;
   final double blockExtent;
   final double inlineExtent;
+  final bool legacyKinsoku;
   final String? rawNotation;
   final String? description;
   final bool resolved;
@@ -2362,6 +2417,31 @@ class _Atom {
       return null;
     }
     return String.fromCharCode(effectiveText.runes.last);
+  }
+
+  _Atom copyWith({bool? legacyKinsoku}) {
+    return _Atom(
+      kind: kind,
+      span: span,
+      text: text,
+      style: style,
+      blockExtent: blockExtent,
+      inlineExtent: inlineExtent,
+      legacyKinsoku: legacyKinsoku ?? this.legacyKinsoku,
+      rawNotation: rawNotation,
+      description: description,
+      resolved: resolved,
+      jisCode: jisCode,
+      unicodeCodePoint: unicodeCodePoint,
+      alt: alt,
+      className: className,
+      imageWidth: imageWidth,
+      imageHeight: imageHeight,
+      noteKind: noteKind,
+      directive: directive,
+      attributes: attributes,
+      issues: issues,
+    );
   }
 }
 
