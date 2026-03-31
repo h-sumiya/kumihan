@@ -31,8 +31,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
     text: '1',
   );
 
-  String? _sourceText;
   String? _fileName;
+  KumihanDocument? _document;
   KumihanSnapshot _snapshot = const KumihanSnapshot(
     currentPage: 0,
     totalPages: 0,
@@ -59,9 +59,11 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
     final bytes = file.bytes ?? await File(file.path!).readAsBytes();
     final text = utf8.decode(bytes, allowMalformed: true);
+    final document = const KumihanAozoraParser().parse(text);
     setState(() {
-      _sourceText = text;
       _fileName = file.name;
+      _document = document;
+      _snapshot = const KumihanSnapshot(currentPage: 0, totalPages: 0);
       _pageController.text = '1';
     });
   }
@@ -132,10 +134,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
           Expanded(
             child: DecoratedBox(
               decoration: const BoxDecoration(color: Color(0xfffffdf1)),
-              child: _sourceText == null
+              child: _document == null
                   ? const Center(child: Text('青空文庫テキストを選択してください'))
-                  : KumihanCanvas.aozora(
-                      text: _sourceText!,
+                  : KumihanCanvas(
+                      document: _document!,
                       controller: _controller,
                       layout: const KumihanLayoutData(fontSize: 18),
                       onSnapshotChanged: (snapshot) {
