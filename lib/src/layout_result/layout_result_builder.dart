@@ -825,7 +825,9 @@ class LayoutResultBuilder {
         span: span,
         inlineOffset: lineInlineOffset,
         blockOffset: 0,
-        inlineExtent: math.max(lineInlineExtent, context.crossExtent),
+        inlineExtent: lineInlineExtent > 0
+            ? lineInlineExtent
+            : context.crossExtent,
         blockExtent: context.resolvedLineExtent,
         textExtent: justifiedTextExtent,
         fragments: List<LayoutFragment>.unmodifiable(fragments),
@@ -1903,27 +1905,11 @@ class LayoutResultBuilder {
     _ParagraphModel model,
     _InlineContext context,
   ) {
-    if (node.text.isEmpty) {
+    if (text.isEmpty) {
       return;
     }
 
-    var remaining = text;
-    while (remaining.startsWith(' ')) {
-      model.atoms.add(
-        _legacyDraftToAtom(
-          const _LegacyAtomDraft(' '),
-          context,
-          node.span,
-          node.issues,
-        ),
-      );
-      remaining = remaining.substring(1);
-    }
-    if (remaining.isEmpty) {
-      return;
-    }
-
-    final breaker = UnicodeLineBreaker(remaining);
+    final breaker = UnicodeLineBreaker(text);
     var segmentStart = 0;
 
     while (true) {
@@ -1931,7 +1917,7 @@ class LayoutResultBuilder {
       if (breakpoint == null) {
         break;
       }
-      final segment = remaining.substring(segmentStart, breakpoint.position);
+      final segment = text.substring(segmentStart, breakpoint.position);
       if (segment.isNotEmpty) {
         model.atoms.add(
           _legacyDraftToAtom(
@@ -2443,8 +2429,8 @@ class LayoutResultBuilder {
     _BlockContext context,
   ) {
     return switch (position) {
-      RubyPosition.over || RubyPosition.left => extent,
-      RubyPosition.under || RubyPosition.right => extent,
+      RubyPosition.over || RubyPosition.under => extent,
+      RubyPosition.left || RubyPosition.right => -context.crossExtent,
     };
   }
 
@@ -3301,7 +3287,7 @@ class _BlockContext {
 
   double get resolvedLineExtent => explicitLineExtent ?? constraints.lineExtent;
 
-  double get crossExtent => math.max(fontScale, constraints.baseFontSize);
+  double get crossExtent => fontScale;
 
   LayoutBlockStyle get publicStyle => LayoutBlockStyle(
     firstIndent: firstIndent,

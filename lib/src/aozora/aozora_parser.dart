@@ -1,3 +1,5 @@
+import 'package:characters/characters.dart';
+
 import '../ast/ast.dart';
 
 typedef _BuildBlockNode =
@@ -21,6 +23,7 @@ typedef _BuildInlineNode =
 class AozoraAstParser {
   AozoraAstParser();
 
+  static const String _wordJoiner = '\u2060';
   static const String _directiveOpen = '［＃';
   static const String _directiveClose = '］';
   static const String _rubyOpen = '《';
@@ -519,7 +522,9 @@ class AozoraAstParser {
     }
 
     if (directive.body.endsWith('終わり')) {
-      final openBody = directive.body.substring(0, directive.body.length - 3);
+      final openBody = _normalizeInlineCloseTarget(
+        directive.body.substring(0, directive.body.length - 3),
+      );
       if (stack.length > 1 && stack.last.openBody == openBody) {
         final frame = stack.removeLast();
         _appendInline(
@@ -567,7 +572,7 @@ class AozoraAstParser {
     }
     stack.add(
       _InlineFrame.container(
-        openBody: directive.body,
+        openBody: _normalizeInlineCloseTarget(directive.body),
         kind: openSpec.kind,
         buildNode: openSpec.buildNode,
         openDirective: directive.copyWith(
@@ -620,16 +625,19 @@ class AozoraAstParser {
       r'^(左|右|上|下)に「(.+?)」の(ルビ|注記)$',
     ).firstMatch(action);
     if (rubyDirectional != null) {
+      final position = _rubyPositionFromKanji(rubyDirectional.group(1)!);
       _appendInline(
         siblings,
         RubyNode(
           span: mapper.mergeSpans(base.span, directive.span),
-          base: base.nodes,
+          base: position == RubyPosition.left
+              ? _jointTargetNodes(base.nodes, mapper)
+              : base.nodes,
           text: rubyDirectional.group(2)!,
           kind: rubyDirectional.group(3)! == '注記'
               ? RubyKind.annotation
               : RubyKind.phonetic,
-          position: _rubyPositionFromKanji(rubyDirectional.group(1)!),
+          position: position,
           sourceDirective: referenceDirective,
         ),
       );
@@ -1224,6 +1232,17 @@ class AozoraAstParser {
 
   bool _looksLikeFontSize(String body) {
     return body.contains('段階') && body.endsWith('な文字');
+  }
+
+  String _normalizeInlineCloseTarget(String body) {
+    final fontSize = _parseFontSize(body);
+    if (fontSize != null) {
+      return switch (fontSize.kind) {
+        FontSizeKind.larger => '大きな文字',
+        FontSizeKind.smaller => '小さな文字',
+      };
+    }
+    return body;
   }
 
   _ParsedDecoration? _parseDecoration(String body) {
@@ -1856,6 +1875,245 @@ class AozoraAstParser {
     };
   }
 
+  List<InlineNode> _jointTargetNodes(
+    List<InlineNode> nodes,
+    _SourceMapper mapper,
+  ) {
+    final plainText = _plainTextFromNodes(nodes);
+    final characters = plainText.characters.toList(growable: false);
+    if (characters.length < 2) {
+      return nodes;
+    }
+    return _insertWordJoinerAtCharacterOffsets(nodes, <int>[
+      1,
+      characters.length - 1,
+    ], mapper);
+  }
+
+  List<InlineNode> _insertWordJoinerAtCharacterOffsets(
+    List<InlineNode> nodes,
+    List<int> offsets,
+    _SourceMapper mapper,
+  ) {
+    final insertionOffsets = offsets.toSet().toList()..sort();
+    if (insertionOffsets.isEmpty) {
+      return nodes;
+    }
+    final state = _WordJoinerInsertionState(insertionOffsets);
+    final result = _insertWordJoinersIntoNodes(nodes, mapper, state);
+    while (state.hasPendingAtCurrentOffset) {
+      final anchorOffset = result.isEmpty ? 0 : result.last.span.end.offset;
+      result.add(
+        TextNode(
+          span: mapper.span(anchorOffset, anchorOffset),
+          text: _wordJoiner,
+        ),
+      );
+      state.consumePendingOffset();
+    }
+    return List<InlineNode>.unmodifiable(result);
+  }
+
+  List<InlineNode> _insertWordJoinersIntoNodes(
+    List<InlineNode> nodes,
+    _SourceMapper mapper,
+    _WordJoinerInsertionState state,
+  ) {
+    final result = <InlineNode>[];
+    for (final node in nodes) {
+      result.addAll(_insertWordJoinersIntoNode(node, mapper, state));
+    }
+    return result;
+  }
+
+  List<InlineNode> _insertWordJoinersIntoNode(
+    InlineNode node,
+    _SourceMapper mapper,
+    _WordJoinerInsertionState state,
+  ) {
+    if (node is TextNode) {
+      return _insertWordJoinersIntoTextNode(node, mapper, state);
+    }
+    final nested = switch (node) {
+      RubyNode(:final base) => base,
+      LinkNode(:final children) => children,
+      DirectionInlineNode(:final children) => children,
+      FlowInlineNode(:final children) => children,
+      CaptionInlineNode(:final children) => children,
+      FrameInlineNode(:final children) => children,
+      NoteInlineNode(:final children) => children,
+      StyledInlineNode(:final children) => children,
+      FontSizeInlineNode(:final children) => children,
+      HeadingInlineNode(:final children) => children,
+      EmphasisInlineNode(:final children) => children,
+      DecorationInlineNode(:final children) => children,
+      _ => null,
+    };
+    if (nested == null) {
+      state.globalOffset += _plainText(node).characters.length;
+      return <InlineNode>[node];
+    }
+
+    final rewrittenChildren = _insertWordJoinersIntoNodes(nested, mapper, state);
+    return <InlineNode>[
+      switch (node) {
+        RubyNode() => RubyNode(
+          span: node.span,
+          base: List<InlineNode>.unmodifiable(rewrittenChildren),
+          text: node.text,
+          kind: node.kind,
+          position: node.position,
+          sourceDirective: node.sourceDirective,
+        ),
+        LinkNode() => LinkNode(
+          span: node.span,
+          children: List<InlineNode>.unmodifiable(rewrittenChildren),
+          target: node.target,
+          sourceDirective: node.sourceDirective,
+          isClosed: node.isClosed,
+        ),
+        DirectionInlineNode() => DirectionInlineNode(
+          span: node.span,
+          children: List<InlineNode>.unmodifiable(rewrittenChildren),
+          openDirective: node.openDirective,
+          kind: node.kind,
+          closeDirective: node.closeDirective,
+          isClosed: node.isClosed,
+        ),
+        FlowInlineNode() => FlowInlineNode(
+          span: node.span,
+          children: List<InlineNode>.unmodifiable(rewrittenChildren),
+          openDirective: node.openDirective,
+          kind: node.kind,
+          closeDirective: node.closeDirective,
+          isClosed: node.isClosed,
+        ),
+        CaptionInlineNode() => CaptionInlineNode(
+          span: node.span,
+          children: List<InlineNode>.unmodifiable(rewrittenChildren),
+          openDirective: node.openDirective,
+          closeDirective: node.closeDirective,
+          isClosed: node.isClosed,
+        ),
+        FrameInlineNode() => FrameInlineNode(
+          span: node.span,
+          children: List<InlineNode>.unmodifiable(rewrittenChildren),
+          openDirective: node.openDirective,
+          kind: node.kind,
+          borderWidth: node.borderWidth,
+          closeDirective: node.closeDirective,
+          isClosed: node.isClosed,
+        ),
+        NoteInlineNode() => NoteInlineNode(
+          span: node.span,
+          children: List<InlineNode>.unmodifiable(rewrittenChildren),
+          openDirective: node.openDirective,
+          kind: node.kind,
+          closeDirective: node.closeDirective,
+          isClosed: node.isClosed,
+        ),
+        StyledInlineNode() => StyledInlineNode(
+          span: node.span,
+          children: List<InlineNode>.unmodifiable(rewrittenChildren),
+          openDirective: node.openDirective,
+          style: node.style,
+          closeDirective: node.closeDirective,
+          isClosed: node.isClosed,
+        ),
+        FontSizeInlineNode() => FontSizeInlineNode(
+          span: node.span,
+          children: List<InlineNode>.unmodifiable(rewrittenChildren),
+          openDirective: node.openDirective,
+          kind: node.kind,
+          steps: node.steps,
+          closeDirective: node.closeDirective,
+          isClosed: node.isClosed,
+        ),
+        HeadingInlineNode() => HeadingInlineNode(
+          span: node.span,
+          children: List<InlineNode>.unmodifiable(rewrittenChildren),
+          openDirective: node.openDirective,
+          level: node.level,
+          display: node.display,
+          closeDirective: node.closeDirective,
+          isClosed: node.isClosed,
+        ),
+        EmphasisInlineNode() => EmphasisInlineNode(
+          span: node.span,
+          children: List<InlineNode>.unmodifiable(rewrittenChildren),
+          openDirective: node.openDirective,
+          mark: node.mark,
+          side: node.side,
+          closeDirective: node.closeDirective,
+          isClosed: node.isClosed,
+        ),
+        DecorationInlineNode() => DecorationInlineNode(
+          span: node.span,
+          children: List<InlineNode>.unmodifiable(rewrittenChildren),
+          openDirective: node.openDirective,
+          kind: node.kind,
+          side: node.side,
+          closeDirective: node.closeDirective,
+          isClosed: node.isClosed,
+        ),
+        _ => node,
+      },
+    ];
+  }
+
+  List<InlineNode> _insertWordJoinersIntoTextNode(
+    TextNode node,
+    _SourceMapper mapper,
+    _WordJoinerInsertionState state,
+  ) {
+    final pieces = node.text.characters.toList(growable: false);
+    if (pieces.isEmpty) {
+      return <InlineNode>[node];
+    }
+
+    final result = <InlineNode>[];
+    final buffer = StringBuffer();
+    var consumedCharacters = 0;
+
+    void flushBuffer() {
+      if (buffer.isEmpty) {
+        return;
+      }
+      final text = buffer.toString();
+      final startCharacters = consumedCharacters - text.characters.length;
+      final startOffset = node.text.characters.take(startCharacters).toString().length;
+      final endOffset = node.text.characters.take(consumedCharacters).toString().length;
+      result.add(
+        TextNode(
+          span: mapper.span(
+            node.span.start.offset + startOffset,
+            node.span.start.offset + endOffset,
+          ),
+          text: text,
+        ),
+      );
+      buffer.clear();
+    }
+
+    for (final piece in pieces) {
+      while (state.hasPendingAt(state.globalOffset + consumedCharacters)) {
+        flushBuffer();
+        result.add(
+          TextNode(
+            span: mapper.span(node.span.start.offset, node.span.start.offset),
+            text: _wordJoiner,
+          ),
+        );
+        state.consumePendingOffset();
+      }
+      buffer.write(piece);
+      consumedCharacters += 1;
+    }
+    flushBuffer();
+    state.globalOffset += pieces.length;
+    return result;
+  }
+
   int _findNextSpecialIndex(String line, int from) {
     final candidates = <int>[
       line.indexOf('※$_directiveOpen', from),
@@ -2011,6 +2269,24 @@ class _SourceMapper {
       }
     }
     return starts;
+  }
+}
+
+class _WordJoinerInsertionState {
+  _WordJoinerInsertionState(this.offsets);
+
+  final List<int> offsets;
+  int globalOffset = 0;
+  int insertionIndex = 0;
+
+  bool hasPendingAt(int offset) {
+    return insertionIndex < offsets.length && offsets[insertionIndex] == offset;
+  }
+
+  bool get hasPendingAtCurrentOffset => hasPendingAt(globalOffset);
+
+  void consumePendingOffset() {
+    insertionIndex += 1;
   }
 }
 

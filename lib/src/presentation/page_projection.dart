@@ -40,24 +40,24 @@ class KumihanPageProjection {
       fontSize,
     );
     final pageInlineExtent = math.max(snappedPageWidth / fontSize, 1.0);
-    final pageStride = pageInlineExtent + theme.lineGapEm;
     final pageCount = math.max(
       1,
       _resolvePageCount(result, pageInlineExtent, theme.lineGapEm),
     );
     final resolvedIndex = pageIndex.clamp(0, pageCount - 1);
+    final resolvedSlots = _resolveSlotInlineOffsets(
+      result,
+      pageInlineExtent,
+      theme.lineGapEm,
+      resolvedIndex,
+    );
     return KumihanPageProjection(
       pageIndex: resolvedIndex,
       pageCount: pageCount,
-      pageStartInlineOffset: resolvedIndex * pageStride,
+      pageStartInlineOffset: resolvedSlots.pageStartInlineOffset,
       pageInlineExtent: pageInlineExtent,
       fontSize: fontSize,
-      slotInlineOffsets: _resolveSlotInlineOffsets(
-        result,
-        pageInlineExtent,
-        theme.lineGapEm,
-        resolvedIndex,
-      ),
+      slotInlineOffsets: resolvedSlots.slotInlineOffsets,
     );
   }
 
@@ -120,7 +120,7 @@ class KumihanPageProjection {
     return pageCount;
   }
 
-  static Map<Object, double> _resolveSlotInlineOffsets(
+  static _ResolvedPageSlots _resolveSlotInlineOffsets(
     LayoutResult result,
     double pageInlineExtent,
     double lineGap,
@@ -130,6 +130,7 @@ class KumihanPageProjection {
     final offsets = <Object, double>{};
     var currentPage = 0;
     var currentWidth = -lineGap;
+    double? pageStartInlineOffset;
     for (final slot in slots) {
       final nextWidth = currentWidth + slot.inlineExtent + lineGap;
       if (currentWidth >= 0 && nextWidth > pageInlineExtent) {
@@ -138,11 +139,15 @@ class KumihanPageProjection {
       }
       final projectedInlineOffset = currentWidth + lineGap;
       if (currentPage == targetPage) {
+        pageStartInlineOffset ??= slot.absoluteInlineOffset;
         offsets[slot.key] = projectedInlineOffset;
       }
       currentWidth = projectedInlineOffset + slot.inlineExtent;
     }
-    return Map<Object, double>.unmodifiable(offsets);
+    return _ResolvedPageSlots(
+      pageStartInlineOffset: pageStartInlineOffset ?? 0,
+      slotInlineOffsets: Map<Object, double>.unmodifiable(offsets),
+    );
   }
 
   static List<_ProjectionSlot> _collectSlots(LayoutResult result) {
@@ -152,22 +157,38 @@ class KumihanPageProjection {
         case LayoutParagraphResult():
           for (final line in block.lineGroup.lines) {
             slots.add(
-              _ProjectionSlot(key: line, inlineExtent: line.inlineExtent),
+              _ProjectionSlot(
+                key: line,
+                inlineExtent: line.inlineExtent,
+                absoluteInlineOffset: line.inlineOffset,
+              ),
             );
           }
         case LayoutEmptyLineResult():
           for (final line in block.lineGroup.lines) {
             slots.add(
-              _ProjectionSlot(key: line, inlineExtent: line.inlineExtent),
+              _ProjectionSlot(
+                key: line,
+                inlineExtent: line.inlineExtent,
+                absoluteInlineOffset: line.inlineOffset,
+              ),
             );
           }
         case LayoutTableResult():
           slots.add(
-            _ProjectionSlot(key: block, inlineExtent: block.inlineExtent),
+            _ProjectionSlot(
+              key: block,
+              inlineExtent: block.inlineExtent,
+              absoluteInlineOffset: block.inlineOffset,
+            ),
           );
         case LayoutUnsupportedBlockResult():
           slots.add(
-            _ProjectionSlot(key: block, inlineExtent: block.inlineExtent),
+            _ProjectionSlot(
+              key: block,
+              inlineExtent: block.inlineExtent,
+              absoluteInlineOffset: block.inlineOffset,
+            ),
           );
       }
     }
@@ -176,8 +197,23 @@ class KumihanPageProjection {
 }
 
 class _ProjectionSlot {
-  const _ProjectionSlot({required this.key, required this.inlineExtent});
+  const _ProjectionSlot({
+    required this.key,
+    required this.inlineExtent,
+    required this.absoluteInlineOffset,
+  });
 
   final Object key;
   final double inlineExtent;
+  final double absoluteInlineOffset;
+}
+
+class _ResolvedPageSlots {
+  const _ResolvedPageSlots({
+    required this.pageStartInlineOffset,
+    required this.slotInlineOffsets,
+  });
+
+  final double pageStartInlineOffset;
+  final Map<Object, double> slotInlineOffsets;
 }

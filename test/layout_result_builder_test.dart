@@ -269,6 +269,32 @@ void main() {
       expect(ruby.blockOffset, closeTo(baseStart + 0.25, 1e-9));
     });
 
+    test('keeps leading spaces inside sideways latin runs like v0', () {
+      final builder = LayoutResultBuilder(
+        constraints: const LayoutConstraints(lineExtent: 20),
+      );
+      final document = LayoutDocument(
+        span: _span(400),
+        children: <LayoutBlock>[
+          LayoutParagraph(
+            span: _span(401),
+            children: <LayoutInline>[
+              LayoutTextInline(span: _span(402), text: '（ Italic ）'),
+            ],
+          ),
+        ],
+      );
+
+      final result = builder.build(document);
+      final paragraph = result.blocks.single as LayoutParagraphResult;
+      final texts = paragraph.lineGroup.lines.single.fragments
+          .whereType<LayoutTextFragment>()
+          .map((fragment) => fragment.text)
+          .toList(growable: false);
+
+      expect(texts, <String>['（', ' Italic ', '）']);
+    });
+
     test('processes block containers and tables into leaf block results', () {
       final builder = LayoutResultBuilder(
         constraints: const LayoutConstraints(lineExtent: 6),

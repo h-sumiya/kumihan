@@ -204,6 +204,55 @@ void main() {
       expectTextNode(note.children.last, '西は字神内一一一ノ一');
     });
 
+    test('normalizes font size close directives without explicit steps', () {
+      final paragraph = onlyParagraph(
+        parseDocument('［＃５段階大きな文字］大きい［＃大きな文字終わり］'),
+      );
+
+      expect(paragraph.children, hasLength(1));
+      final fontSize = paragraph.children.single as FontSizeInlineNode;
+      expect(fontSize.kind, FontSizeKind.larger);
+      expect(fontSize.steps, 5);
+      expect(fontSize.isClosed, isTrue);
+      expect(fontSize.closeDirective?.body, '大きな文字終わり');
+      expectTextNode(fontSize.children.single, '大きい');
+    });
+
+    test('inserts word joiners for left-side reference ruby like v0', () {
+      final paragraph = onlyParagraph(
+        parseDocument('青空文庫［＃「青空文庫」の左に「Aozora Bunko」のルビ］'),
+      );
+
+      expect(paragraph.children, hasLength(1));
+      final ruby = paragraph.children.single as RubyNode;
+      expect(ruby.position, RubyPosition.left);
+      expect(ruby.text, 'Aozora Bunko');
+      expect(
+        ruby.base.map((node) => (node as TextNode).text).toList(growable: false),
+        <String>['青', '\u2060', '空文', '\u2060', '庫'],
+      );
+    });
+
+    test('inserts word joiners through existing ruby bases for left-side ruby', () {
+      final paragraph = onlyParagraph(
+        parseDocument(
+          '青空文庫《あおぞらぶんこ》［＃「青空文庫」の左に「Aozora Bunko」のルビ］',
+        ),
+      );
+
+      expect(paragraph.children, hasLength(1));
+      final ruby = paragraph.children.single as RubyNode;
+      final nested = ruby.base.single as RubyNode;
+      expect(ruby.position, RubyPosition.left);
+      expect(nested.position, RubyPosition.over);
+      expect(
+        nested.base
+            .map((node) => (node as TextNode).text)
+            .toList(growable: false),
+        <String>['青', '\u2060', '空文', '\u2060', '庫'],
+      );
+    });
+
     for (final variant in <String>[
       'test_parse_command_unicode_class',
       'test_parse_command_unicode',

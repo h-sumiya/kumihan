@@ -121,14 +121,13 @@ class KumihanLayoutPainter extends CustomPainter {
     required double baseInlineOffset,
     required double baseBlockOffset,
   }) {
-    final slotInlineOffset = projection.projectedSlotInlineOffset(table);
-    if (slotInlineOffset == null) {
+    if (projection.projectedSlotInlineOffset(table) == null) {
       return;
     }
-    final projectedBaseInlineOffset = slotInlineOffset - table.inlineOffset;
+    final tableInlineOffset = baseInlineOffset + table.inlineOffset;
     final tableRect = projection.projectLogicalRect(
       contentRect,
-      inlineOffset: slotInlineOffset,
+      inlineOffset: tableInlineOffset,
       blockOffset: baseBlockOffset,
       inlineExtent: table.inlineExtent,
       blockExtent: table.blockExtent,
@@ -147,7 +146,7 @@ class KumihanLayoutPainter extends CustomPainter {
     for (final row in table.rows) {
       final rowRect = projection.projectLogicalRect(
         contentRect,
-        inlineOffset: projectedBaseInlineOffset + row.inlineOffset,
+        inlineOffset: tableInlineOffset + row.inlineOffset,
         blockOffset: baseBlockOffset + row.blockOffset,
         inlineExtent: row.inlineExtent,
         blockExtent: row.blockExtent,
@@ -165,7 +164,7 @@ class KumihanLayoutPainter extends CustomPainter {
 
       for (final cell in row.cells) {
         final cellInlineOffset =
-            projectedBaseInlineOffset + row.inlineOffset + cell.inlineOffset;
+            tableInlineOffset + row.inlineOffset + cell.inlineOffset;
         final cellBlockOffset =
             baseBlockOffset + row.blockOffset + cell.blockOffset;
         final cellRect = projection.projectLogicalRect(
@@ -231,7 +230,7 @@ class KumihanLayoutPainter extends CustomPainter {
           fragment,
           contentRect,
           projection: projection,
-          baseInlineOffset: projectedBaseInlineOffset,
+          baseInlineOffset: baseInlineOffset,
           baseBlockOffset: lineBlockOffset,
         );
       }
@@ -368,7 +367,8 @@ class KumihanLayoutPainter extends CustomPainter {
     final crossExtent = ruby.inlineExtent;
     final inlineOffset =
         baseInlineOffset + ruby.lineInlineOffset - ruby.crossOffset;
-    final rect = projection.projectLogicalRect(
+    final rect = _projectRelativeLogicalRect(
+      projection,
       contentRect,
       inlineOffset: inlineOffset,
       blockOffset: baseBlockOffset + ruby.blockOffset,
@@ -406,7 +406,8 @@ class KumihanLayoutPainter extends CustomPainter {
     required double baseInlineOffset,
     required double baseBlockOffset,
   }) {
-    final rect = projection.projectLogicalRect(
+    final rect = _projectRelativeLogicalRect(
+      projection,
       contentRect,
       inlineOffset:
           baseInlineOffset + marker.lineInlineOffset - marker.crossOffset,
@@ -633,6 +634,23 @@ class KumihanLayoutPainter extends CustomPainter {
     final dx = rect.left + (rect.width - painter.width) / 2;
     final dy = rect.top + (rect.height - painter.height) / 2;
     painter.paint(canvas, Offset(dx, dy));
+  }
+
+  Rect _projectRelativeLogicalRect(
+    KumihanPageProjection projection,
+    Rect contentRect, {
+    required double inlineOffset,
+    required double blockOffset,
+    required double inlineExtent,
+    required double blockExtent,
+  }) {
+    final pageRight = contentRect.left + projection.pageInlineExtent * theme.fontSize;
+    return Rect.fromLTWH(
+      pageRight - (inlineOffset + inlineExtent) * theme.fontSize,
+      contentRect.top + blockOffset * theme.fontSize,
+      inlineExtent * theme.fontSize,
+      blockExtent * theme.fontSize,
+    );
   }
 
   TextStyle _textStyle({
