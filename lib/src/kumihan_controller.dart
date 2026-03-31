@@ -5,8 +5,6 @@ import 'kumihan_document.dart';
 import 'kumihan_types.dart';
 
 abstract interface class KumihanViewport {
-  bool hitTest(double x, double y);
-  bool isReadOutActive();
   Future<void> nextPage([int? amount]);
   Future<void> nextStop();
   Future<void> open(KumihanDocument document);
@@ -16,12 +14,6 @@ abstract interface class KumihanViewport {
   Future<void> showPage(int page);
   Future<void> showFirstPage();
   Future<void> showLastPage();
-  Future<void> tap(double x, double y);
-  Future<void> toggleForceIndent();
-  Future<void> togglePaperColor();
-  Future<void> toggleShift1Page();
-  Future<void> toggleSpread();
-  Future<void> toggleWritingMode();
   KumihanRenderTrace? get renderTrace;
   KumihanSnapshot get snapshot;
 }
@@ -30,9 +22,7 @@ class KumihanController extends ChangeNotifier {
   KumihanViewport? _viewport;
   KumihanSnapshot _snapshot = const KumihanSnapshot(
     currentPage: 0,
-    spreadMode: KumihanSpreadMode.doublePage,
     totalPages: 0,
-    writingMode: KumihanWritingMode.vertical,
   );
 
   KumihanSnapshot get snapshot => _snapshot;
@@ -52,9 +42,7 @@ class KumihanController extends ChangeNotifier {
 
   void updateSnapshot(KumihanSnapshot snapshot) {
     if (_snapshot.currentPage == snapshot.currentPage &&
-        _snapshot.spreadMode == snapshot.spreadMode &&
-        _snapshot.totalPages == snapshot.totalPages &&
-        _snapshot.writingMode == snapshot.writingMode) {
+        _snapshot.totalPages == snapshot.totalPages) {
       return;
     }
     _snapshot = snapshot;
@@ -77,14 +65,4 @@ class KumihanController extends ChangeNotifier {
   Future<void> showFirstPage() async => _viewport?.showFirstPage();
 
   Future<void> showLastPage() async => _viewport?.showLastPage();
-
-  Future<void> toggleSpread() async => _viewport?.toggleSpread();
-
-  Future<void> toggleWritingMode() async => _viewport?.toggleWritingMode();
-
-  Future<void> togglePaperColor() async => _viewport?.togglePaperColor();
-
-  Future<void> toggleShift1Page() async => _viewport?.toggleShift1Page();
-
-  Future<void> toggleForceIndent() async => _viewport?.toggleForceIndent();
 }

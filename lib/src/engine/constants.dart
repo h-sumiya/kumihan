@@ -130,17 +130,11 @@ const Map<String, String> accentsTable = <String, String>{
 
 typedef CurrentState = String;
 
-KumihanSpreadMode getSpreadFromState(CurrentState currentState) {
-  return currentState.endsWith('single')
-      ? KumihanSpreadMode.single
-      : KumihanSpreadMode.doublePage;
-}
+KumihanSpreadMode getSpreadFromState(CurrentState currentState) =>
+    KumihanSpreadMode.single;
 
-KumihanWritingMode getWritingModeFromState(CurrentState currentState) {
-  return currentState.startsWith('h')
-      ? KumihanWritingMode.horizontal
-      : KumihanWritingMode.vertical;
-}
+KumihanWritingMode getWritingModeFromState(CurrentState currentState) =>
+    KumihanWritingMode.vertical;
 
 double clampDouble(double value, double minimum, double maximum) {
   if (value < minimum) {

@@ -8,8 +8,6 @@ import 'package:flutter/painting.dart';
 import '../kumihan_controller.dart';
 import '../debug/render_trace.dart';
 import '../kumihan_document.dart';
-import '../kumihan_tap.dart';
-import '../kumihan_theme.dart';
 import '../kumihan_types.dart';
 import 'constants.dart';
 import 'document_compiler.dart';
@@ -195,14 +193,12 @@ class LineGroup {
 
 class RendererSettings {
   const RendererSettings({
-    this.backPageAlpha = 0.08,
     this.fontSize = 18,
     this.rubyColor = fontColor,
     this.smallBouten = true,
     this.widenLineSpace = false,
   });
 
-  final double backPageAlpha;
   final double fontSize;
   final Color rubyColor;
   final bool smallBouten;
@@ -214,48 +210,31 @@ typedef KumihanImageLoader = Future<ui.Image?> Function(String path);
 class KumihanEngine implements LayoutEnvironment, KumihanViewport {
   KumihanEngine({
     required this.baseUri,
-    ui.Image? coverImage,
     required int initialPage,
-    required KumihanSpreadMode initialSpread,
-    required KumihanWritingMode initialWritingMode,
     this.layout = const KumihanLayoutData(),
-    this.theme = const KumihanThemeData(),
-    ui.Image? paperTexture,
-    required this.onExternalOpen,
-    this.onUnhandledTap,
-    this.tapHandler = KumihanTapHandlers.pageTurnByHorizontalPosition,
     required this.onInvalidate,
     required this.onSnapshot,
     this.imageLoader,
-  }) : _currentState =
-           '${initialWritingMode == KumihanWritingMode.horizontal ? 'h' : 'v'}${initialSpread == KumihanSpreadMode.single ? 'single' : 'double'}',
-       _currentTextRotation =
-           initialWritingMode == KumihanWritingMode.horizontal ? 'h' : 'v',
-       _coverImage = coverImage,
-       _initialPage = initialPage,
+  }) : _initialPage = initialPage,
        _currentPosition = PositionInfo(
-         leftToRight: initialWritingMode == KumihanWritingMode.horizontal,
+         leftToRight: false,
          length: 0,
          offset: 0,
          paragraphNo: 0,
          shift1page: false,
        ) {
-    _applyTheme(theme, paperTexture: paperTexture);
+    fontColor = const Color(0xff444444);
+    paperColor = const Color(paperColorValue);
     _updateSizes();
   }
 
   final Uri? baseUri;
-  ValueChanged<String>? onExternalOpen;
-  ValueChanged<KumihanTapDetails>? onUnhandledTap;
-  KumihanTapHandler tapHandler;
   final VoidCallback onInvalidate;
   final ValueChanged<KumihanSnapshot> onSnapshot;
   final KumihanImageLoader? imageLoader;
   final int _initialPage;
   KumihanLayoutData layout;
-  final KumihanThemeData theme;
   final RendererSettings _settings = const RendererSettings();
-  late final KumihanTapActions _tapActions = KumihanTapActions(this);
 
   @override
   final List<String> gothicFontFamilies = defaultGothicFontFamilies;
@@ -271,17 +250,12 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
   @override
   late Color paperColor;
 
-  String _headerTitle = '';
-  KumihanCoverBlock? _cover;
-  ui.Image? _coverImage;
-  ui.Image? _paperTexture;
-  late KumihanThemeData _theme;
   List<CompiledKumihanEntry> _entries = const <CompiledKumihanEntry>[];
   String _sourceText = '';
   int _layoutToken = 0;
-  String _currentState;
-  bool _shift1page = false;
-  bool _forceIndent = false;
+  final String _currentState = 'vsingle';
+  final bool _shift1page = false;
+  final bool _forceIndent = false;
   PositionInfo _currentPosition;
   final List<LayoutTextBlock> _blocks = <LayoutTextBlock>[];
   final List<LineGroup> _lines = <LineGroup>[];
@@ -302,19 +276,17 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
   double _fontSize = 18;
   double _lineSpace = 0;
   double _pageMarginSide = 0;
-  double _pageMarginCenter = 0;
   double _pageMarginTop = 0;
-  double _pageMarginBottom = 0;
   double _pageWidth = 0;
   double _pageHeight = 0;
   double _currentPageWidth = 0;
   int _currentPageNo = -1;
-  int _lastPageNo = 0;
+  final int _lastPageNo = 0;
   int _currentFontType = 0;
   bool _currentFontBold = false;
   bool _currentFontItalic = false;
   double _currentFontSize = 0;
-  String _currentTextRotation;
+  String _currentTextRotation = 'v';
   bool _inCaption = false;
   bool _inYokogumi = false;
   double _firstTopMargin = 0;
@@ -328,52 +300,20 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
   final double _fontScaleL = 1.2;
   final double _fontScaleS = 0.85;
 
-  Color get _coverAccentColor =>
-      Color.lerp(fontColor, _theme.linkColor, _theme.isDark ? 0.55 : 0.28) ??
-      fontColor;
-
-  bool get _hasCover => _cover != null || _coverImage != null;
-
-  bool get _hasLayoutContent => _entries.isNotEmpty || _hasCover;
+  bool get _hasLayoutContent => _entries.isNotEmpty;
 
   int get _contentPageCount => math.max(_pages.length - 2, 0);
 
   int get _lastDocumentPage => math.max(snapshot.totalPages - 1, 0);
 
-  bool _isCoverPage(int pageNo) => _hasCover && pageNo == 0;
+  int _documentToInternalPageNo(int pageNo) => pageNo + 1;
 
-  bool get _showsHeader => layout.showTitle && _headerTitle.isNotEmpty;
-
-  bool get _showsPageNumber => layout.showPageNumber;
-
-  double get _headerReservedExtent {
-    if (!_showsHeader) {
-      return 0;
-    }
-    return _currentState.startsWith('v')
-        ? math.max(1.85 * _fontSize + 20, 0)
-        : 3 * _fontSize;
-  }
-
-  double get _pageNumberReservedExtent {
-    if (!_showsPageNumber) {
-      return 0;
-    }
-    return _currentState.startsWith('v')
-        ? math.max(2.07 * _fontSize, 44)
-        : 2.5 * _fontSize;
-  }
-
-  int _documentToInternalPageNo(int pageNo) => pageNo + (_hasCover ? 0 : 1);
-
-  int _internalToDocumentPageNo(int pageNo) => pageNo - (_hasCover ? 0 : 1);
+  int _internalToDocumentPageNo(int pageNo) => pageNo - 1;
 
   @override
   KumihanSnapshot get snapshot => KumihanSnapshot(
     currentPage: math.max(_currentPageNo, 0),
-    spreadMode: getSpreadFromState(_currentState),
-    totalPages: _contentPageCount + (_hasCover ? 1 : 0),
-    writingMode: getWritingModeFromState(_currentState),
+    totalPages: _contentPageCount,
   );
 
   @override
@@ -401,17 +341,9 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
     );
   }
 
-  void _applyTheme(KumihanThemeData theme, {ui.Image? paperTexture}) {
-    _theme = theme;
-    fontColor = theme.textColor;
-    paperColor = theme.paperColor;
-    _paperTexture = paperTexture;
-  }
-
   @override
   Future<void> open(KumihanDocument document) async {
     final compiled = compileKumihanDocument(document);
-    _cover = compiled.cover;
     _entries = compiled.entries
         .expand<CompiledKumihanEntry>(
           (entry) => switch (entry) {
@@ -422,51 +354,15 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
           },
         )
         .toList(growable: false);
-    _headerTitle = compiled.headerTitle;
     _sourceText = _preprocessText(compiled.sourceText);
     _currentPosition = PositionInfo(
-      leftToRight: _currentState.startsWith('h'),
+      leftToRight: false,
       length: 0,
       offset: 0,
       paragraphNo: 0,
       shift1page: _shift1page,
     );
     await _relayout(false);
-  }
-
-  Future<void> setCoverImage(ui.Image? coverImage) async {
-    if (identical(_coverImage, coverImage)) {
-      return;
-    }
-    _coverImage = coverImage;
-
-    if (_hasLayoutContent) {
-      await _relayout(true);
-    } else {
-      onSnapshot(snapshot);
-      onInvalidate();
-    }
-  }
-
-  Future<void> updateTheme(
-    KumihanThemeData theme, {
-    ui.Image? paperTexture,
-  }) async {
-    final themeChanged = theme != _theme;
-    final textureChanged = !identical(_paperTexture, paperTexture);
-    if (!themeChanged && !textureChanged) {
-      return;
-    }
-
-    _applyTheme(theme, paperTexture: paperTexture);
-
-    if (_hasLayoutContent && themeChanged) {
-      await _relayout(true);
-      return;
-    }
-
-    onSnapshot(snapshot);
-    onInvalidate();
   }
 
   Future<void> updateLayout(KumihanLayoutData nextLayout) async {
@@ -498,58 +394,6 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
       onInvalidate();
     }
   }
-
-  @override
-  bool hitTest(double x, double y) {
-    return _clickable.any((area) => area.hit(x, y));
-  }
-
-  void updateInteractionHandlers({
-    required ValueChanged<String>? onExternalOpen,
-    required ValueChanged<KumihanTapDetails>? onUnhandledTap,
-    required KumihanTapHandler tapHandler,
-  }) {
-    this.onExternalOpen = onExternalOpen;
-    this.onUnhandledTap = onUnhandledTap;
-    this.tapHandler = tapHandler;
-  }
-
-  @override
-  Future<void> tap(double x, double y) async {
-    for (final area in _clickable) {
-      if (!area.hit(x, y)) {
-        continue;
-      }
-
-      if (area.type == 'リンク') {
-        if (area.data.startsWith('#')) {
-          final page = _anchorList[area.data];
-          if (page != null) {
-            _lastPageNo = _currentPageNo;
-            _showPage(page);
-          }
-        } else {
-          final index = int.tryParse(area.data);
-          final url = index != null && index >= 0 && index < _links.length
-              ? _links[index]
-              : area.data;
-          onExternalOpen?.call(url);
-        }
-        return;
-      }
-    }
-
-    final details = KumihanTapDetails(
-      canvasSize: Size(_width, _height),
-      position: Offset(x, y),
-      snapshot: snapshot,
-    );
-    onUnhandledTap?.call(details);
-    await tapHandler(details, _tapActions);
-  }
-
-  @override
-  bool isReadOutActive() => false;
 
   @override
   Future<void> nextPage([int? amount]) async {
@@ -611,43 +455,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
     _showPage(0);
   }
 
-  @override
-  Future<void> toggleSpread() async {
-    _currentState =
-        '${_currentState[0]}${_currentState.endsWith('double') ? 'single' : 'double'}';
-    await _relayout(true);
-  }
-
-  @override
-  Future<void> toggleWritingMode() async {
-    _currentState =
-        '${_currentState.startsWith('v') ? 'h' : 'v'}${_currentState.endsWith('single') ? 'single' : 'double'}';
-    _currentPosition.leftToRight = _currentState.startsWith('h');
-    await _relayout(true);
-  }
-
-  @override
-  Future<void> toggleShift1Page() async {
-    _shift1page = !_shift1page;
-    await _relayout(true);
-  }
-
-  @override
-  Future<void> togglePaperColor() async {
-    paperColor = paperColor.toARGB32() == paperColorValue
-        ? const Color(0xffffffff)
-        : const Color(paperColorValue);
-    _theme = _theme.copyWith(paperColor: paperColor);
-    onInvalidate();
-  }
-
-  @override
-  Future<void> toggleForceIndent() async {
-    _forceIndent = !_forceIndent;
-    await _relayout(true);
-  }
-
-  int _step() => snapshot.spreadMode == KumihanSpreadMode.single ? 1 : 2;
+  int _step() => 1;
 
   String _preprocessText(String text) {
     var source = text.replaceAll(RegExp(r'(\r\n|\r)'), '\n');
@@ -780,74 +588,11 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
   void _updateSizes() {
     _fontSize = layout.fontSize.roundToDouble();
     _lineSpace = _fontSize * (_settings.widenLineSpace ? 0.8 : 0.63);
-    final customPadding = layout.pagePadding;
-    final useCustomPadding = customPadding != null;
-    final minPageWidth = _fontSize * 6;
-    final minPageHeight = _fontSize * 6;
-
-    if (useCustomPadding) {
-      final pageWidthBase = _currentState[1] == 'd' ? _width / 2 : _width;
-      final desiredSide = customPadding.left;
-      final desiredCenter = customPadding.right;
-      final maxMarginTotal = math.max(pageWidthBase - minPageWidth, 0.0);
-      final marginTotal = desiredSide + desiredCenter;
-      final marginFactor = marginTotal > maxMarginTotal && marginTotal > 0
-          ? maxMarginTotal / marginTotal
-          : 1.0;
-      _pageMarginSide = desiredSide * marginFactor;
-      _pageMarginCenter = desiredCenter * marginFactor;
-      _pageWidth = pageWidthBase - _pageMarginSide - _pageMarginCenter;
-    } else {
-      if (_currentState[1] == 'd') {
-        final desiredSide = math.max(_width * 0.045, _fontSize);
-        final maxSide = math.max((_width / 2 - minPageWidth) / 2.1, 0.0);
-        _pageMarginSide = math.min(desiredSide, maxSide);
-        _pageMarginCenter = 1.1 * _pageMarginSide;
-        _pageWidth = _width / 2 - _pageMarginSide - _pageMarginCenter;
-      } else {
-        final desiredSide = math.max(_width * 0.08, _fontSize);
-        final maxSide = math.max((_width - minPageWidth) / 2.1, 0.0);
-        _pageMarginSide = math.min(desiredSide, maxSide);
-        _pageMarginCenter = 1.1 * _pageMarginSide;
-        _pageWidth = _width - _pageMarginSide - _pageMarginCenter;
-      }
-    }
-
-    if (_currentState.startsWith('v')) {
-      _pageWidth -= (_pageWidth + _lineSpace) % (_fontSize + _lineSpace);
-      if (_currentState[1] == 's' && !useCustomPadding) {
-        _pageMarginSide = (_width - _pageWidth) / 2;
-      }
-      final desiredTop = useCustomPadding
-          ? customPadding.top + _headerReservedExtent
-          : math.max(_height * 0.07, math.max(1.85 * _fontSize + 20, 0));
-      final desiredBottom = useCustomPadding
-          ? customPadding.bottom + _pageNumberReservedExtent
-          : math.max(_height * 0.07, math.max(2.07 * _fontSize, 44));
-      final maxMarginTotal = math.max(_height - minPageHeight, 0);
-      final marginTotal = desiredTop + desiredBottom;
-      final marginFactor = marginTotal > maxMarginTotal && marginTotal > 0
-          ? maxMarginTotal / marginTotal
-          : 1.0;
-      _pageMarginTop = desiredTop * marginFactor;
-      _pageMarginBottom = desiredBottom * marginFactor;
-    } else {
-      final desiredTop = useCustomPadding
-          ? customPadding.top + _headerReservedExtent
-          : math.max(_height * 0.07, 3 * _fontSize);
-      final desiredBottom = useCustomPadding
-          ? customPadding.bottom + _pageNumberReservedExtent
-          : math.max(_height * 0.07, 2.5 * _fontSize);
-      final maxMarginTotal = math.max(_height - minPageHeight, 0);
-      final marginTotal = desiredTop + desiredBottom;
-      final marginFactor = marginTotal > maxMarginTotal && marginTotal > 0
-          ? maxMarginTotal / marginTotal
-          : 1.0;
-      _pageMarginTop = desiredTop * marginFactor;
-      _pageMarginBottom = desiredBottom * marginFactor;
-    }
-
-    _pageHeight = _height - _pageMarginTop - _pageMarginBottom;
+    _pageMarginSide = 0;
+    _pageMarginTop = 0;
+    _pageWidth = _width;
+    _pageWidth -= (_pageWidth + _lineSpace) % (_fontSize + _lineSpace);
+    _pageHeight = _height;
   }
 
   void _layoutDocument() {
@@ -856,9 +601,6 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
       ..clear()
       ..add(PageInfo())
       ..add(PageInfo());
-    if (_shift1page) {
-      _pages.add(PageInfo());
-    }
     _blocks.clear();
     _indexes.clear();
     _chapterList.clear();
@@ -869,12 +611,8 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
     _currentPageNo = -1;
     _resetParagraphState();
 
-    final pageInlineSize = _currentState.startsWith('v')
-        ? _pageWidth
-        : _pageHeight;
-    final pageBlockSize = _currentState.startsWith('v')
-        ? _pageHeight
-        : _pageWidth;
+    final pageInlineSize = _pageWidth;
+    final pageBlockSize = _pageHeight;
 
     for (var entryIndex = 0; entryIndex < _entries.length; entryIndex += 1) {
       final entry = _entries[entryIndex];
@@ -2670,7 +2408,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
         }
       case 'キャプション':
         for (var index = start; index < end; index += 1) {
-          atoms[index].color = _theme.captionColor;
+          atoms[index].color = fontColor;
         }
       case '横組み':
         for (var index = start; index < end; index += 1) {
@@ -2718,11 +2456,8 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
             ..offsetY = openingBrackets.contains(text) ? -advance : 0;
         }
       case 'リンク':
-        final color = (userData?.startsWith('#') ?? false)
-            ? _theme.internalLinkColor
-            : _theme.linkColor;
         for (var index = start; index < end; index += 1) {
-          atoms[index].color = color;
+          atoms[index].color = fontColor;
         }
         block.userData.extras.add(
           LayoutExtra(
@@ -2982,13 +2717,9 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
       return;
     }
 
-    final single = _currentState.endsWith('single');
     final last = _lastDocumentPage;
     if (pageNo > last) {
       pageNo = last;
-    }
-    if (!single) {
-      pageNo &= ~1;
     }
 
     _currentPageNo = pageNo;
@@ -3003,10 +2734,10 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
     }
 
     final pageNo = _currentPageNo < 0 ? 0 : _currentPageNo;
-    if (pageNo > _lastDocumentPage || _isCoverPage(pageNo)) {
+    if (pageNo > _lastDocumentPage) {
       return KumihanRenderTrace(
         currentPage: pageNo,
-        writingMode: getWritingModeFromState(_currentState),
+        writingMode: KumihanWritingMode.vertical,
         commands: const <KumihanRenderCommand>[],
       );
     }
@@ -3027,7 +2758,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
 
     return KumihanRenderTrace(
       currentPage: pageNo,
-      writingMode: getWritingModeFromState(_currentState),
+      writingMode: KumihanWritingMode.vertical,
       commands: List<KumihanRenderCommand>.unmodifiable(commands),
     );
   }
@@ -3041,283 +2772,13 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
     _drawPaperSurface(canvas, Rect.fromLTWH(0, 0, _width, _height));
 
     final pageNo = _currentPageNo < 0 ? 0 : _currentPageNo;
-    final single = _currentState.endsWith('single');
-    final last = _lastDocumentPage;
-
-    if (single) {
-      if (_isCoverPage(pageNo)) {
-        _showTopPage(canvas);
-      } else {
-        if (pageNo < last) {
-          _showOnePage(
-            canvas,
-            _documentToInternalPageNo(pageNo + 1),
-            true,
-            backPage: true,
-          );
-        }
-        _showOnePage(canvas, _documentToInternalPageNo(pageNo), true);
-      }
-    } else {
-      canvas.save();
-      canvas.drawLine(
-        Offset(_width / 2, 0),
-        Offset(_width / 2, _height),
-        Paint()
-          ..color = fontColor.withValues(alpha: 0.18)
-          ..strokeWidth = 1,
-      );
-      canvas.restore();
-
-      if (_currentState.startsWith('v')) {
-        if (_isCoverPage(pageNo)) {
-          _showTopPage(canvas);
-        } else {
-          if (pageNo > 0 && !_isCoverPage(pageNo - 1)) {
-            _showOnePage(
-              canvas,
-              _documentToInternalPageNo(pageNo - 1),
-              true,
-              backPage: true,
-            );
-          }
-          _showOnePage(canvas, _documentToInternalPageNo(pageNo), false);
-        }
-        if (pageNo < last - 1) {
-          _showOnePage(
-            canvas,
-            _documentToInternalPageNo(pageNo + 2),
-            false,
-            backPage: true,
-          );
-        }
-        if (pageNo < last) {
-          _showOnePage(canvas, _documentToInternalPageNo(pageNo + 1), true);
-        }
-      } else {
-        if (_isCoverPage(pageNo)) {
-          _showTopPage(canvas);
-        } else {
-          if (pageNo > 0 && !_isCoverPage(pageNo - 1)) {
-            _showOnePage(
-              canvas,
-              _documentToInternalPageNo(pageNo - 1),
-              false,
-              backPage: true,
-            );
-          }
-          _showOnePage(canvas, _documentToInternalPageNo(pageNo), true);
-        }
-        if (pageNo < last - 1) {
-          _showOnePage(
-            canvas,
-            _documentToInternalPageNo(pageNo + 2),
-            true,
-            backPage: true,
-          );
-        }
-        if (pageNo < last) {
-          _showOnePage(canvas, _documentToInternalPageNo(pageNo + 1), false);
-        }
-      }
+    if (pageNo <= _lastDocumentPage) {
+      _showOnePage(canvas, _documentToInternalPageNo(pageNo), true);
     }
-
-    _drawHeader(canvas);
   }
 
   void _drawPaperSurface(ui.Canvas canvas, Rect rect) {
-    canvas.save();
     canvas.drawRect(rect, Paint()..color = paperColor);
-
-    final texture = _paperTexture;
-    final opacity = clampDouble(_theme.paperTextureOpacity, 0, 1);
-    if (texture != null && opacity > 0) {
-      final source = _coverImageSourceRect(texture, rect.size);
-      canvas.clipRect(rect);
-      canvas.drawImageRect(
-        texture,
-        source,
-        rect,
-        Paint()
-          ..filterQuality = FilterQuality.medium
-          ..colorFilter = ColorFilter.mode(
-            paperColor.withValues(alpha: opacity),
-            BlendMode.modulate,
-          ),
-      );
-    }
-
-    canvas.restore();
-  }
-
-  Rect _coverImageSourceRect(ui.Image image, Size outputSize) {
-    final sourceSize = Size(image.width.toDouble(), image.height.toDouble());
-    final fitted = applyBoxFit(BoxFit.cover, sourceSize, outputSize);
-    return Alignment.center.inscribe(fitted.source, Offset.zero & sourceSize);
-  }
-
-  void _drawHeader(ui.Canvas canvas) {
-    if (!_showsHeader || _isCoverPage(_currentPageNo)) {
-      return;
-    }
-
-    var x = _pageMarginSide;
-    final y = _pageMarginTop - 1.85 * _fontSize;
-    var width = _currentState.endsWith('single')
-        ? _width - _pageMarginSide - _fontSize
-        : _currentState.startsWith('v')
-        ? _pageWidth - _fontSize
-        : _pageWidth;
-
-    if (!_currentState.endsWith('single')) {
-      x = _pageMarginSide + _fontSize;
-    }
-
-    canvas.save();
-    canvas.clipRect(Rect.fromLTWH(x, y, width, _pageMarginTop));
-    final painter = TextPainter(
-      text: TextSpan(
-        text: _headerTitle,
-        style: TextStyle(
-          color: fontColor.withValues(alpha: _theme.isDark ? 0.64 : 0.5),
-          fontFamily: gothicFontFamilies.first,
-          fontFamilyFallback: gothicFontFamilies.sublist(1),
-          package: bundledFontPackage,
-          fontSize: 14,
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-      maxLines: 1,
-      textScaler: TextScaler.noScaling,
-    )..layout(maxWidth: width);
-    painter.paint(canvas, Offset(x, y));
-    canvas.restore();
-  }
-
-  void _showTopPage(ui.Canvas canvas) {
-    if (_coverImage != null) {
-      _showImageCoverPage(canvas, _coverImage!);
-      return;
-    }
-
-    if (_cover == null) {
-      return;
-    }
-
-    final center = _currentState.startsWith('v')
-        ? (_width + (_currentState.endsWith('double') ? _width / 2 : 0)) / 2
-        : _currentState.endsWith('double')
-        ? _width / 4
-        : _width / 2;
-
-    final subtitle = _cover!.subtitle?.trim() ?? '';
-    final credit = _cover!.credit?.trim() ?? '';
-
-    final titlePainter = TextPainter(
-      text: TextSpan(
-        text: _cover!.title,
-        style: TextStyle(
-          color: _coverAccentColor.withValues(alpha: 0.82),
-          fontFamily: gothicFontFamilies.first,
-          fontFamilyFallback: gothicFontFamilies.sublist(1),
-          package: bundledFontPackage,
-          fontSize: _pageWidth * 0.16,
-          fontWeight: FontWeight.w700,
-          letterSpacing: _pageWidth * 0.02,
-        ),
-      ),
-      textAlign: TextAlign.center,
-      textDirection: TextDirection.ltr,
-      maxLines: 1,
-      textScaler: TextScaler.noScaling,
-    )..layout();
-    titlePainter.paint(
-      canvas,
-      Offset(center - titlePainter.width / 2, _height * 0.18),
-    );
-
-    final subPainter = TextPainter(
-      text: TextSpan(
-        text: subtitle.isNotEmpty ? subtitle : credit,
-        style: TextStyle(
-          color: fontColor.withValues(alpha: _theme.isDark ? 0.68 : 0.55),
-          fontFamily: gothicFontFamilies.first,
-          fontFamilyFallback: gothicFontFamilies.sublist(1),
-          package: bundledFontPackage,
-          fontSize: _pageWidth * 0.035,
-          letterSpacing: 1.5,
-        ),
-      ),
-      textAlign: TextAlign.center,
-      textDirection: TextDirection.ltr,
-      maxLines: 1,
-      textScaler: TextScaler.noScaling,
-    )..layout();
-    if (subtitle.isNotEmpty || credit.isNotEmpty) {
-      subPainter.paint(
-        canvas,
-        Offset(center - subPainter.width / 2, _height * 0.33),
-      );
-    }
-
-    if (subtitle.isNotEmpty && credit.isNotEmpty) {
-      final creditPainter = TextPainter(
-        text: TextSpan(
-          text: credit,
-          style: TextStyle(
-            color: _coverAccentColor.withValues(alpha: 0.58),
-            fontFamily: gothicFontFamilies.first,
-            fontFamilyFallback: gothicFontFamilies.sublist(1),
-            package: bundledFontPackage,
-            fontSize: _pageWidth * 0.04,
-          ),
-        ),
-        textAlign: TextAlign.center,
-        textDirection: TextDirection.ltr,
-        maxLines: 1,
-        textScaler: TextScaler.noScaling,
-      )..layout();
-      creditPainter.paint(
-        canvas,
-        Offset(center - creditPainter.width / 2, _height * 0.9),
-      );
-    }
-  }
-
-  void _showImageCoverPage(ui.Canvas canvas, ui.Image image) {
-    final destination = _coverPageRect();
-    if (destination.width <= 0 || destination.height <= 0) {
-      return;
-    }
-
-    final sourceSize = Size(image.width.toDouble(), image.height.toDouble());
-    final fitted = applyBoxFit(BoxFit.contain, sourceSize, destination.size);
-    final source = Alignment.center.inscribe(
-      fitted.source,
-      Offset.zero & sourceSize,
-    );
-    final output = Alignment.center.inscribe(fitted.destination, destination);
-
-    canvas.save();
-    canvas.clipRect(destination);
-    canvas.drawImageRect(image, source, output, Paint());
-    canvas.restore();
-  }
-
-  Rect _coverPageRect() {
-    if (_currentState.startsWith('v')) {
-      final x = _currentState.endsWith('double')
-          ? _width - _pageMarginSide - _pageWidth
-          : _pageMarginSide;
-      return Rect.fromLTWH(x, _pageMarginTop, _pageWidth, _pageHeight);
-    }
-
-    return Rect.fromLTWH(
-      _pageMarginSide,
-      _pageMarginTop,
-      _pageWidth,
-      _pageHeight,
-    );
   }
 
   void _showOnePage(
@@ -3335,23 +2796,6 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
         : _lines.length;
 
     canvas.save();
-    if (backPage) {
-      canvas.translate(_width, 0);
-      canvas.scale(-1, 1);
-    }
-
-    if (backPage) {
-      final backPageOpacity = clampDouble(_theme.backPageOpacity, 0, 1);
-      canvas.saveLayer(
-        Rect.fromLTWH(0, 0, _width, _height),
-        Paint()
-          ..color =
-              (_theme.isDark
-                      ? const Color(0xff000000)
-                      : const Color(0xffffffff))
-                  .withValues(alpha: backPageOpacity),
-      );
-    }
 
     if (_pages[pageNo].centering) {
       var used = -_lineSpace;
@@ -3443,7 +2887,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
                         traceSink: traceSink,
                       );
               case 'る':
-                item.color = _theme.rubyColor;
+                item.color = fontColor;
                 vertical
                     ? item.draw(canvas, x - item.width, y, traceSink: traceSink)
                     : item.drawYoko(
@@ -3453,7 +2897,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
                         traceSink: traceSink,
                       );
               case 'ル':
-                item.color = _theme.rubyColor;
+                item.color = fontColor;
                 vertical
                     ? item.draw(canvas, x + line.width, y, traceSink: traceSink)
                     : item.drawYoko(
@@ -3896,62 +3340,6 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
           : cursor + group.width + _lineSpace;
     }
 
-    if (pageNo > 0 && _showsPageNumber) {
-      final label = '$pageNo/$_contentPageCount';
-      final painter = TextPainter(
-        text: TextSpan(
-          text: label,
-          style: TextStyle(
-            color: fontColor,
-            fontFamily: minchoFontFamilies.first,
-            fontFamilyFallback: minchoFontFamilies.sublist(1),
-            package: bundledFontPackage,
-            fontSize: 0.9 * _fontSize,
-          ),
-        ),
-        textAlign: TextAlign.left,
-        textDirection: TextDirection.ltr,
-        maxLines: 1,
-        textScaler: TextScaler.noScaling,
-      )..layout();
-
-      if (_currentState.endsWith('single')) {
-        final x = switch (layout.singlePageNumberPosition) {
-          KumihanSinglePageNumberPosition.left => _pageMarginSide + _fontSize,
-          KumihanSinglePageNumberPosition.center =>
-            _width / 2 - painter.width / 2,
-          KumihanSinglePageNumberPosition.right =>
-            _width - _pageMarginCenter - _fontSize - painter.width,
-        };
-        painter.paint(
-          canvas,
-          Offset(
-            x,
-            _height - _pageMarginBottom + _fontSize - painter.height / 2,
-          ),
-        );
-      } else if (leftSide) {
-        painter.paint(
-          canvas,
-          Offset(
-            _pageMarginSide + _fontSize,
-            _height - _pageMarginBottom + _fontSize - painter.height / 2,
-          ),
-        );
-      } else {
-        painter.paint(
-          canvas,
-          Offset(
-            _width - _pageMarginSide - _fontSize - painter.width,
-            _height - _pageMarginBottom + _fontSize - painter.height / 2,
-          ),
-        );
-      }
-    }
-
-    if (backPage) {
-      canvas.restore();
-    }
     canvas.restore();
   }
 
@@ -4031,9 +3419,8 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
 
   List<int> _getStopList() {
     final stops = <int>[_lastPageNo];
-    final mask = _currentState.endsWith('double') ? ~1 : ~0;
     for (final chapter in _chapterList) {
-      stops.add(chapter.pageNo & mask);
+      stops.add(chapter.pageNo);
     }
     stops.sort();
     return stops;
@@ -4041,10 +3428,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
 
   PositionInfo _getPositionInfo([bool leftPage = false]) {
     var pageNo = _currentPageNo;
-    if (leftPage && _currentState.endsWith('double')) {
-      pageNo += 1;
-    }
-    if (_currentPageNo >= 0 && pageNo >= 0 && !_isCoverPage(pageNo)) {
+    if (_currentPageNo >= 0 && pageNo >= 0) {
       final internalPageNo = _documentToInternalPageNo(pageNo);
       if (internalPageNo < 0 || internalPageNo >= _pages.length) {
         return _currentPosition;
@@ -4055,7 +3439,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
       }
       final line = _lines[lineIndex].primary;
       return PositionInfo(
-        leftToRight: _currentState.startsWith('h'),
+        leftToRight: false,
         length: 0,
         offset: line.block.atom[line.start].index,
         paragraphNo: _blocks.indexOf(line.block),

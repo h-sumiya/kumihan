@@ -6,28 +6,17 @@ import 'package:flutter/widgets.dart';
 import 'engine/kumihan_engine.dart';
 import 'kumihan_controller.dart';
 import 'kumihan_document.dart';
-import 'kumihan_tap.dart';
-import 'kumihan_theme.dart';
 import 'kumihan_types.dart';
 import 'parsers/aozora_parser.dart';
-import 'parsers/html_parser.dart';
-import 'parsers/markdown_parser.dart';
 
 class KumihanCanvas extends StatefulWidget {
   const KumihanCanvas({
     super.key,
     required this.document,
     this.controller,
-    this.coverImage,
     this.imageLoader,
     this.initialPage = 0,
-    this.initialSpread = KumihanSpreadMode.doublePage,
-    this.initialWritingMode = KumihanWritingMode.vertical,
     this.layout = const KumihanLayoutData(),
-    this.theme = const KumihanThemeData(),
-    this.onExternalOpen,
-    this.onUnhandledTap,
-    this.tapHandler = KumihanTapHandlers.pageTurnByHorizontalPosition,
     this.onSnapshotChanged,
   });
 
@@ -37,138 +26,27 @@ class KumihanCanvas extends StatefulWidget {
     String? title,
     String? author,
     KumihanController? controller,
-    ImageProvider<Object>? coverImage,
     KumihanImageLoader? imageLoader,
     int initialPage = 0,
-    KumihanSpreadMode initialSpread = KumihanSpreadMode.doublePage,
-    KumihanWritingMode initialWritingMode = KumihanWritingMode.vertical,
     KumihanLayoutData layout = const KumihanLayoutData(),
-    KumihanThemeData theme = const KumihanThemeData(),
-    ValueChanged<String>? onExternalOpen,
-    KumihanUnhandledTapCallback? onUnhandledTap,
-    KumihanTapHandler tapHandler =
-        KumihanTapHandlers.pageTurnByHorizontalPosition,
     ValueChanged<KumihanSnapshot>? onSnapshotChanged,
-    bool includeCover = false,
   }) {
     return KumihanCanvas(
       key: key,
-      document: KumihanAozoraParser(
-        author: author,
-        includeCover: includeCover,
-        title: title,
-      ).parse(text),
+      document: KumihanAozoraParser(author: author, title: title).parse(text),
       controller: controller,
-      coverImage: coverImage,
       imageLoader: imageLoader,
       initialPage: initialPage,
-      initialSpread: initialSpread,
-      initialWritingMode: initialWritingMode,
       layout: layout,
-      theme: theme,
-      onExternalOpen: onExternalOpen,
-      onUnhandledTap: onUnhandledTap,
-      tapHandler: tapHandler,
-      onSnapshotChanged: onSnapshotChanged,
-    );
-  }
-
-  factory KumihanCanvas.markdown({
-    Key? key,
-    required String text,
-    String? title,
-    String? author,
-    KumihanController? controller,
-    ImageProvider<Object>? coverImage,
-    KumihanImageLoader? imageLoader,
-    int initialPage = 0,
-    KumihanSpreadMode initialSpread = KumihanSpreadMode.doublePage,
-    KumihanWritingMode initialWritingMode = KumihanWritingMode.vertical,
-    KumihanLayoutData layout = const KumihanLayoutData(),
-    KumihanThemeData theme = const KumihanThemeData(),
-    ValueChanged<String>? onExternalOpen,
-    KumihanUnhandledTapCallback? onUnhandledTap,
-    KumihanTapHandler tapHandler =
-        KumihanTapHandlers.pageTurnByHorizontalPosition,
-    ValueChanged<KumihanSnapshot>? onSnapshotChanged,
-    bool includeCover = false,
-  }) {
-    return KumihanCanvas(
-      key: key,
-      document: KumihanMarkdownParser(
-        author: author,
-        includeCover: includeCover,
-        title: title,
-      ).parse(text),
-      controller: controller,
-      coverImage: coverImage,
-      imageLoader: imageLoader,
-      initialPage: initialPage,
-      initialSpread: initialSpread,
-      initialWritingMode: initialWritingMode,
-      layout: layout,
-      theme: theme,
-      onExternalOpen: onExternalOpen,
-      onUnhandledTap: onUnhandledTap,
-      tapHandler: tapHandler,
-      onSnapshotChanged: onSnapshotChanged,
-    );
-  }
-
-  factory KumihanCanvas.html({
-    Key? key,
-    required String text,
-    String? title,
-    String? author,
-    KumihanController? controller,
-    ImageProvider<Object>? coverImage,
-    KumihanImageLoader? imageLoader,
-    int initialPage = 0,
-    KumihanSpreadMode initialSpread = KumihanSpreadMode.doublePage,
-    KumihanWritingMode initialWritingMode = KumihanWritingMode.vertical,
-    KumihanLayoutData layout = const KumihanLayoutData(),
-    KumihanThemeData theme = const KumihanThemeData(),
-    ValueChanged<String>? onExternalOpen,
-    KumihanUnhandledTapCallback? onUnhandledTap,
-    KumihanTapHandler tapHandler =
-        KumihanTapHandlers.pageTurnByHorizontalPosition,
-    ValueChanged<KumihanSnapshot>? onSnapshotChanged,
-    bool includeCover = false,
-  }) {
-    return KumihanCanvas(
-      key: key,
-      document: KumihanHtmlParser(
-        author: author,
-        includeCover: includeCover,
-        title: title,
-      ).parse(text),
-      controller: controller,
-      coverImage: coverImage,
-      imageLoader: imageLoader,
-      initialPage: initialPage,
-      initialSpread: initialSpread,
-      initialWritingMode: initialWritingMode,
-      layout: layout,
-      theme: theme,
-      onExternalOpen: onExternalOpen,
-      onUnhandledTap: onUnhandledTap,
-      tapHandler: tapHandler,
       onSnapshotChanged: onSnapshotChanged,
     );
   }
 
   final KumihanDocument document;
   final KumihanController? controller;
-  final ImageProvider<Object>? coverImage;
   final KumihanImageLoader? imageLoader;
   final int initialPage;
-  final KumihanSpreadMode initialSpread;
-  final KumihanWritingMode initialWritingMode;
   final KumihanLayoutData layout;
-  final KumihanThemeData theme;
-  final ValueChanged<String>? onExternalOpen;
-  final KumihanUnhandledTapCallback? onUnhandledTap;
-  final KumihanTapHandler tapHandler;
   final ValueChanged<KumihanSnapshot>? onSnapshotChanged;
 
   @override
@@ -177,14 +55,6 @@ class KumihanCanvas extends StatefulWidget {
 
 class _KumihanCanvasState extends State<KumihanCanvas> {
   late KumihanEngine _engine;
-  ImageStream? _coverImageStream;
-  ImageStreamListener? _coverImageListener;
-  ui.Image? _resolvedCoverImage;
-  ImageProvider<Object>? _resolvedCoverImageProvider;
-  ImageStream? _paperTextureStream;
-  ImageStreamListener? _paperTextureListener;
-  ui.Image? _resolvedPaperTexture;
-  ImageProvider<Object>? _resolvedPaperTextureProvider;
   Size _lastSize = Size.zero;
 
   @override
@@ -196,13 +66,6 @@ class _KumihanCanvasState extends State<KumihanCanvas> {
   }
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _resolveCoverImage();
-    _resolvePaperTexture();
-  }
-
-  @override
   void didUpdateWidget(covariant KumihanCanvas oldWidget) {
     super.didUpdateWidget(oldWidget);
 
@@ -211,28 +74,8 @@ class _KumihanCanvasState extends State<KumihanCanvas> {
       widget.controller?.attach(_engine);
     }
 
-    if (oldWidget.coverImage != widget.coverImage) {
-      _resolveCoverImage(force: true);
-    }
-
-    if (oldWidget.theme.paperTexture != widget.theme.paperTexture) {
-      _resolvePaperTexture(force: true);
-    }
-
-    if (oldWidget.onExternalOpen != widget.onExternalOpen ||
-        oldWidget.onUnhandledTap != widget.onUnhandledTap ||
-        oldWidget.tapHandler != widget.tapHandler) {
-      _engine.updateInteractionHandlers(
-        onExternalOpen: widget.onExternalOpen,
-        onUnhandledTap: widget.onUnhandledTap,
-        tapHandler: widget.tapHandler,
-      );
-    }
-
     final settingsChanged =
         oldWidget.initialPage != widget.initialPage ||
-        oldWidget.initialSpread != widget.initialSpread ||
-        oldWidget.initialWritingMode != widget.initialWritingMode ||
         oldWidget.imageLoader != widget.imageLoader;
 
     if (settingsChanged) {
@@ -246,12 +89,6 @@ class _KumihanCanvasState extends State<KumihanCanvas> {
       return;
     }
 
-    if (oldWidget.theme != widget.theme) {
-      unawaited(
-        _engine.updateTheme(widget.theme, paperTexture: _resolvedPaperTexture),
-      );
-    }
-
     if (oldWidget.layout != widget.layout) {
       unawaited(_engine.updateLayout(widget.layout));
     }
@@ -263,8 +100,6 @@ class _KumihanCanvasState extends State<KumihanCanvas> {
 
   @override
   void dispose() {
-    _stopListeningToCoverImage();
-    _stopListeningToPaperTexture();
     widget.controller?.detach(_engine);
     super.dispose();
   }
@@ -272,17 +107,9 @@ class _KumihanCanvasState extends State<KumihanCanvas> {
   KumihanEngine _createEngine() {
     return KumihanEngine(
       baseUri: null,
-      coverImage: _resolvedCoverImage,
       imageLoader: widget.imageLoader,
       initialPage: widget.initialPage,
-      initialSpread: widget.initialSpread,
-      initialWritingMode: widget.initialWritingMode,
       layout: widget.layout,
-      theme: widget.theme,
-      paperTexture: _resolvedPaperTexture,
-      onExternalOpen: widget.onExternalOpen,
-      onUnhandledTap: widget.onUnhandledTap,
-      tapHandler: widget.tapHandler,
       onInvalidate: () {
         if (!mounted) {
           return;
@@ -297,108 +124,6 @@ class _KumihanCanvasState extends State<KumihanCanvas> {
         widget.onSnapshotChanged?.call(snapshot);
       },
     );
-  }
-
-  void _resolveCoverImage({bool force = false}) {
-    final provider = widget.coverImage;
-    if (!force && _resolvedCoverImageProvider == provider) {
-      return;
-    }
-
-    _resolvedCoverImageProvider = provider;
-    _stopListeningToCoverImage();
-    _updateResolvedCoverImage(null);
-
-    if (provider == null) {
-      return;
-    }
-
-    final stream = provider.resolve(createLocalImageConfiguration(context));
-    final listener = ImageStreamListener(
-      (imageInfo, _) {
-        if (!mounted) {
-          return;
-        }
-        _updateResolvedCoverImage(imageInfo.image);
-      },
-      onError: (_, _) {
-        if (!mounted) {
-          return;
-        }
-        _updateResolvedCoverImage(null);
-      },
-    );
-
-    _coverImageStream = stream;
-    _coverImageListener = listener;
-    stream.addListener(listener);
-  }
-
-  void _stopListeningToCoverImage() {
-    if (_coverImageStream != null && _coverImageListener != null) {
-      _coverImageStream!.removeListener(_coverImageListener!);
-    }
-    _coverImageStream = null;
-    _coverImageListener = null;
-  }
-
-  void _resolvePaperTexture({bool force = false}) {
-    final provider = widget.theme.paperTexture;
-    if (!force && _resolvedPaperTextureProvider == provider) {
-      return;
-    }
-
-    _resolvedPaperTextureProvider = provider;
-    _stopListeningToPaperTexture();
-    _updateResolvedPaperTexture(null);
-
-    if (provider == null) {
-      return;
-    }
-
-    final stream = provider.resolve(createLocalImageConfiguration(context));
-    final listener = ImageStreamListener(
-      (imageInfo, _) {
-        if (!mounted) {
-          return;
-        }
-        _updateResolvedPaperTexture(imageInfo.image);
-      },
-      onError: (_, _) {
-        if (!mounted) {
-          return;
-        }
-        _updateResolvedPaperTexture(null);
-      },
-    );
-
-    _paperTextureStream = stream;
-    _paperTextureListener = listener;
-    stream.addListener(listener);
-  }
-
-  void _stopListeningToPaperTexture() {
-    if (_paperTextureStream != null && _paperTextureListener != null) {
-      _paperTextureStream!.removeListener(_paperTextureListener!);
-    }
-    _paperTextureStream = null;
-    _paperTextureListener = null;
-  }
-
-  void _updateResolvedCoverImage(ui.Image? image) {
-    if (identical(_resolvedCoverImage, image)) {
-      return;
-    }
-    _resolvedCoverImage = image;
-    unawaited(_engine.setCoverImage(image));
-  }
-
-  void _updateResolvedPaperTexture(ui.Image? image) {
-    if (identical(_resolvedPaperTexture, image)) {
-      return;
-    }
-    _resolvedPaperTexture = image;
-    unawaited(_engine.updateTheme(widget.theme, paperTexture: image));
   }
 
   void _scheduleResize(Size size) {
@@ -423,16 +148,7 @@ class _KumihanCanvasState extends State<KumihanCanvas> {
           constraints.maxHeight.isFinite ? constraints.maxHeight : 1,
         );
         _scheduleResize(size);
-
-        return GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTapUp: (details) {
-            unawaited(
-              _engine.tap(details.localPosition.dx, details.localPosition.dy),
-            );
-          },
-          child: CustomPaint(painter: _KumihanPainter(_engine), size: size),
-        );
+        return CustomPaint(painter: _KumihanPainter(_engine), size: size);
       },
     );
   }
