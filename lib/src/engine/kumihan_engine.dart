@@ -16,6 +16,8 @@ import 'helpers.dart';
 import 'layout_primitives.dart';
 import 'table_renderer.dart';
 
+part 'kumihan_page_renderer.dart';
+
 final RegExp _cjkIdeographPattern = RegExp('[⺀-⻳㐁-䶮一-龻豈-龎仝々〆〇ヶ]');
 final RegExp _imageAnnotationPattern = RegExp(
   r'［＃([^［]*?)（([^（、]*?)(、横([0-9]+)×縦([0-9]+)|)）入る］',
@@ -24,6 +26,162 @@ final RegExp _engineImageAnnotationPattern = RegExp(
   r'￹[外画]￺([^\t￻]+)\t([^\t￻]*)\t([^\t￻]*)￻',
 );
 const String _warichuPlaceholder = '　';
+
+LayoutAnnotationKind _parseAnnotationKind(String raw) {
+  switch (raw) {
+    case '外':
+      return LayoutAnnotationKind.outsideImage;
+    case '画':
+      return LayoutAnnotationKind.inlineImage;
+    case 'リ':
+      return LayoutAnnotationKind.link;
+    case '罫':
+      return LayoutAnnotationKind.ruledLine;
+    case '横':
+      return LayoutAnnotationKind.tcy;
+    case '字':
+      return LayoutAnnotationKind.textStyle;
+    case '割':
+      return LayoutAnnotationKind.warichu;
+    case '見':
+      return LayoutAnnotationKind.midashi;
+    case 'ア':
+      return LayoutAnnotationKind.anchor;
+    case '回':
+      return LayoutAnnotationKind.kaeritenKunten;
+    case '─':
+      return LayoutAnnotationKind.inlineStyleDash;
+    case '小':
+      return LayoutAnnotationKind.inlineStyleSmall;
+    case '合':
+      return LayoutAnnotationKind.inlineStyleCombined;
+    case '返':
+      return LayoutAnnotationKind.kaeri;
+    case '中':
+      return LayoutAnnotationKind.naka;
+    case '送':
+      return LayoutAnnotationKind.okuri;
+    case 'ル':
+      return LayoutAnnotationKind.rightRuby;
+    case 'る':
+      return LayoutAnnotationKind.leftRuby;
+    case '囲':
+      return LayoutAnnotationKind.frame;
+    case '線':
+      return LayoutAnnotationKind.span;
+    case '点':
+      return LayoutAnnotationKind.emphasis;
+    case '※':
+      return LayoutAnnotationKind.noteReference;
+    case '注':
+      return LayoutAnnotationKind.note;
+  }
+
+  debugPrint('Unsupported annotation kind: $raw');
+  return LayoutAnnotationKind.unsupported;
+}
+
+LayoutExtraType _extraTypeFromAnnotationKind(LayoutAnnotationKind kind) {
+  switch (kind) {
+    case LayoutAnnotationKind.outsideImage:
+      return LayoutExtraType.outsideImage;
+    case LayoutAnnotationKind.inlineImage:
+      return LayoutExtraType.inlineImage;
+    case LayoutAnnotationKind.link:
+      return LayoutExtraType.link;
+    case LayoutAnnotationKind.ruledLine:
+      return LayoutExtraType.ruledLine;
+    case LayoutAnnotationKind.tcy:
+      return LayoutExtraType.tcy;
+    case LayoutAnnotationKind.textStyle:
+    case LayoutAnnotationKind.midashi:
+    case LayoutAnnotationKind.kaeritenKunten:
+    case LayoutAnnotationKind.inlineStyleDash:
+    case LayoutAnnotationKind.inlineStyleSmall:
+    case LayoutAnnotationKind.inlineStyleCombined:
+      return LayoutExtraType.textStyle;
+    case LayoutAnnotationKind.warichu:
+      return LayoutExtraType.warichu;
+    case LayoutAnnotationKind.frame:
+      return LayoutExtraType.frame;
+    case LayoutAnnotationKind.span:
+      return LayoutExtraType.span;
+    case LayoutAnnotationKind.emphasis:
+      return LayoutExtraType.emphasis;
+    case LayoutAnnotationKind.noteReference:
+      return LayoutExtraType.noteReference;
+    case LayoutAnnotationKind.note:
+      return LayoutExtraType.note;
+    case LayoutAnnotationKind.unsupported:
+    case LayoutAnnotationKind.anchor:
+    case LayoutAnnotationKind.kaeri:
+    case LayoutAnnotationKind.naka:
+    case LayoutAnnotationKind.okuri:
+    case LayoutAnnotationKind.rightRuby:
+    case LayoutAnnotationKind.leftRuby:
+      return LayoutExtraType.unsupported;
+  }
+}
+
+LayoutInlineDecorationKind? _inlineDecorationKindFromAnnotationKind(
+  LayoutAnnotationKind kind,
+) {
+  switch (kind) {
+    case LayoutAnnotationKind.kaeri:
+      return LayoutInlineDecorationKind.kaeri;
+    case LayoutAnnotationKind.naka:
+      return LayoutInlineDecorationKind.naka;
+    case LayoutAnnotationKind.okuri:
+      return LayoutInlineDecorationKind.okuri;
+    case LayoutAnnotationKind.rightRuby:
+      return LayoutInlineDecorationKind.rightRuby;
+    case LayoutAnnotationKind.leftRuby:
+      return LayoutInlineDecorationKind.leftRuby;
+    case LayoutAnnotationKind.unsupported:
+    case LayoutAnnotationKind.outsideImage:
+    case LayoutAnnotationKind.inlineImage:
+    case LayoutAnnotationKind.link:
+    case LayoutAnnotationKind.ruledLine:
+    case LayoutAnnotationKind.tcy:
+    case LayoutAnnotationKind.textStyle:
+    case LayoutAnnotationKind.warichu:
+    case LayoutAnnotationKind.midashi:
+    case LayoutAnnotationKind.anchor:
+    case LayoutAnnotationKind.kaeritenKunten:
+    case LayoutAnnotationKind.inlineStyleDash:
+    case LayoutAnnotationKind.inlineStyleSmall:
+    case LayoutAnnotationKind.inlineStyleCombined:
+    case LayoutAnnotationKind.frame:
+    case LayoutAnnotationKind.span:
+    case LayoutAnnotationKind.emphasis:
+    case LayoutAnnotationKind.noteReference:
+    case LayoutAnnotationKind.note:
+      return null;
+  }
+}
+
+String _styleNameForInlineDecorationKind(LayoutInlineDecorationKind kind) {
+  switch (kind) {
+    case LayoutInlineDecorationKind.kaeri:
+      return '返';
+    case LayoutInlineDecorationKind.naka:
+      return '中';
+    case LayoutInlineDecorationKind.okuri:
+      return '送';
+    case LayoutInlineDecorationKind.rightRuby:
+      return 'ル';
+    case LayoutInlineDecorationKind.leftRuby:
+      return 'る';
+    case LayoutInlineDecorationKind.referenceNote:
+      return '※';
+    case LayoutInlineDecorationKind.annotationNote:
+      return '注';
+    case LayoutInlineDecorationKind.rightEmphasis:
+      return '右点';
+    case LayoutInlineDecorationKind.leftEmphasis:
+      return '左点';
+  }
+}
 
 int _findEndBracket(String text, int position) {
   var index = position;
@@ -626,7 +784,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
 
         final extras = <LayoutExtra>[];
         if (_frameDrawing) {
-          extras.add(LayoutExtra(type: '囲', ruby: '罫囲み中'));
+          extras.add(LayoutExtra(type: LayoutExtraType.frame, ruby: '罫囲み中'));
         }
 
         final firstTopMargin = _firstTopMargin;
@@ -723,18 +881,18 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
         _firstTopMargin += _fontSize;
         _restTopMargin += _fontSize;
         _bottomMargin += _fontSize;
-        extras.add(LayoutExtra(type: '囲', ruby: '罫囲み始'));
+        extras.add(LayoutExtra(type: LayoutExtraType.frame, ruby: '罫囲み始'));
         paragraph = '';
       } else if (paragraph == '［＃ここで罫囲み終わり］') {
         _firstTopMargin = math.max(_firstTopMargin - _fontSize, 0);
         _restTopMargin = math.max(_restTopMargin - _fontSize, 0);
         _bottomMargin = math.max(_bottomMargin - _fontSize, 0);
         _frameDrawing = false;
-        extras.add(LayoutExtra(type: '囲', ruby: '罫囲み終'));
+        extras.add(LayoutExtra(type: LayoutExtraType.frame, ruby: '罫囲み終'));
         paragraph = '';
       } else {
         if (_frameDrawing) {
-          extras.add(LayoutExtra(type: '囲', ruby: '罫囲み中'));
+          extras.add(LayoutExtra(type: LayoutExtraType.frame, ruby: '罫囲み中'));
         }
 
         paragraph = paragraph.replaceAll('［＃改行］', '');
@@ -844,7 +1002,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
       }
 
       for (final style in inlineStyles) {
-        if (style.type == '外') {
+        if (style.type == LayoutExtraType.outsideImage) {
           _insertImage(
             block,
             style.startIndex ?? 0,
@@ -854,23 +1012,23 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
           );
           continue;
         }
-        if (style.type == '画') {
+        if (style.type == LayoutExtraType.inlineImage) {
           _insertImage(
             block,
             style.startIndex ?? 0,
             style.style ?? '',
-            double.tryParse(style.userData ?? '') ?? 0,
+            style.imageWidth ?? 0,
             double.tryParse(style.ruby ?? '') ?? 0,
           );
           continue;
         }
-        if (style.type == 'リ') {
+        if (style.type == LayoutExtraType.link) {
           _applyStyle(
             block,
             style.startIndex ?? 0,
             style.endIndex ?? 0,
             style.style ?? '',
-            userData: style.userData ?? '',
+            userData: style.linkTarget ?? '',
           );
           continue;
         }
@@ -960,9 +1118,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
         : initialTop;
 
     _pushLine(line, pageInlineSize, nonBreak);
-    if (line.userData.isEmpty) {
-      line.userData.add(_pages.length - 1);
-    }
+    line.pageIndex ??= _pages.length - 1;
     _updateCurrentPageForPosition(paragraphNo, block, line);
 
     var nextTop = restTopMargin;
@@ -975,7 +1131,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
     while ((line = block.createTextLine(line, availableHeight, true)) != null) {
       line!.y = nextTop;
       _pushLine(line, pageInlineSize, false);
-      line.userData.add(_pages.length - 1);
+      line.pageIndex = _pages.length - 1;
       _updateCurrentPageForPosition(paragraphNo, block, line);
       availableHeight = pageBlockSize - nextTop - bottomMargin;
     }
@@ -1252,7 +1408,9 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
     var annotationStart = working.indexOf('￹');
 
     while (annotationStart >= 0) {
-      final annotationType = charAt(working, annotationStart + 1);
+      final annotationKind = _parseAnnotationKind(
+        charAt(working, annotationStart + 1),
+      );
       var bodyStart = working.indexOf('￺', annotationStart + 2);
       var nested = working.indexOf('￹', annotationStart + 2);
       while (nested >= 0 && nested < bodyStart) {
@@ -1305,16 +1463,17 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
             }
           }
         }
-      } else if (annotationType == '返' ||
-          annotationType == '中' ||
-          annotationType == '送') {
+      } else if (annotationKind == LayoutAnnotationKind.kaeri ||
+          annotationKind == LayoutAnnotationKind.naka ||
+          annotationKind == LayoutAnnotationKind.okuri) {
         if (working.substring(annotationStart - 1, annotationStart) == '￼') {
           startIndex -= 1;
         } else {
           replacement += '⁠￼';
           startIndex += 1;
         }
-      } else if (annotationType == '注' || annotationType == 'ア') {
+      } else if (annotationKind == LayoutAnnotationKind.note ||
+          annotationKind == LayoutAnnotationKind.anchor) {
         endIndex = startIndex;
         if (startIndex > 0) {
           startIndex -= 1;
@@ -1322,58 +1481,58 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
       }
 
       if (startIndex >= 0) {
-        switch (annotationType) {
-          case '外':
-          case '画':
+        switch (annotationKind) {
+          case LayoutAnnotationKind.outsideImage:
+          case LayoutAnnotationKind.inlineImage:
             final parts = annotationText.split('\t');
             inlineStyles.add(
               LayoutExtra(
                 endIndex: endIndex,
+                imageWidth: parts.length > 1 ? double.tryParse(parts[1]) : null,
                 startIndex: startIndex,
                 style: parts.isNotEmpty ? parts[0] : '',
                 ruby: parts.length > 2 ? parts[2] : '',
-                type: annotationType,
-                userData: parts.length > 1 ? parts[1] : '',
+                type: _extraTypeFromAnnotationKind(annotationKind),
               ),
             );
             replacement += '￼';
-          case 'リ':
+          case LayoutAnnotationKind.link:
             inlineStyles.add(
               LayoutExtra(
                 endIndex: endIndex,
+                linkTarget: annotationText,
                 startIndex: startIndex,
                 style: 'リンク',
-                type: annotationType,
-                userData: annotationText,
+                type: LayoutExtraType.link,
               ),
             );
-          case '罫':
+          case LayoutAnnotationKind.ruledLine:
             extras.add(
               LayoutExtra(
                 endIndex: endIndex,
                 ruby: annotationText,
                 startIndex: startIndex,
-                type: annotationType,
+                type: LayoutExtraType.ruledLine,
               ),
             );
-          case '横':
+          case LayoutAnnotationKind.tcy:
             tcyEntries.add(
               LayoutExtra(
                 endIndex: endIndex,
                 startIndex: startIndex,
-                type: annotationType,
+                type: LayoutExtraType.tcy,
               ),
             );
-          case '字':
+          case LayoutAnnotationKind.textStyle:
             textStyles.add(
               LayoutExtra(
                 endIndex: endIndex,
                 startIndex: startIndex,
                 style: annotationText,
-                type: annotationType,
+                type: LayoutExtraType.textStyle,
               ),
             );
-          case '割':
+          case LayoutAnnotationKind.warichu:
             final innerLength = (annotationText.length + 1) ~/ 2;
             replacement = '（${_warichuPlaceholder * innerLength}）';
             replaceTargetText = true;
@@ -1382,7 +1541,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
                 endIndex: startIndex + 1,
                 startIndex: startIndex,
                 style: '割り注括弧',
-                type: annotationType,
+                type: LayoutExtraType.textStyle,
               ),
             );
             inlineStyles.add(
@@ -1390,7 +1549,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
                 endIndex: startIndex + replacement.length - 1,
                 startIndex: startIndex + 1,
                 style: '割り注占位',
-                type: annotationType,
+                type: LayoutExtraType.textStyle,
               ),
             );
             inlineStyles.add(
@@ -1398,7 +1557,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
                 endIndex: startIndex + replacement.length,
                 startIndex: startIndex + replacement.length - 1,
                 style: '割り注括弧',
-                type: annotationType,
+                type: LayoutExtraType.textStyle,
               ),
             );
             extras.add(
@@ -1406,16 +1565,16 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
                 endIndex: startIndex + replacement.length,
                 ruby: annotationText,
                 startIndex: startIndex,
-                type: annotationType,
+                type: LayoutExtraType.warichu,
               ),
             );
-          case '見':
+          case LayoutAnnotationKind.midashi:
             textStyles.add(
               LayoutExtra(
                 endIndex: endIndex,
                 startIndex: startIndex,
                 style: annotationText,
-                type: annotationType,
+                type: LayoutExtraType.textStyle,
               ),
             );
             _indexes.add(
@@ -1426,7 +1585,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
                 type: annotationText,
               ),
             );
-          case 'ア':
+          case LayoutAnnotationKind.anchor:
             _indexes.add(
               IndexEntry(
                 endIndex: endIndex,
@@ -1435,7 +1594,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
                 type: '#$annotationText',
               ),
             );
-          case '回':
+          case LayoutAnnotationKind.kaeritenKunten:
             for (var index = startIndex; index < bodyStart; index += 1) {
               final character = charAt(working, index);
               if (character == '〝') {
@@ -1451,51 +1610,57 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
                 endIndex: endIndex,
                 startIndex: startIndex,
                 style: annotationText,
-                type: annotationType,
+                type: LayoutExtraType.textStyle,
               ),
             );
-          case '─':
-          case '小':
-          case '合':
+          case LayoutAnnotationKind.inlineStyleDash:
+          case LayoutAnnotationKind.inlineStyleSmall:
+          case LayoutAnnotationKind.inlineStyleCombined:
             inlineStyles.add(
               LayoutExtra(
                 endIndex: endIndex,
                 startIndex: startIndex,
                 style: annotationText,
-                type: annotationType,
+                type: LayoutExtraType.textStyle,
               ),
             );
-          case '返':
-          case '中':
-          case '送':
+          case LayoutAnnotationKind.kaeri:
+          case LayoutAnnotationKind.naka:
+          case LayoutAnnotationKind.okuri:
             inserts.add(
               LayoutInsert(
                 startIndex: startIndex,
                 text: annotationText,
-                type: annotationType,
+                type: _inlineDecorationKindFromAnnotationKind(annotationKind)!,
               ),
             );
-          case 'ル':
-          case 'る':
+          case LayoutAnnotationKind.rightRuby:
+          case LayoutAnnotationKind.leftRuby:
             final spans = <LayoutInsert>[];
             var nestedStart = annotationText.indexOf('￹');
             while (nestedStart >= 0) {
-              final nestedType = charAt(annotationText, nestedStart + 1);
+              final nestedKind = _parseAnnotationKind(
+                charAt(annotationText, nestedStart + 1),
+              );
               final nestedEnd = annotationText.indexOf('￻', nestedStart + 2);
               if (nestedEnd < 0) {
                 break;
               }
-              if (nestedType == '返' || nestedType == '送' || nestedType == '中') {
+              if (nestedKind == LayoutAnnotationKind.kaeri ||
+                  nestedKind == LayoutAnnotationKind.okuri ||
+                  nestedKind == LayoutAnnotationKind.naka) {
                 final body = annotationText.substring(
                   nestedStart + 3,
                   nestedEnd,
                 );
-                if (nestedType != '中') {
+                if (nestedKind != LayoutAnnotationKind.naka) {
                   spans.add(
                     LayoutInsert(
                       startIndex: nestedStart,
                       text: body,
-                      type: nestedType,
+                      type: _inlineDecorationKindFromAnnotationKind(
+                        nestedKind,
+                      )!,
                     ),
                   );
                 }
@@ -1519,21 +1684,26 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
                       (span) => LayoutStyleSpan(
                         endIndex: span.startIndex + span.text.length,
                         startIndex: span.startIndex,
-                        type: span.type,
+                        type: _styleNameForInlineDecorationKind(span.type),
                       ),
                     )
                     .toList(),
                 startIndex: startIndex,
-                type: annotationType,
+                type: _inlineDecorationKindFromAnnotationKind(annotationKind)!,
               ),
             );
-          default:
+          case LayoutAnnotationKind.unsupported:
+          case LayoutAnnotationKind.frame:
+          case LayoutAnnotationKind.span:
+          case LayoutAnnotationKind.emphasis:
+          case LayoutAnnotationKind.noteReference:
+          case LayoutAnnotationKind.note:
             extras.add(
               LayoutExtra(
                 endIndex: endIndex,
                 ruby: annotationText,
                 startIndex: startIndex,
-                type: annotationType,
+                type: _extraTypeFromAnnotationKind(annotationKind),
               ),
             );
         }
@@ -1615,7 +1785,9 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
       }
       final atomIndex = block.getAtomIndexAt(insert.startIndex);
       insert.tl!.y = line.y + line.getAtomY(atomIndex);
-      line.userData.add(insert.tl!);
+      line.attachments.add(
+        InlineDecorationAttachment(kind: insert.type, line: insert.tl!),
+      );
     }
 
     for (final ruby in rubies) {
@@ -1642,9 +1814,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
         continue;
       }
 
-      rubyLine.userData
-        ..clear()
-        ..add(ruby.type);
+      rubyLine.attachments.clear();
       var offset = (rubyLine.textWidth - segmentHeight) / 2;
       rubyLine.y = startY - offset;
 
@@ -1659,7 +1829,9 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
         }
       }
 
-      line.userData.add(rubyLine);
+      line.attachments.add(
+        InlineDecorationAttachment(kind: ruby.type, line: rubyLine),
+      );
       line.rubyBottom[ruby.type] = math.max(
         line.rubyBottom[ruby.type] ?? 0,
         rubyLine.y + rubyLine.textWidth,
@@ -1682,12 +1854,12 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
           break;
         }
 
-        rubyLine.userData
-          ..clear()
-          ..add(ruby.type);
+        rubyLine.attachments.clear();
         offset = (rubyLine.textWidth - segmentHeight) / 2;
         rubyLine.y = line.y - offset;
-        line.userData.add(rubyLine);
+        line.attachments.add(
+          InlineDecorationAttachment(kind: ruby.type, line: rubyLine),
+        );
         line.rubyBottom[ruby.type] = math.max(
           line.rubyBottom[ruby.type] ?? 0,
           rubyLine.y + rubyLine.textWidth,
@@ -1696,9 +1868,9 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
     }
 
     for (final extra in extras) {
-      if (extra.type == '割') {
+      if (extra.type == LayoutExtraType.warichu) {
         _attachWarichu(block, extra);
-      } else if (extra.type == '※') {
+      } else if (extra.type == LayoutExtraType.noteReference) {
         final startIndex = extra.startIndex ?? 0;
         final line = block.getTextLineAtCharIndex(startIndex);
         if (line == null) {
@@ -1717,14 +1889,19 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
         final markerLine = markerBlock.createTextLine()!;
         final atomIndex = block.getAtomIndexAt(startIndex);
         markerLine.color = const Color(0xff008800);
-        markerLine.userData.add(extra.type);
+        markerLine.attachments.clear();
         markerLine.y =
             line.y +
             line.getAtomY(atomIndex) +
             block.getAtomHeight(atomIndex) -
             0.4 * line.width;
-        line.userData.add(markerLine);
-        line.userData.add(
+        line.attachments.add(
+          InlineDecorationAttachment(
+            kind: LayoutInlineDecorationKind.referenceNote,
+            line: markerLine,
+          ),
+        );
+        line.attachments.add(
           NoteMarker(
             annotation: extra.ruby ?? '',
             height: markerLine.textWidth,
@@ -1733,7 +1910,9 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
             width: markerLine.width,
           ),
         );
-      } else if (extra.type == '線' || extra.type == '罫' || extra.type == 'リ') {
+      } else if (extra.type == LayoutExtraType.span ||
+          extra.type == LayoutExtraType.ruledLine ||
+          extra.type == LayoutExtraType.link) {
         final startIndex = extra.startIndex ?? 0;
         final endIndex = (extra.endIndex ?? 1) - 1;
         var startLine = block.getTextLineAtCharIndex(startIndex);
@@ -1747,27 +1926,27 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
             startLine.y +
             startLine.getAtomY(
               startAtom,
-              includeTrailingTracking: extra.type == '罫',
+              includeTrailingTracking: extra.type == LayoutExtraType.ruledLine,
             );
         final endAtom = block.getAtomIndexAt(endIndex);
         final bottom =
             endLine.y +
             endLine.getAtomY(
               endAtom,
-              includeTrailingTracking: extra.type == '罫',
+              includeTrailingTracking: extra.type == LayoutExtraType.ruledLine,
             ) +
             block.getAtomHeight(endAtom);
 
-        if (extra.type == 'リ') {
+        if (extra.type == LayoutExtraType.link) {
           final linkEnd = block.getAtomIndexAt(extra.endIndex ?? 0);
           LayoutTextLine? currentLine = startLine;
           var currentStart = startAtom;
           while (currentLine != null) {
-            currentLine.userData.add(
+            currentLine.attachments.add(
               LinkMarker(
                 endAtom: math.min(linkEnd, currentLine.end),
                 startAtom: currentStart,
-                userData: extra.userData ?? '',
+                linkTarget: extra.linkTarget ?? '',
               ),
             );
             if (linkEnd <= currentLine.end) {
@@ -1782,7 +1961,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
         LayoutTextLine? currentLine = startLine;
         var isStart = true;
         while (currentLine != null && !identical(currentLine, endLine)) {
-          currentLine.userData.add(
+          currentLine.attachments.add(
             SpanMarker(
               bottom: currentLine.y + currentLine.textWidth,
               isEnd: false,
@@ -1796,7 +1975,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
           top = currentLine?.y ?? 0;
         }
 
-        currentLine?.userData.add(
+        currentLine?.attachments.add(
           SpanMarker(
             bottom: bottom,
             isEnd: true,
@@ -1805,10 +1984,10 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
             top: top,
           ),
         );
-      } else if (extra.type == '囲') {
+      } else if (extra.type == LayoutExtraType.frame) {
         var line = block.textLine;
         while (line != null) {
-          line.userData.add(
+          line.attachments.add(
             SpanMarker(
               bottom: _frameBottom,
               markType: extra.ruby ?? '',
@@ -1817,7 +1996,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
           );
           line = line.nextLine;
         }
-      } else if (extra.type == '点') {
+      } else if (extra.type == LayoutExtraType.emphasis) {
         final emphasisChar = charAt(extra.ruby ?? '', 1);
         final size =
             ((emphasisChar != '﹅' && emphasisChar != '﹆') ||
@@ -1845,14 +2024,21 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
             );
           final markerLine = markerBlock.createTextLine()!;
           final atomIndex = block.getAtomIndexAt(index);
-          markerLine.userData.add('${charAt(extra.ruby ?? '', 0)}点');
+          markerLine.attachments.clear();
           markerLine.y =
               line.y +
               line.getAtomY(atomIndex) +
               (block.getAtomHeight(atomIndex) - markerLine.textWidth) / 2;
-          line.userData.add(markerLine);
+          line.attachments.add(
+            InlineDecorationAttachment(
+              kind: charAt(extra.ruby ?? '', 0) == '右'
+                  ? LayoutInlineDecorationKind.rightEmphasis
+                  : LayoutInlineDecorationKind.leftEmphasis,
+              line: markerLine,
+            ),
+          );
         }
-      } else if (extra.type == '注') {
+      } else if (extra.type == LayoutExtraType.note) {
         final endIndex = (extra.endIndex ?? 0) - 1;
         final line = block.getTextLineAtCharIndex(endIndex < 0 ? 0 : endIndex);
         if (line == null) {
@@ -1870,7 +2056,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
           );
         final markerLine = markerBlock.createTextLine()!;
         markerLine.color = const Color(0xffff0000);
-        markerLine.userData.add(extra.type);
+        markerLine.attachments.clear();
 
         if (endIndex >= 0) {
           final atomIndex = block.getAtomIndexAt(endIndex);
@@ -1883,8 +2069,13 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
           markerLine.y = line.y - 0.4 * line.width;
         }
 
-        line.userData.add(markerLine);
-        line.userData.add(
+        line.attachments.add(
+          InlineDecorationAttachment(
+            kind: LayoutInlineDecorationKind.annotationNote,
+            line: markerLine,
+          ),
+        );
+        line.attachments.add(
           NoteMarker(
             annotation: extra.ruby ?? '',
             height: markerLine.textWidth,
@@ -2351,7 +2542,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
           false,
           _currentState.startsWith('h') ? 'h' : 'v',
         );
-      if (insert.type == '返') {
+      if (insert.type == LayoutInlineDecorationKind.kaeri) {
         if (insert.text == '一レ') {
           markerBlock.splitAtom(1);
           markerBlock.atom[1].tracking = -0.27 * fontSize;
@@ -2360,7 +2551,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
         }
       }
       final markerLine = markerBlock.createTextLine()!;
-      markerLine.userData.add(insert.type);
+      markerLine.attachments.clear();
       insert.tl = markerLine;
       if (block.getAtomHeight(atomIndex, includeTracking: true) <
           markerLine.textWidth) {
@@ -2462,9 +2653,9 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
         block.userData.extras.add(
           LayoutExtra(
             endIndex: endIndex,
+            linkTarget: userData ?? '',
             startIndex: startIndex,
-            type: 'リ',
-            userData: userData ?? '',
+            type: LayoutExtraType.link,
           ),
         );
       default:
@@ -2620,7 +2811,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
               segmentTop + _warichuRowOffset(lowerLine, segmentExtent);
         }
 
-        line.userData.add(
+        line.attachments.add(
           WarichuMarker(lowerLine: lowerLine, upperLine: upperLine),
         );
       }
@@ -2689,7 +2880,11 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
       if (block == null || line == null) {
         continue;
       }
-      final pageNo = _internalToDocumentPageNo(line.userData[0] as int);
+      final pageIndex = line.pageIndex;
+      if (pageIndex == null) {
+        continue;
+      }
+      final pageNo = _internalToDocumentPageNo(pageIndex);
       if (index.type.startsWith('#')) {
         _anchorList[index.type] = pageNo;
       } else {
@@ -2779,568 +2974,6 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
 
   void _drawPaperSurface(ui.Canvas canvas, Rect rect) {
     canvas.drawRect(rect, Paint()..color = paperColor);
-  }
-
-  void _showOnePage(
-    ui.Canvas canvas,
-    int pageNo,
-    bool leftSide, {
-    bool backPage = false,
-    KumihanRenderCommandSink? traceSink,
-  }) {
-    final vertical = _currentState.startsWith('v');
-    final pageStartLine = pageNo < _pages.length ? _pages[pageNo].line : 0;
-    var cursor = vertical ? _pageWidth : 0.0;
-    final endLine = pageNo + 1 < _pages.length
-        ? _pages[pageNo + 1].line
-        : _lines.length;
-
-    canvas.save();
-
-    if (_pages[pageNo].centering) {
-      var used = -_lineSpace;
-      for (var lineIndex = pageStartLine; lineIndex < endLine; lineIndex += 1) {
-        used += _lines[lineIndex].width + _lineSpace;
-      }
-      cursor = vertical
-          ? _pageWidth - (_pageWidth - used) / 2
-          : (_pageHeight - used) / 2;
-    }
-
-    for (var lineIndex = pageStartLine; lineIndex < endLine; lineIndex += 1) {
-      final group = _lines[lineIndex];
-      final lines = group.lines;
-
-      for (final line in lines) {
-        double x;
-        double y;
-
-        if (vertical) {
-          x = leftSide
-              ? cursor - line.width + _pageMarginSide
-              : _width - _pageMarginSide - _pageWidth + cursor - line.width;
-          y = _pageMarginTop;
-          line.draw(canvas, x, y, backPage: backPage, traceSink: traceSink);
-        } else {
-          x = cursor + _pageMarginTop;
-          y = leftSide
-              ? _pageMarginSide
-              : _width - _pageMarginSide - _pageWidth;
-          line.drawYoko(
-            canvas,
-            y,
-            x + line.width / 2,
-            backPage: backPage,
-            traceSink: traceSink,
-          );
-        }
-
-        line.x = x;
-
-        for (var index = 1; index < line.userData.length; index += 1) {
-          final item = line.userData[index];
-          if (item is LayoutTextLine) {
-            final kind = item.userData[0];
-            final pointOffset = item.width == _fontSize ? _fontSize / 4 : 0;
-            switch (kind) {
-              case '右点':
-                vertical
-                    ? item.draw(
-                        canvas,
-                        x + line.width - pointOffset,
-                        y,
-                        traceSink: traceSink,
-                      )
-                    : item.drawYoko(
-                        canvas,
-                        y,
-                        x - item.width / 2 + pointOffset,
-                        traceSink: traceSink,
-                      );
-              case '左点':
-                vertical
-                    ? item.draw(
-                        canvas,
-                        x - item.width + pointOffset,
-                        y,
-                        traceSink: traceSink,
-                      )
-                    : item.drawYoko(
-                        canvas,
-                        y,
-                        x + line.width + item.width / 2 - pointOffset,
-                        traceSink: traceSink,
-                      );
-              case '※':
-              case '注':
-                vertical
-                    ? item.draw(
-                        canvas,
-                        x - 0.45 * line.width,
-                        y,
-                        traceSink: traceSink,
-                      )
-                    : item.drawYoko(
-                        canvas,
-                        y,
-                        x + 0.95 * line.width + item.width / 2,
-                        traceSink: traceSink,
-                      );
-              case 'る':
-                item.color = fontColor;
-                vertical
-                    ? item.draw(canvas, x - item.width, y, traceSink: traceSink)
-                    : item.drawYoko(
-                        canvas,
-                        y,
-                        x + line.width + item.width / 2,
-                        traceSink: traceSink,
-                      );
-              case 'ル':
-                item.color = fontColor;
-                vertical
-                    ? item.draw(canvas, x + line.width, y, traceSink: traceSink)
-                    : item.drawYoko(
-                        canvas,
-                        y,
-                        x - item.width / 2,
-                        traceSink: traceSink,
-                      );
-              case '返':
-                final size = item.block.atom.first.getFontSize();
-                vertical
-                    ? item.draw(canvas, x - 0.2 * size, y, traceSink: traceSink)
-                    : item.drawYoko(
-                        canvas,
-                        y,
-                        x + line.width - 0.3 * size,
-                        traceSink: traceSink,
-                      );
-              case '中':
-                final size = item.block.atom.first.getFontSize();
-                vertical
-                    ? item.draw(
-                        canvas,
-                        x + line.width / 2 - size / 2,
-                        y,
-                        traceSink: traceSink,
-                      )
-                    : item.drawYoko(
-                        canvas,
-                        y,
-                        x + line.width / 2,
-                        traceSink: traceSink,
-                      );
-              case '送':
-                final size = item.block.atom.first.getFontSize();
-                vertical
-                    ? item.draw(
-                        canvas,
-                        x + line.width - 0.8 * size,
-                        y,
-                        traceSink: traceSink,
-                      )
-                    : item.drawYoko(
-                        canvas,
-                        y,
-                        x + 0.3 * size,
-                        traceSink: traceSink,
-                      );
-            }
-            continue;
-          }
-
-          if (item is WarichuMarker) {
-            if (vertical) {
-              item.upperLine?.draw(
-                canvas,
-                x + line.width / 2,
-                y,
-                traceSink: traceSink,
-              );
-              item.lowerLine?.draw(
-                canvas,
-                x + line.width / 2 - (item.lowerLine?.width ?? 0),
-                y,
-                traceSink: traceSink,
-              );
-            } else {
-              final upperCenter = x + (item.upperLine?.width ?? 0) / 2;
-              final lowerCenter =
-                  x + line.width - (item.lowerLine?.width ?? 0) / 2;
-              item.upperLine?.drawYoko(
-                canvas,
-                y,
-                upperCenter,
-                traceSink: traceSink,
-              );
-              item.lowerLine?.drawYoko(
-                canvas,
-                y,
-                lowerCenter,
-                traceSink: traceSink,
-              );
-            }
-            continue;
-          }
-
-          if (item is LinkMarker && !backPage) {
-            final top = line.getAtomY(item.startAtom);
-            final bottom = line.getAtomY(item.endAtom);
-            _clickable.add(
-              vertical
-                  ? ClickableArea(
-                      type: 'リンク',
-                      x: x,
-                      y: y + top + line.y,
-                      width: line.width,
-                      height: bottom - top,
-                      data: item.userData,
-                    )
-                  : ClickableArea(
-                      type: 'リンク',
-                      x: y + top + line.y,
-                      y: x,
-                      width: bottom - top,
-                      height: line.width,
-                      data: item.userData,
-                    ),
-            );
-            traceSink?.call(
-              KumihanRenderCommand(
-                kind: 'region',
-                role: 'link',
-                localX: vertical ? x : y + top + line.y,
-                localY: vertical ? y + top + line.y : x,
-                width: vertical ? line.width : bottom - top,
-                height: vertical ? bottom - top : line.width,
-                data: <String, Object?>{'target': item.userData},
-              ),
-            );
-            continue;
-          }
-
-          if (item is! SpanMarker && item is! NoteMarker) {
-            continue;
-          }
-
-          final markerTop = item is SpanMarker ? item.top + y : y;
-          final markerBottom = item is SpanMarker ? item.bottom + y : y;
-          final markerRole = switch (item) {
-            SpanMarker() => item.markType,
-            NoteMarker() => item.markType,
-            _ => '',
-          };
-          traceSink?.call(
-            KumihanRenderCommand(
-              kind: 'marker',
-              role: markerRole,
-              localX: vertical ? x : markerTop,
-              localY: vertical ? markerTop : x,
-              width: vertical ? line.width : markerBottom - markerTop,
-              height: vertical ? markerBottom - markerTop : line.width,
-              data: <String, Object?>{
-                'vertical': vertical,
-                'lineIndex': lineIndex,
-              },
-            ),
-          );
-
-          canvas.save();
-          final paint = Paint()
-            ..color = fontColor
-            ..strokeWidth = 1
-            ..style = PaintingStyle.stroke;
-
-          if (item is SpanMarker) {
-            switch (item.markType) {
-              case '罫囲み始':
-                if (vertical) {
-                  final left = x;
-                  final right = x + line.width / 2;
-                  final top = item.top + y;
-                  final bottom = item.bottom + y;
-                  canvas.drawPath(
-                    Path()
-                      ..moveTo(left, top)
-                      ..lineTo(right, top)
-                      ..lineTo(right, bottom)
-                      ..lineTo(left, bottom),
-                    paint,
-                  );
-                } else {
-                  final top = x + line.width;
-                  final bottom = x + line.width / 2;
-                  final left = item.top + y;
-                  final right = item.bottom + y;
-                  canvas.drawPath(
-                    Path()
-                      ..moveTo(left, top)
-                      ..lineTo(left, bottom)
-                      ..lineTo(right, bottom)
-                      ..lineTo(right, top),
-                    paint,
-                  );
-                }
-              case '罫囲み終':
-                if (vertical) {
-                  var left = x + line.width;
-                  if (lineIndex != pageStartLine) {
-                    left += _lineSpace + 1;
-                  }
-                  final right = x + line.width / 2;
-                  final top = item.top + y;
-                  final bottom = item.bottom + y;
-                  canvas.drawPath(
-                    Path()
-                      ..moveTo(left, top)
-                      ..lineTo(right, top)
-                      ..lineTo(right, bottom)
-                      ..lineTo(left, bottom),
-                    paint,
-                  );
-                } else {
-                  var top = x;
-                  if (lineIndex != pageStartLine) {
-                    top -= _lineSpace + 1;
-                  }
-                  final bottom = x + line.width / 2;
-                  final left = item.top + y;
-                  final right = item.bottom + y;
-                  canvas.drawPath(
-                    Path()
-                      ..moveTo(left, top)
-                      ..lineTo(left, bottom)
-                      ..lineTo(right, bottom)
-                      ..lineTo(right, top),
-                    paint,
-                  );
-                }
-              case '罫囲み中':
-                if (vertical) {
-                  final left = x;
-                  var right = x + line.width;
-                  if (lineIndex != pageStartLine) {
-                    right += _lineSpace + 1;
-                  }
-                  final top = item.top + y;
-                  final bottom = item.bottom + y;
-                  canvas.drawLine(Offset(left, top), Offset(right, top), paint);
-                  canvas.drawLine(
-                    Offset(left, bottom),
-                    Offset(right, bottom),
-                    paint,
-                  );
-                } else {
-                  var top = x;
-                  if (lineIndex != pageStartLine) {
-                    top -= _lineSpace + 1;
-                  }
-                  final bottom = x + line.width;
-                  final left = item.top + y;
-                  final right = item.bottom + y;
-                  canvas.drawLine(
-                    Offset(left, top),
-                    Offset(left, bottom),
-                    paint,
-                  );
-                  canvas.drawLine(
-                    Offset(right, top),
-                    Offset(right, bottom),
-                    paint,
-                  );
-                }
-              case '罫囲み':
-                if (vertical) {
-                  final left = x - 1;
-                  final right = x + line.width;
-                  final top = item.top + y;
-                  final bottom = item.bottom + y;
-                  if (item.isStart ?? false) {
-                    canvas.drawLine(
-                      Offset(left, top),
-                      Offset(right + 1, top),
-                      paint,
-                    );
-                  }
-                  if (item.isEnd ?? false) {
-                    canvas.drawLine(
-                      Offset(left, bottom),
-                      Offset(right + 1, bottom),
-                      paint,
-                    );
-                  }
-                  canvas.drawLine(
-                    Offset(left, top),
-                    Offset(left, bottom + 1),
-                    paint,
-                  );
-                  canvas.drawLine(
-                    Offset(right, top),
-                    Offset(right, bottom + 1),
-                    paint,
-                  );
-                } else {
-                  final top = x - 1;
-                  final bottom = x + line.width;
-                  final left = item.top + y;
-                  final right = item.bottom + y;
-                  if (item.isStart ?? false) {
-                    canvas.drawLine(
-                      Offset(left, top),
-                      Offset(left, bottom),
-                      paint,
-                    );
-                  }
-                  if (item.isEnd ?? false) {
-                    canvas.drawLine(
-                      Offset(right, top),
-                      Offset(right, bottom),
-                      paint,
-                    );
-                  }
-                  canvas.drawLine(Offset(left, top), Offset(right, top), paint);
-                  canvas.drawLine(
-                    Offset(left, bottom + 1),
-                    Offset(right, bottom + 1),
-                    paint,
-                  );
-                }
-              case '右傍線':
-              case '右二重傍線':
-              case '右鎖線':
-              case '右破線':
-              case '右波線':
-                final position = item.markType == '右波線'
-                    ? x + line.width + 3
-                    : x + line.width + 2;
-                if (item.markType == '右鎖線') {
-                  paint.strokeCap = StrokeCap.square;
-                }
-                if (vertical) {
-                  if (item.markType == '右波線') {
-                    _drawWavyLine(
-                      canvas,
-                      paint,
-                      position,
-                      item.top + y,
-                      item.bottom + y,
-                    );
-                  } else {
-                    canvas.drawLine(
-                      Offset(position, item.top + y),
-                      Offset(position, item.bottom + y),
-                      paint,
-                    );
-                    if (item.markType == '右二重傍線') {
-                      canvas.drawLine(
-                        Offset(position + 3, item.top + y),
-                        Offset(position + 3, item.bottom + y),
-                        paint,
-                      );
-                    }
-                  }
-                } else if (item.markType == '右波線') {
-                  _drawWavyLineYoko(
-                    canvas,
-                    paint,
-                    position,
-                    item.top + y,
-                    item.bottom + y,
-                  );
-                } else {
-                  canvas.drawLine(
-                    Offset(item.top + y, position),
-                    Offset(item.bottom + y, position),
-                    paint,
-                  );
-                  if (item.markType == '右二重傍線') {
-                    canvas.drawLine(
-                      Offset(item.top + y, position + 3),
-                      Offset(item.bottom + y, position + 3),
-                      paint,
-                    );
-                  }
-                }
-              case '左傍線':
-              case '左二重傍線':
-              case '左鎖線':
-              case '左破線':
-              case '左波線':
-                final position = item.markType == '左波線' ? x - 3 : x - 2;
-                if (vertical) {
-                  if (item.markType == '左波線') {
-                    _drawWavyLine(
-                      canvas,
-                      paint,
-                      position,
-                      item.top + y,
-                      item.bottom + y,
-                    );
-                  } else {
-                    canvas.drawLine(
-                      Offset(position, item.top + y),
-                      Offset(position, item.bottom + y),
-                      paint,
-                    );
-                    if (item.markType == '左二重傍線') {
-                      canvas.drawLine(
-                        Offset(position - 3, item.top + y),
-                        Offset(position - 3, item.bottom + y),
-                        paint,
-                      );
-                    }
-                  }
-                } else if (item.markType == '左波線') {
-                  _drawWavyLineYoko(
-                    canvas,
-                    paint,
-                    position,
-                    item.top + y,
-                    item.bottom + y,
-                  );
-                } else {
-                  canvas.drawLine(
-                    Offset(item.top + y, position),
-                    Offset(item.bottom + y, position),
-                    paint,
-                  );
-                  if (item.markType == '左二重傍線') {
-                    canvas.drawLine(
-                      Offset(item.top + y, position - 3),
-                      Offset(item.bottom + y, position - 3),
-                      paint,
-                    );
-                  }
-                }
-              case '取消線':
-                final position = x + line.width / 2;
-                if (vertical) {
-                  canvas.drawLine(
-                    Offset(position, item.top + y),
-                    Offset(position, item.bottom + y),
-                    paint,
-                  );
-                } else {
-                  canvas.drawLine(
-                    Offset(item.top + y, position),
-                    Offset(item.bottom + y, position),
-                    paint,
-                  );
-                }
-            }
-          }
-
-          canvas.restore();
-        }
-      }
-
-      cursor = vertical
-          ? cursor - group.width - _lineSpace
-          : cursor + group.width + _lineSpace;
-    }
-
-    canvas.restore();
   }
 
   void _drawWavyLine(

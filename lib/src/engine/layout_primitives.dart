@@ -22,6 +22,61 @@ class LayoutBlockUserData {
   final List<LayoutRuby> rubies;
 }
 
+enum LayoutAnnotationKind {
+  unsupported,
+  outsideImage,
+  inlineImage,
+  link,
+  ruledLine,
+  tcy,
+  textStyle,
+  warichu,
+  midashi,
+  anchor,
+  kaeritenKunten,
+  inlineStyleDash,
+  inlineStyleSmall,
+  inlineStyleCombined,
+  kaeri,
+  naka,
+  okuri,
+  rightRuby,
+  leftRuby,
+  frame,
+  span,
+  emphasis,
+  noteReference,
+  note,
+}
+
+enum LayoutInlineDecorationKind {
+  rightRuby,
+  leftRuby,
+  kaeri,
+  naka,
+  okuri,
+  referenceNote,
+  annotationNote,
+  rightEmphasis,
+  leftEmphasis,
+}
+
+enum LayoutExtraType {
+  unsupported,
+  frame,
+  outsideImage,
+  inlineImage,
+  link,
+  ruledLine,
+  tcy,
+  textStyle,
+  warichu,
+  noteReference,
+  span,
+  emphasis,
+  note,
+}
+
 class LayoutInsert {
   LayoutInsert({
     required this.startIndex,
@@ -33,7 +88,7 @@ class LayoutInsert {
   final int startIndex;
   final String text;
   LayoutTextLine? tl;
-  final String type;
+  final LayoutInlineDecorationKind type;
 }
 
 class LayoutStyleSpan {
@@ -67,25 +122,29 @@ class LayoutRuby {
   LayoutTextBlock? tb;
   double trackingEnd;
   double trackingStart;
-  final String type;
+  final LayoutInlineDecorationKind type;
 }
 
 class LayoutExtra {
   LayoutExtra({
     required this.type,
+    this.imageHeight,
+    this.imageWidth,
     this.endIndex,
+    this.linkTarget,
     this.ruby,
     this.startIndex,
     this.style,
-    this.userData,
   });
 
   final int? endIndex;
+  final double? imageHeight;
+  final double? imageWidth;
+  final String? linkTarget;
   final String? ruby;
   final int? startIndex;
   final String? style;
-  final String type;
-  final String? userData;
+  final LayoutExtraType type;
 }
 
 const String _sidewaysCloseGlyphs = '$closingBrackets$punctuationMarks・￼゛゜';
@@ -276,7 +335,18 @@ class LayoutAtom {
   }
 }
 
-sealed class LayoutLineMark {
+sealed class LayoutTextLineAttachment {
+  const LayoutTextLineAttachment();
+}
+
+class InlineDecorationAttachment extends LayoutTextLineAttachment {
+  const InlineDecorationAttachment({required this.kind, required this.line});
+
+  final LayoutInlineDecorationKind kind;
+  final LayoutTextLine line;
+}
+
+sealed class LayoutLineMark extends LayoutTextLineAttachment {
   const LayoutLineMark();
 }
 
@@ -315,14 +385,14 @@ class SpanMarker extends LayoutLineMark {
 class LinkMarker extends LayoutLineMark {
   const LinkMarker({
     required this.endAtom,
+    required this.linkTarget,
     required this.startAtom,
-    required this.userData,
   }) : markType = 'リンク';
 
   final int endAtom;
+  final String linkTarget;
   final String markType;
   final int startAtom;
-  final String userData;
 }
 
 class WarichuMarker extends LayoutLineMark {
@@ -343,9 +413,15 @@ class LayoutTextLine {
   LayoutTextLine? nextLine;
   double y = 0;
   double x = 0;
+  int? pageIndex;
   Color? color;
-  final Map<String, double> rubyBottom = <String, double>{'ル': 0, 'る': 0};
-  final List<Object> userData = <Object>[];
+  final Map<LayoutInlineDecorationKind, double> rubyBottom =
+      <LayoutInlineDecorationKind, double>{
+        LayoutInlineDecorationKind.rightRuby: 0,
+        LayoutInlineDecorationKind.leftRuby: 0,
+      };
+  final List<LayoutTextLineAttachment> attachments =
+      <LayoutTextLineAttachment>[];
 
   double getAtomY(int atomIndex, {bool includeTrailingTracking = false}) {
     var offset = 0.0;
