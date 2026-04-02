@@ -13,6 +13,7 @@ import 'constants.dart';
 import 'document_compiler.dart';
 import 'helpers.dart';
 import 'layout_primitives.dart';
+import 'table_renderer.dart';
 import 'warichu.dart';
 
 part 'kumihan_page_renderer.dart';
@@ -172,6 +173,8 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
   final Map<String, ui.Image?> _images = <String, ui.Image?>{};
   final Map<String, Future<ui.Image?>> _imageTasks =
       <String, Future<ui.Image?>>{};
+  final Map<AstCompiledTableEntry, RenderedTableBlock> _tables =
+      <AstCompiledTableEntry, RenderedTableBlock>{};
   List<ClickableArea> _clickable = <ClickableArea>[];
   List<KumihanSelectableGlyph> _selectableGlyphs = <KumihanSelectableGlyph>[];
   int _selectableGlyphOrder = 0;
@@ -365,6 +368,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
     }
 
     _currentPosition = position;
+    _tables.clear();
     await _ensureTablesPrepared(token);
     if (token != _layoutToken) {
       return;
@@ -384,7 +388,23 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
   }
 
   Future<void> _ensureTablesPrepared(int token) async {
-    return;
+    final tables = _entries.whereType<AstCompiledTableEntry>().toList();
+    await Future.wait<void>(
+      tables.map((entry) async {
+        if (token != _layoutToken || _tables.containsKey(entry)) {
+          return;
+        }
+        _tables[entry] = await renderTableBlock(
+          table: entry,
+          fontColor: fontColor,
+          fontSize: _fontSize,
+          gothicFontFamilies: gothicFontFamilies,
+          maxHeight: _pageHeight,
+          minchoFontFamilies: minchoFontFamilies,
+          maxWidth: _pageWidth,
+        );
+      }),
+    );
   }
 
   Future<void> _ensureImagesLoaded(int token) async {
@@ -472,6 +492,16 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
 
       if (entry is AstCommandEntry) {
         _handleAstCommandEntry(entry, pageBlockSize);
+        continue;
+      }
+
+      if (entry is AstCompiledTableEntry) {
+        _layoutPreparedTable(
+          entry,
+          pageBlockSize: pageBlockSize,
+          pageInlineSize: pageInlineSize,
+          paragraphNo: paragraphNo,
+        );
         continue;
       }
 
@@ -673,6 +703,56 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
       );
     }
     _attachParagraphDecorations(block, inserts, rubies, extras, paragraphNo);
+  }
+
+  void _layoutPreparedTable(
+    AstCompiledTableEntry entry, {
+    required double pageBlockSize,
+    required double pageInlineSize,
+    required int paragraphNo,
+  }) {
+    final rendered = _tables[entry];
+    if (rendered == null) {
+      return;
+    }
+
+    final block = LayoutTextBlock(this)
+      ..setText(
+        '￼',
+        _currentFontSize,
+        _currentFontType,
+        _currentFontBold,
+        _currentFontItalic,
+        _currentTextRotation,
+      )
+      ..userData = LayoutBlockUserData();
+    if (block.atom.isEmpty) {
+      return;
+    }
+
+    final atom = block.atom.first;
+    atom
+      ..picture = rendered.picture
+      ..width = rendered.width
+      ..height = rendered.height
+      ..tracking = 0;
+
+    _blocks.add(block);
+    _layoutPreparedBlock(
+      alignBottom: _alignBottom,
+      block: block,
+      bottomMargin: _bottomMargin,
+      extras: const <AstParagraphExtra>[],
+      firstTopMargin: _firstTopMargin,
+      inserts: const <AstInlineInsert>[],
+      nonBreak: false,
+      pageBlockSize: pageBlockSize,
+      pageInlineSize: pageInlineSize,
+      paragraphNo: paragraphNo,
+      restTopMargin: _restTopMargin,
+      rubies: const <AstRubySpan>[],
+      chapterIndexes: const <AstChapterIndex>[],
+    );
   }
 
   void _resetParagraphState() {

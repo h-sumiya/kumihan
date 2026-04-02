@@ -9,3 +9,4 @@ export 'src/ast_dsl.dart';
 export 'src/engine/document_compiler.dart';
 export 'src/engine/kumihan_engine.dart';
 export 'src/parsers/aozora_parser.dart';
+export 'src/parsers/markdown_parser.dart';

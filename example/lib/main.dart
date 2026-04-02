@@ -59,7 +59,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
     final result = await FilePicker.platform.pickFiles(
       allowMultiple: false,
       type: FileType.custom,
-      allowedExtensions: const <String>['txt'],
+      allowedExtensions: const <String>['txt', 'md', 'markdown'],
       withData: true,
     );
     final file = result?.files.singleOrNull;
@@ -69,9 +69,12 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
     final bytes = file.bytes ?? await File(file.path!).readAsBytes();
     final text = utf8.decode(bytes, allowMalformed: true);
+    final lowerName = file.name.toLowerCase();
     _loadDocument(
       fileName: file.name,
-      document: const AozoraParser().parse(text),
+      document: lowerName.endsWith('.md') || lowerName.endsWith('.markdown')
+          ? const MarkdownParser().parse(text)
+          : const AozoraParser().parse(text),
     );
   }
 
@@ -169,7 +172,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
             child: _document == null
                 ? const DecoratedBox(
                     decoration: BoxDecoration(color: Color(0xfffffdf1)),
-                    child: Center(child: Text('青空文庫テキストを選択してください')),
+                    child: Center(child: Text('青空文庫テキストまたは Markdown を選択してください')),
                   )
                 : DecoratedBox(
                     decoration: const BoxDecoration(color: Color(0xfffffdf1)),

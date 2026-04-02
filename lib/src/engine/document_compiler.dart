@@ -45,6 +45,26 @@ class AstCompiledParagraphEntry extends AstCompiledEntry {
   final List<AstChapterIndex> chapterIndexes;
 }
 
+class AstCompiledTableEntry extends AstCompiledEntry {
+  const AstCompiledTableEntry({
+    required this.headerRowCount,
+    required this.rows,
+  });
+
+  final List<List<AstCompiledTableCell>> rows;
+  final int headerRowCount;
+}
+
+class AstCompiledTableCell {
+  const AstCompiledTableCell({
+    required this.alignment,
+    required this.text,
+  });
+
+  final String text;
+  final AstTableAlignment alignment;
+}
+
 enum AstCommandKind {
   indentStart,
   indentEnd,
@@ -292,6 +312,13 @@ class _AstDocumentCompiler {
         flushLine();
         continue;
       }
+      if (token is AstTable) {
+        if (lineTokens.isNotEmpty) {
+          flushLine();
+        }
+        _entries.add(_compileTable(token));
+        continue;
+      }
       if (token is AstDocumentRemark) {
         lineTokens.add(AstText(_remarkText(token)));
         continue;
@@ -450,6 +477,24 @@ class _AstDocumentCompiler {
     );
   }
 
+  AstCompiledTableEntry _compileTable(AstTable table) {
+    return AstCompiledTableEntry(
+      headerRowCount: table.headerRowCount,
+      rows: List<List<AstCompiledTableCell>>.unmodifiable(
+        table.rows.map(
+          (row) => List<AstCompiledTableCell>.unmodifiable(
+            row.map(
+              (cell) => AstCompiledTableCell(
+                alignment: cell.alignment,
+                text: _compileInlineContent(cell.content).text.trim(),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   AstCompiledEntry? _consumeStandaloneCommand(AstToken token) {
     return switch (token) {
       AstIndent(
@@ -593,10 +638,14 @@ class _AstDocumentCompiler {
         builder.handleHeading(token);
       case AstCaption():
         builder.handleCaption(token);
+      case AstLink():
+        builder.handleLink(token);
       case AstInlineDecoration():
         builder.handleInlineDecoration(token);
       case AstImage():
         builder.appendImage(token);
+      case AstTable():
+        builder.handleUnsupported('［＃未対応の表］');
       case AstUnsupportedAnnotation():
         builder.handleUnsupported(token.raw);
       case AstWarichuNewLine():
@@ -678,9 +727,11 @@ class _AstDocumentCompiler {
         case AstStyledText():
         case AstHeading():
         case AstCaption():
+        case AstLink():
         case AstInlineDecoration():
         case AstUnsupportedAnnotation():
         case AstImage():
+        case AstTable():
         case AstNewLine():
         case AstBodyEnd():
         case AstDocumentRemark():
@@ -837,6 +888,7 @@ class _ParagraphBuilder {
   final List<_OpenSpan<AstTextStyle>> _styled = <_OpenSpan<AstTextStyle>>[];
   final List<_OpenSpan<AstHeading>> _headings = <_OpenSpan<AstHeading>>[];
   final List<_OpenSpan<AstCaption>> _captions = <_OpenSpan<AstCaption>>[];
+  final List<_OpenSpan<AstLink>> _links = <_OpenSpan<AstLink>>[];
   final List<_OpenSpan<AstInlineDecoration>> _decorations =
       <_OpenSpan<AstInlineDecoration>>[];
 
@@ -977,6 +1029,29 @@ class _ParagraphBuilder {
         startIndex: open.startIndex,
         endIndex: text.length,
         kind: AstStyleKind.caption,
+      ),
+    );
+  }
+
+  void handleLink(AstLink token) {
+    if (token.boundary == AstRangeBoundary.start) {
+      _links.add(_OpenSpan<AstLink>(text.length, token));
+      return;
+    }
+    if (_links.isEmpty) {
+      return;
+    }
+    final open = _links.removeLast();
+    final target = token.target ?? open.value.target;
+    if (target == null || target.isEmpty || open.startIndex >= text.length) {
+      return;
+    }
+    extras.add(
+      AstParagraphExtra(
+        kind: AstParagraphExtraKind.link,
+        startIndex: open.startIndex,
+        endIndex: text.length,
+        linkTarget: target,
       ),
     );
   }

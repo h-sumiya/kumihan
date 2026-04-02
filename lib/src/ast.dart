@@ -310,6 +310,13 @@ class AstCaption extends AstAnnotation {
   const AstCaption(this.boundary);
 }
 
+class AstLink extends AstAnnotation {
+  final AstRangeBoundary boundary;
+  final String? target;
+
+  const AstLink({required this.boundary, this.target});
+}
+
 enum AstInlineDecorationKind {
   tatechuyoko,
   warichu,
@@ -390,6 +397,25 @@ class AstImage extends AstToken {
     this.size,
     this.hasCaption = false,
   });
+}
+
+enum AstTableAlignment { start, center, end }
+
+class AstTableCell {
+  final AstInlineContent content;
+  final AstTableAlignment alignment;
+
+  const AstTableCell({
+    required this.content,
+    this.alignment = AstTableAlignment.start,
+  });
+}
+
+class AstTable extends AstToken {
+  final List<List<AstTableCell>> rows;
+  final int headerRowCount;
+
+  const AstTable({required this.rows, this.headerRowCount = 0});
 }
 
 enum AstPageBreakKind { kaicho, kaipage, kaimihiraki, kaidan }
