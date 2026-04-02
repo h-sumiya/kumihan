@@ -55,6 +55,20 @@ void main() {
       expect((tokens[4] as AozoraText).text, 'なく');
     });
 
+    test('keeps full explicit ruby range until opening bracket', () {
+      const parser = AozoraAstParser();
+
+      final tokens = parser.parse('｜複雑な文《complex sentence》');
+
+      expect(tokens, hasLength(3));
+      expect(tokens[0], isA<AozoraAttachedText>());
+      expect(tokens[1], isA<AozoraText>());
+      expect((tokens[1] as AozoraText).text, '複雑な文');
+      expect(tokens[2], isA<AozoraAttachedText>());
+      final end = tokens[2] as AozoraAttachedText;
+      expect((end.content!.single as AozoraText).text, 'complex sentence');
+    });
+
     test('parses supported block and line annotations', () {
       const parser = AozoraAstParser();
 

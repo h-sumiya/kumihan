@@ -572,7 +572,7 @@ class KumihanAstEngine implements LayoutEnvironment, KumihanViewport {
       }
 
       _insertTextLine(block, entry.inserts);
-      _adjustRubies(block, entry.rubies);
+      _adjustRubies(block, entry.rubies, entry.inserts);
       _layoutPreparedBlock(
         alignBottom: entry.alignBottom || _alignBottom,
         block: block,
@@ -893,7 +893,15 @@ class KumihanAstEngine implements LayoutEnvironment, KumihanViewport {
       final endY = endAtom > line.end
           ? line.y + line.textWidth
           : line.y + line.getAtomY(endAtom);
-      var segmentHeight = endY - startY;
+      var segmentHeight =
+          endY -
+          startY -
+          _inlineInsertExtentInRange(
+            block,
+            inserts,
+            ruby.startIndex,
+            math.min(ruby.endIndex, _lineEndOffset(block, line)),
+          );
       final rubyBlock = ruby.tb!;
       var rubyLine = endAtom > line.end
           ? rubyBlock.createTextLine(null, segmentHeight + ruby.trackingStart)
@@ -936,6 +944,14 @@ class KumihanAstEngine implements LayoutEnvironment, KumihanViewport {
         segmentHeight = endAtom > line.end
             ? line.textWidth
             : line.getAtomY(endAtom);
+        segmentHeight -= _inlineInsertExtentInRange(
+          block,
+          inserts,
+          line.start < block.atom.length
+              ? block.atom[line.start].index
+              : block.rawtext.length,
+          math.min(ruby.endIndex, _lineEndOffset(block, line)),
+        );
         rubyLine = endAtom > line.end
             ? rubyBlock.createTextLine(rubyLine, segmentHeight)
             : rubyBlock.createTextLine(rubyLine);
@@ -1377,7 +1393,11 @@ class KumihanAstEngine implements LayoutEnvironment, KumihanViewport {
     }
   }
 
-  void _adjustRubies(LayoutTextBlock block, List<AstRubySpan> rubies) {
+  void _adjustRubies(
+    LayoutTextBlock block,
+    List<AstRubySpan> rubies,
+    List<AstInlineInsert> inserts,
+  ) {
     final line = block.createTextLine();
     if (line == null) {
       return;
@@ -1387,7 +1407,20 @@ class KumihanAstEngine implements LayoutEnvironment, KumihanViewport {
       final start = block.splitAtom(ruby.startIndex);
       final end = block.splitAtom(ruby.endIndex);
       final startY = line.getAtomY(start, includeTrailingTracking: true);
-      final segmentHeight = line.getAtomY(end) - startY;
+      final insertCount = _inlineInsertCountInRange(
+        inserts,
+        ruby.startIndex,
+        ruby.endIndex,
+      );
+      final segmentHeight =
+          line.getAtomY(end) -
+          startY -
+          _inlineInsertExtentInRange(
+            block,
+            inserts,
+            ruby.startIndex,
+            ruby.endIndex,
+          );
       final rubyBlock = LayoutTextBlock(this)
         ..setText(
           ruby.ruby,
@@ -1441,7 +1474,8 @@ class KumihanAstEngine implements LayoutEnvironment, KumihanViewport {
 
         overflow -= startPadding + endPadding;
         if (overflow > 0) {
-          final tracking = overflow / (end - start + 1);
+          final visibleAtomCount = math.max(end - start + 1 - insertCount, 1);
+          final tracking = overflow / visibleAtomCount;
           for (
             var index = math.min(end, block.atom.length - 1);
             index >= start;
@@ -1561,6 +1595,36 @@ class KumihanAstEngine implements LayoutEnvironment, KumihanViewport {
     return line.end < block.atom.length
         ? block.atom[line.end].index
         : block.rawtext.length;
+  }
+
+  int _inlineInsertCountInRange(
+    List<AstInlineInsert> inserts,
+    int startOffset,
+    int endOffset,
+  ) {
+    return inserts
+        .where(
+          (insert) =>
+              insert.startIndex >= startOffset && insert.startIndex < endOffset,
+        )
+        .length;
+  }
+
+  double _inlineInsertExtentInRange(
+    LayoutTextBlock block,
+    List<AstInlineInsert> inserts,
+    int startOffset,
+    int endOffset,
+  ) {
+    var extent = 0.0;
+    for (final insert in inserts) {
+      if (insert.startIndex < startOffset || insert.startIndex >= endOffset) {
+        continue;
+      }
+      final atomIndex = block.getAtomIndexAt(insert.startIndex);
+      extent += block.getAtomHeight(atomIndex, includeTracking: true);
+    }
+    return extent;
   }
 
   LayoutSpanMarkerKind _spanMarkerKind(AstParagraphExtra extra) {

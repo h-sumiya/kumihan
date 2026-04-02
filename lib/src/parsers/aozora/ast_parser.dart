@@ -26,15 +26,14 @@ class _AozoraInlineParser {
   static final RegExp _rubyLatinPattern = RegExp(
     r"[A-Za-z0-9０-９Ａ-Ｚａ-ｚΑ-Ωα-ωА-Яа-я]",
   );
+  static const String _explicitRubySentinel = '\u{F0000}';
 
   AozoraData parse() {
     final tokens = <AozoraToken>[];
     var index = 0;
-    var explicitRubyStartIndex = -1;
 
     while (index < source.length) {
       if (_isAtLineStart(tokens)) {
-        explicitRubyStartIndex = -1;
         final remark = _tryParseDocumentRemark(index);
         if (remark != null) {
           tokens.add(remark.token);
@@ -72,12 +71,11 @@ class _AozoraInlineParser {
       final char = source[index];
       if (char == '\n') {
         tokens.add(const AozoraNewLine());
-        explicitRubyStartIndex = -1;
         index += 1;
         continue;
       }
       if (char == '｜') {
-        explicitRubyStartIndex = tokens.length;
+        tokens.add(const AozoraText(_explicitRubySentinel));
         index += 1;
         continue;
       }
@@ -85,8 +83,7 @@ class _AozoraInlineParser {
         final rubyEnd = source.indexOf('》', index + 1);
         if (rubyEnd > index) {
           final ruby = source.substring(index + 1, rubyEnd);
-          _attachRuby(tokens, ruby, explicitStartIndex: explicitRubyStartIndex);
-          explicitRubyStartIndex = -1;
+          _attachRuby(tokens, ruby);
           index = rubyEnd + 1;
           continue;
         }
@@ -112,7 +109,16 @@ class _AozoraInlineParser {
       index = next;
     }
 
-    return _mergeAdjacentText(tokens);
+    return _mergeAdjacentText(
+      tokens
+          .map((token) {
+            if (token is AozoraText && token.text == _explicitRubySentinel) {
+              return const AozoraText('｜');
+            }
+            return token;
+          })
+          .toList(growable: false),
+    );
   }
 
   bool _isAtLineStart(List<AozoraToken> tokens) {
@@ -1147,15 +1153,8 @@ class _AozoraInlineParser {
         .toList(growable: false);
   }
 
-  void _attachRuby(
-    List<AozoraToken> tokens,
-    String rubyText, {
-    int explicitStartIndex = -1,
-  }) {
-    final startIndex = _findRubyTargetStart(
-      tokens,
-      explicitStartIndex: explicitStartIndex,
-    );
+  void _attachRuby(List<AozoraToken> tokens, String rubyText) {
+    final startIndex = _findRubyTargetStart(tokens);
     if (startIndex == null) {
       tokens.add(AozoraText('《$rubyText》'));
       return;
@@ -1178,15 +1177,17 @@ class _AozoraInlineParser {
     );
   }
 
-  int? _findRubyTargetStart(
-    List<AozoraToken> tokens, {
-    int explicitStartIndex = -1,
-  }) {
+  int? _findRubyTargetStart(List<AozoraToken> tokens) {
     if (tokens.isEmpty) {
       return null;
     }
-    if (explicitStartIndex >= 0 && explicitStartIndex < tokens.length) {
-      return explicitStartIndex;
+
+    final explicitIndex = tokens.lastIndexWhere(
+      (token) => token is AozoraText && token.text == _explicitRubySentinel,
+    );
+    if (explicitIndex >= 0) {
+      tokens.removeAt(explicitIndex);
+      return explicitIndex;
     }
 
     var index = tokens.length - 1;
