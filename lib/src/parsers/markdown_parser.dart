@@ -123,6 +123,7 @@ class MarkdownParser {
   }) {
     final bodyTokens = <AstToken>[];
     final nestedTokens = <AstToken>[];
+    final pendingInlineNodes = <md.Node>[];
     var hasBody = false;
 
     void appendBody(List<AstToken> tokens) {
@@ -136,15 +137,24 @@ class MarkdownParser {
       hasBody = true;
     }
 
+    void flushInlineNodes() {
+      if (pendingInlineNodes.isEmpty) {
+        return;
+      }
+      appendBody(_paragraphTokensFromInlines(_parseInlineChildren(pendingInlineNodes)));
+      pendingInlineNodes.clear();
+    }
+
     for (final child in item.children ?? const <md.Node>[]) {
       if (child is md.Text) {
-        appendBody(_paragraphTokensFromText(child.text));
+        pendingInlineNodes.add(child);
         continue;
       }
       if (child is! md.Element) {
         continue;
       }
       if (child.tag == 'ul' || child.tag == 'ol') {
+        flushInlineNodes();
         _appendBlock(
           nestedTokens,
           _listTokens(child, ordered: child.tag == 'ol', depth: depth + 1),
@@ -152,11 +162,13 @@ class MarkdownParser {
         continue;
       }
       if (child.tag == 'p') {
+        flushInlineNodes();
         appendBody(_paragraphTokensFromInlines(_parseInlineChildren(child.children)));
         continue;
       }
-      appendBody(_paragraphTokensFromText(child.textContent));
+      pendingInlineNodes.add(child);
     }
+    flushInlineNodes();
 
     if (!hasBody) {
       bodyTokens.add(AstText(prefix.trimRight()));
@@ -173,7 +185,6 @@ class MarkdownParser {
         lineIndent: baseIndent,
         hangingIndent: contentIndent,
       ),
-      const AstNewLine(),
       ...bodyTokens,
       const AstNewLine(),
       const AstIndent(

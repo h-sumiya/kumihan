@@ -82,6 +82,34 @@ void main() {
       );
     });
 
+    test('ordered lists keep inline styles on the same paragraph', () {
+      final compiled = compileAst(
+        const MarkdownParser().parse(
+          '1. **春**は`あけぼの`\n'
+          '2. 夏は夜\n'
+          '3. 秋は夕暮れ\n'
+          '4. *冬*はつとめて\n',
+        ),
+      );
+
+      final paragraphs = compiled.entries.whereType<AstCompiledParagraphEntry>().toList();
+      expect(paragraphs, hasLength(4));
+      expect(paragraphs[0].text, '一、春はあけぼの');
+      expect(
+        paragraphs[0].styles.any((style) => style.kind == AstStyleKind.bold),
+        isTrue,
+      );
+      expect(
+        paragraphs[0].styles.any((style) => style.kind == AstStyleKind.yokogumi),
+        isTrue,
+      );
+      expect(paragraphs[3].text, '四、冬はつとめて');
+      expect(
+        paragraphs[3].styles.any((style) => style.kind == AstStyleKind.italic),
+        isTrue,
+      );
+    });
+
     testWidgets('opens markdown with a rendered table', (tester) async {
       final engine = KumihanEngine(
         baseUri: null,
