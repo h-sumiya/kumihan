@@ -154,7 +154,9 @@ class _KumihanCanvasState extends State<KumihanCanvas> {
   }
 
   void _clearSelection({bool notify = true}) {
-    if (!_selectionMode && _selectionAnchor == null && _selectionFocus == null) {
+    if (!_selectionMode &&
+        _selectionAnchor == null &&
+        _selectionFocus == null) {
       return;
     }
     if (!notify) {
@@ -264,6 +266,18 @@ class _KumihanCanvasState extends State<KumihanCanvas> {
     return globalPosition;
   }
 
+  bool _isSelectedGlyph(KumihanSelectableGlyph glyph) {
+    final anchor = _selectionAnchor;
+    final focus = _selectionFocus;
+    if (anchor == null || focus == null) {
+      return false;
+    }
+
+    final start = math.min(anchor.order, focus.order);
+    final end = math.max(anchor.order, focus.order);
+    return glyph.order >= start && glyph.order <= end;
+  }
+
   List<KumihanSelectableGlyph> get _selectedGlyphs {
     final anchor = _selectionAnchor;
     final focus = _selectionFocus;
@@ -319,10 +333,14 @@ class _KumihanCanvasState extends State<KumihanCanvas> {
 
     final verticalGap = next.top - current.bottom;
     final horizontalGap = next.left - current.right;
-    final verticalMergeThreshold =
-        math.max(4.0, math.min(current.height, next.height) * 0.9);
-    final horizontalMergeThreshold =
-        math.max(4.0, math.min(current.width, next.width) * 0.9);
+    final verticalMergeThreshold = math.max(
+      4.0,
+      math.min(current.height, next.height) * 0.9,
+    );
+    final horizontalMergeThreshold = math.max(
+      4.0,
+      math.min(current.width, next.width) * 0.9,
+    );
 
     final verticalOverlap =
         math.min(current.bottom, next.bottom) - math.max(current.top, next.top);
@@ -361,18 +379,13 @@ class _KumihanCanvasState extends State<KumihanCanvas> {
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   color: const Color(0x1a1a73e8),
-                  border: Border.all(
-                    color: const Color(0xff1a73e8),
-                    width: 2,
-                  ),
+                  border: Border.all(color: const Color(0xff1a73e8), width: 2),
                   borderRadius: BorderRadius.circular(6),
                 ),
               ),
             ),
           ),
-        if (_showSelectionToolbar) ...[
-          _buildSelectionToolbar(size),
-        ],
+        if (_showSelectionToolbar) ...[_buildSelectionToolbar(size)],
       ],
     );
   }
@@ -386,10 +399,9 @@ class _KumihanCanvasState extends State<KumihanCanvas> {
     const toolbarWidth = 116.0;
     const toolbarHeight = 36.0;
     final anchor = _selectionEndPosition ?? focus.rect.center;
-    final left = (anchor.dx - toolbarWidth / 2).clamp(
-      8.0,
-      math.max(8.0, size.width - toolbarWidth - 8),
-    ).toDouble();
+    final left = (anchor.dx - toolbarWidth / 2)
+        .clamp(8.0, math.max(8.0, size.width - toolbarWidth - 8))
+        .toDouble();
 
     final preferredTop = anchor.dy - toolbarHeight - 12;
     final fallbackTop = focus.rect.bottom + 8;
@@ -431,16 +443,14 @@ class _KumihanCanvasState extends State<KumihanCanvas> {
           onLongPressEnd: (details) {
             _finishSelection(_globalToLocal(details.globalPosition));
           },
-          onTapDown: (details) {
+          onTapUp: (details) {
             if (!_selectionMode) {
               return;
             }
             final hit = _findSelectableGlyph(details.localPosition);
-            if (hit == null) {
+            if (hit == null || !_isSelectedGlyph(hit)) {
               _clearSelection();
-              return;
             }
-            _startSelection(details.localPosition);
           },
           child: Stack(
             fit: StackFit.expand,

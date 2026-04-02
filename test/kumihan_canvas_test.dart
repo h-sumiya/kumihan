@@ -46,7 +46,10 @@ void main() {
 
     expect(engine.selectableGlyphs, isNotEmpty);
     expect(
-      engine.selectableGlyphs.map((item) => item.text).join().contains('青空文庫です。'),
+      engine.selectableGlyphs
+          .map((item) => item.text)
+          .join()
+          .contains('青空文庫です。'),
       isTrue,
     );
     expect(
