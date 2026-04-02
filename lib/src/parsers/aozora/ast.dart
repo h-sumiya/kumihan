@@ -199,7 +199,7 @@ enum AozoraBoutenKind {
   saltire,
 }
 
-enum AozoraBosenKind { solid, doubleLine, chain, dashed, wave }
+enum AozoraBosenKind { solid, doubleLine, chain, dashed, wave, cancel }
 
 enum AozoraFontStyle { bold, italic }
 

@@ -25,6 +25,36 @@ void main() {
       expect((end.content!.single as AozoraText).text, 'あおぞらぶんこ');
     });
 
+    test('splits trailing ruby target like legacy engine', () {
+      const parser = AozoraAstParser();
+
+      final tokens = parser.parse('これは漢字《かんじ》');
+
+      expect(tokens, hasLength(4));
+      expect(tokens[0], isA<AozoraText>());
+      expect((tokens[0] as AozoraText).text, 'これは');
+      expect(tokens[1], isA<AozoraAttachedText>());
+      expect(tokens[2], isA<AozoraText>());
+      expect((tokens[2] as AozoraText).text, '漢字');
+      expect(tokens[3], isA<AozoraAttachedText>());
+    });
+
+    test('supports explicit ruby marker without leaving splitter text', () {
+      const parser = AozoraAstParser();
+
+      final tokens = parser.parse('この度｜拠《よんどころ》なく');
+
+      expect(tokens, hasLength(5));
+      expect(tokens[0], isA<AozoraText>());
+      expect((tokens[0] as AozoraText).text, 'この度');
+      expect(tokens[1], isA<AozoraAttachedText>());
+      expect(tokens[2], isA<AozoraText>());
+      expect((tokens[2] as AozoraText).text, '拠');
+      expect(tokens[3], isA<AozoraAttachedText>());
+      expect(tokens[4], isA<AozoraText>());
+      expect((tokens[4] as AozoraText).text, 'なく');
+    });
+
     test('parses supported block and line annotations', () {
       const parser = AozoraAstParser();
 
@@ -109,6 +139,17 @@ void main() {
       final remark = tokens.last as AozoraDocumentRemark;
       expect(remark.kind, AozoraDocumentRemarkKind.madoHeadingLineCount);
       expect(remark.value, 3);
+    });
+
+    test('parses cancel line as supported styled text', () {
+      const parser = AozoraAstParser();
+
+      final tokens = parser.parse('責［＃「責」に取消線］');
+
+      expect(tokens[0], isA<AozoraStyledText>());
+      final start = tokens[0] as AozoraStyledText;
+      expect(start.style, isA<AozoraBosenStyle>());
+      expect((start.style as AozoraBosenStyle).kind, AozoraBosenKind.cancel);
     });
   });
 }

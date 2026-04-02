@@ -248,9 +248,7 @@ class KumihanAstEngine implements LayoutEnvironment, KumihanViewport {
 
   @override
   Future<void> open(dynamic _) async {
-    throw UnimplementedError(
-      'Use openAst(AozoraData) with KumihanAstEngine.',
-    );
+    throw UnimplementedError('Use openAst(AozoraData) with KumihanAstEngine.');
   }
 
   Future<void> openAst(AozoraData data) async {
@@ -490,8 +488,14 @@ class KumihanAstEngine implements LayoutEnvironment, KumihanViewport {
 
       var paragraph = entry.text;
       final extras = <AstParagraphExtra>[
-        if (_frameDrawing)
-          const AstParagraphExtra(kind: AstParagraphExtraKind.frame),
+        if (_frameDrawing &&
+            !entry.extras.any(
+              (extra) => extra.kind == AstParagraphExtraKind.frame,
+            ))
+          const AstParagraphExtra(
+            kind: AstParagraphExtraKind.frame,
+            frameKind: AstFrameKind.middle,
+          ),
         ...entry.extras,
       ];
 
@@ -512,12 +516,7 @@ class KumihanAstEngine implements LayoutEnvironment, KumihanViewport {
       _blocks.add(block);
 
       for (final style in entry.styles) {
-        _applyStyle(
-          block,
-          style.startIndex,
-          style.endIndex,
-          style,
-        );
+        _applyStyle(block, style.startIndex, style.endIndex, style);
       }
 
       for (final extra in entry.extras) {
@@ -577,7 +576,9 @@ class KumihanAstEngine implements LayoutEnvironment, KumihanViewport {
       _layoutPreparedBlock(
         alignBottom: entry.alignBottom || _alignBottom,
         block: block,
-        bottomMargin: entry.alignBottom ? entry.bottomMargin : _bottomMargin,
+        bottomMargin: entry.alignBottom
+            ? entry.bottomMargin * _currentFontSize
+            : _bottomMargin,
         extras: extras,
         firstTopMargin: entry.firstTopMargin > 0
             ? entry.firstTopMargin * _currentFontSize
@@ -703,7 +704,8 @@ class KumihanAstEngine implements LayoutEnvironment, KumihanViewport {
     switch (entry.kind) {
       case AstCommandKind.indentStart:
         _firstTopMargin = entry.indentLine * _currentFontSize;
-        _restTopMargin = (entry.indentHanging ?? entry.indentLine) * _currentFontSize;
+        _restTopMargin =
+            (entry.indentHanging ?? entry.indentLine) * _currentFontSize;
       case AstCommandKind.indentEnd:
         _firstTopMargin = 0;
         _restTopMargin = 0;
@@ -766,7 +768,8 @@ class KumihanAstEngine implements LayoutEnvironment, KumihanViewport {
         _currentFontType = 0;
       case AstCommandKind.fontScaleStart:
         final steps = entry.fontScaleSteps ?? 0;
-        _currentFontSize = entry.fontScaleDirection == AozoraFontScaleDirection.larger
+        _currentFontSize =
+            entry.fontScaleDirection == AozoraFontScaleDirection.larger
             ? _fontSize * math.pow(_fontScaleL, steps)
             : _fontSize * math.pow(_fontScaleS, steps);
       case AstCommandKind.fontScaleEnd:
@@ -1562,7 +1565,14 @@ class KumihanAstEngine implements LayoutEnvironment, KumihanViewport {
 
   LayoutSpanMarkerKind _spanMarkerKind(AstParagraphExtra extra) {
     if (extra.kind == AstParagraphExtraKind.frame) {
-      return LayoutSpanMarkerKind.frameMiddle;
+      return switch (extra.frameKind) {
+        AstFrameKind.start => LayoutSpanMarkerKind.frameStart,
+        AstFrameKind.end => LayoutSpanMarkerKind.frameEnd,
+        _ => LayoutSpanMarkerKind.frameMiddle,
+      };
+    }
+    if (extra.ruledLineKind == AstRuledLineKind.frameBox) {
+      return LayoutSpanMarkerKind.frameBox;
     }
     if (extra.ruledLineKind == AstRuledLineKind.cancel) {
       return LayoutSpanMarkerKind.cancel;

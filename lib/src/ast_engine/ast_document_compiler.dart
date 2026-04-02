@@ -182,7 +182,17 @@ enum AstParagraphExtraKind {
   anchor,
 }
 
-enum AstRuledLineKind { solid, doubleLine, chain, dashed, wave, cancel }
+enum AstRuledLineKind {
+  solid,
+  doubleLine,
+  chain,
+  dashed,
+  wave,
+  cancel,
+  frameBox,
+}
+
+enum AstFrameKind { start, middle, end }
 
 enum AstEmphasisKind {
   sesame,
@@ -201,6 +211,7 @@ class AstParagraphExtra {
     required this.kind,
     this.emphasisKind,
     this.endIndex,
+    this.frameKind,
     this.imageHeight,
     this.imagePath,
     this.imageWidth,
@@ -215,6 +226,7 @@ class AstParagraphExtra {
   final AstParagraphExtraKind kind;
   final int? startIndex;
   final int? endIndex;
+  final AstFrameKind? frameKind;
   final String? imagePath;
   final double? imageWidth;
   final double? imageHeight;
@@ -264,10 +276,7 @@ class _AstDocumentCompiler {
         nonBreakNextLine = false;
         return;
       }
-      final lineEntries = _compileLine(
-        lineTokens,
-        nonBreak: nonBreakNextLine,
-      );
+      final lineEntries = _compileLine(lineTokens, nonBreak: nonBreakNextLine);
       _entries.addAll(lineEntries);
       lineTokens.clear();
       nonBreakNextLine = false;
@@ -291,7 +300,9 @@ class _AstDocumentCompiler {
     if (lineTokens.isNotEmpty) {
       flushLine();
     }
-    return AstCompiledDocument(entries: List<AstCompiledEntry>.unmodifiable(_entries));
+    return AstCompiledDocument(
+      entries: List<AstCompiledEntry>.unmodifiable(_entries),
+    );
   }
 
   List<AstCompiledEntry> _compileLine(
@@ -311,6 +322,34 @@ class _AstDocumentCompiler {
     }
 
     if (line.isEmpty) {
+      if (commands.isNotEmpty) {
+        final last = commands.last;
+        if (last case AstCommandEntry(kind: AstCommandKind.frameStart)) {
+          commands.add(
+            const AstCompiledParagraphEntry(
+              text: ' ',
+              extras: <AstParagraphExtra>[
+                AstParagraphExtra(
+                  kind: AstParagraphExtraKind.frame,
+                  frameKind: AstFrameKind.start,
+                ),
+              ],
+            ),
+          );
+        } else if (last case AstCommandEntry(kind: AstCommandKind.frameEnd)) {
+          commands.add(
+            const AstCompiledParagraphEntry(
+              text: ' ',
+              extras: <AstParagraphExtra>[
+                AstParagraphExtra(
+                  kind: AstParagraphExtraKind.frame,
+                  frameKind: AstFrameKind.end,
+                ),
+              ],
+            ),
+          );
+        }
+      }
       return commands;
     }
 
@@ -328,12 +367,11 @@ class _AstDocumentCompiler {
         line.removeAt(0);
         continue;
       }
-      if (token
-          case AozoraBottomAlign(
-            scope: AozoraBottomAlignScope.singleLine,
-            kind: final kind,
-            offset: final offset,
-          )) {
+      if (token case AozoraBottomAlign(
+        scope: AozoraBottomAlignScope.singleLine,
+        kind: final kind,
+        offset: final offset,
+      )) {
         alignBottom = true;
         bottomMargin = kind == AozoraBottomAlignKind.bottom
             ? 0
@@ -363,7 +401,9 @@ class _AstDocumentCompiler {
         rubies: List<AstRubySpan>.unmodifiable(builder.rubies),
         extras: List<AstParagraphExtra>.unmodifiable(builder.extras),
         tcyRanges: List<AstRange>.unmodifiable(builder.tcyRanges),
-        chapterIndexes: List<AstChapterIndex>.unmodifiable(builder.chapterIndexes),
+        chapterIndexes: List<AstChapterIndex>.unmodifiable(
+          builder.chapterIndexes,
+        ),
       ),
     );
     return commands;
@@ -478,9 +518,13 @@ class _AstDocumentCompiler {
         kind: AozoraInlineDecorationKind.keigakomi,
       ) =>
         const AstCommandEntry(kind: AstCommandKind.frameEnd),
-      AozoraPageBreak(kind: final kind) =>
-        AstCommandEntry(kind: AstCommandKind.pageBreak, pageBreakKind: kind),
-      AozoraPageCenter() => const AstCommandEntry(kind: AstCommandKind.pageCenter),
+      AozoraPageBreak(kind: final kind) => AstCommandEntry(
+        kind: AstCommandKind.pageBreak,
+        pageBreakKind: kind,
+      ),
+      AozoraPageCenter() => const AstCommandEntry(
+        kind: AstCommandKind.pageCenter,
+      ),
       _ => null,
     };
   }
@@ -755,8 +799,10 @@ class _ParagraphBuilder {
   final List<AstRange> tcyRanges = <AstRange>[];
   final List<AstChapterIndex> chapterIndexes = <AstChapterIndex>[];
 
-  final List<_OpenSpan<AozoraAttachedText>> _attached = <_OpenSpan<AozoraAttachedText>>[];
-  final List<_OpenSpan<AozoraTextStyle>> _styled = <_OpenSpan<AozoraTextStyle>>[];
+  final List<_OpenSpan<AozoraAttachedText>> _attached =
+      <_OpenSpan<AozoraAttachedText>>[];
+  final List<_OpenSpan<AozoraTextStyle>> _styled =
+      <_OpenSpan<AozoraTextStyle>>[];
   final List<_OpenSpan<AozoraHeading>> _headings = <_OpenSpan<AozoraHeading>>[];
   final List<_OpenSpan<AozoraCaption>> _captions = <_OpenSpan<AozoraCaption>>[];
   final List<_OpenSpan<AozoraInlineDecoration>> _decorations =
@@ -782,7 +828,9 @@ class _ParagraphBuilder {
       _buffer.write('⁠￼');
       startIndex = currentLength + 1;
     }
-    inserts.add(AstInlineInsert(startIndex: startIndex, text: text, type: kind));
+    inserts.add(
+      AstInlineInsert(startIndex: startIndex, text: text, type: kind),
+    );
   }
 
   void appendImage(AozoraImage image) {
@@ -811,7 +859,8 @@ class _ParagraphBuilder {
       return;
     }
     final index = _attached.lastIndexWhere(
-      (entry) => entry.value.role == token.role && entry.value.side == token.side,
+      (entry) =>
+          entry.value.role == token.role && entry.value.side == token.side,
     );
     if (index < 0) {
       return;
@@ -835,7 +884,9 @@ class _ParagraphBuilder {
       _styled.add(_OpenSpan<AozoraTextStyle>(text.length, token.style));
       return;
     }
-    final index = _styled.lastIndexWhere((entry) => entry.value.runtimeType == token.style.runtimeType);
+    final index = _styled.lastIndexWhere(
+      (entry) => entry.value.runtimeType == token.style.runtimeType,
+    );
     if (index < 0) {
       return;
     }
@@ -848,7 +899,9 @@ class _ParagraphBuilder {
       _headings.add(_OpenSpan<AozoraHeading>(text.length, token));
       return;
     }
-    final index = _headings.lastIndexWhere((entry) => entry.value.level == token.level);
+    final index = _headings.lastIndexWhere(
+      (entry) => entry.value.level == token.level,
+    );
     if (index < 0) {
       return;
     }
@@ -858,7 +911,13 @@ class _ParagraphBuilder {
       AozoraHeadingLevel.medium => AstStyleKind.headingMedium,
       AozoraHeadingLevel.small => AstStyleKind.headingSmall,
     };
-    styles.add(AstStyleSpan(startIndex: open.startIndex, endIndex: text.length, kind: kind));
+    styles.add(
+      AstStyleSpan(
+        startIndex: open.startIndex,
+        endIndex: text.length,
+        kind: kind,
+      ),
+    );
     chapterIndexes.add(
       AstChapterIndex(
         startIndex: open.startIndex,
@@ -895,14 +954,18 @@ class _ParagraphBuilder {
       _decorations.add(_OpenSpan<AozoraInlineDecoration>(text.length, token));
       return;
     }
-    final index = _decorations.lastIndexWhere((entry) => entry.value.kind == token.kind);
+    final index = _decorations.lastIndexWhere(
+      (entry) => entry.value.kind == token.kind,
+    );
     if (index < 0) {
       return;
     }
     final open = _decorations.removeAt(index);
     switch (token.kind) {
       case AozoraInlineDecorationKind.tatechuyoko:
-        tcyRanges.add(AstRange(startIndex: open.startIndex, endIndex: text.length));
+        tcyRanges.add(
+          AstRange(startIndex: open.startIndex, endIndex: text.length),
+        );
       case AozoraInlineDecorationKind.lineRightSmall:
         styles.add(
           AstStyleSpan(
@@ -938,10 +1001,10 @@ class _ParagraphBuilder {
       case AozoraInlineDecorationKind.keigakomi:
         extras.add(
           AstParagraphExtra(
-            kind: AstParagraphExtraKind.ruledLine,
+            kind: AstParagraphExtraKind.span,
             startIndex: open.startIndex,
             endIndex: text.length,
-            ruledLineKind: AstRuledLineKind.solid,
+            ruledLineKind: AstRuledLineKind.frameBox,
           ),
         );
       case AozoraInlineDecorationKind.yokogumi:
@@ -1049,6 +1112,7 @@ class _ParagraphBuilder {
               AozoraBosenKind.chain => AstRuledLineKind.chain,
               AozoraBosenKind.dashed => AstRuledLineKind.dashed,
               AozoraBosenKind.wave => AstRuledLineKind.wave,
+              AozoraBosenKind.cancel => AstRuledLineKind.cancel,
             },
             rightSide: side == AozoraTextSide.right,
           ),
@@ -1063,10 +1127,7 @@ class _ParagraphBuilder {
                 : AstStyleKind.italic,
           ),
         );
-      case AozoraFontScaleStyle(
-        direction: final direction,
-        steps: final steps,
-      ):
+      case AozoraFontScaleStyle(direction: final direction, steps: final steps):
         styles.add(
           AstStyleSpan(
             startIndex: startIndex,
@@ -1141,8 +1202,12 @@ class _ParagraphBuilder {
     for (var index = 0; index < styles.length; index += 1) {
       final span = styles[index];
       styles[index] = AstStyleSpan(
-        startIndex: span.startIndex >= pivot ? span.startIndex + delta : span.startIndex,
-        endIndex: span.endIndex >= pivot ? span.endIndex + delta : span.endIndex,
+        startIndex: span.startIndex >= pivot
+            ? span.startIndex + delta
+            : span.startIndex,
+        endIndex: span.endIndex >= pivot
+            ? span.endIndex + delta
+            : span.endIndex,
         kind: span.kind,
         fontScaleDirection: span.fontScaleDirection,
         fontScaleSteps: span.fontScaleSteps,
@@ -1153,7 +1218,9 @@ class _ParagraphBuilder {
     for (var index = 0; index < inserts.length; index += 1) {
       final insert = inserts[index];
       inserts[index] = AstInlineInsert(
-        startIndex: insert.startIndex >= pivot ? insert.startIndex + delta : insert.startIndex,
+        startIndex: insert.startIndex >= pivot
+            ? insert.startIndex + delta
+            : insert.startIndex,
         text: insert.text,
         type: insert.type,
       );
@@ -1162,14 +1229,22 @@ class _ParagraphBuilder {
     for (var index = 0; index < rubies.length; index += 1) {
       final ruby = rubies[index];
       rubies[index] = AstRubySpan(
-        startIndex: ruby.startIndex >= pivot ? ruby.startIndex + delta : ruby.startIndex,
-        endIndex: ruby.endIndex >= pivot ? ruby.endIndex + delta : ruby.endIndex,
+        startIndex: ruby.startIndex >= pivot
+            ? ruby.startIndex + delta
+            : ruby.startIndex,
+        endIndex: ruby.endIndex >= pivot
+            ? ruby.endIndex + delta
+            : ruby.endIndex,
         ruby: ruby.ruby,
         spans: ruby.spans
             .map(
               (span) => AstStyleSpan(
-                startIndex: span.startIndex >= pivot ? span.startIndex + delta : span.startIndex,
-                endIndex: span.endIndex >= pivot ? span.endIndex + delta : span.endIndex,
+                startIndex: span.startIndex >= pivot
+                    ? span.startIndex + delta
+                    : span.startIndex,
+                endIndex: span.endIndex >= pivot
+                    ? span.endIndex + delta
+                    : span.endIndex,
                 kind: span.kind,
                 fontScaleDirection: span.fontScaleDirection,
                 fontScaleSteps: span.fontScaleSteps,
@@ -1190,6 +1265,7 @@ class _ParagraphBuilder {
         endIndex: extra.endIndex != null && extra.endIndex! >= pivot
             ? extra.endIndex! + delta
             : extra.endIndex,
+        frameKind: extra.frameKind,
         imagePath: extra.imagePath,
         imageWidth: extra.imageWidth,
         imageHeight: extra.imageHeight,
@@ -1205,16 +1281,24 @@ class _ParagraphBuilder {
     for (var index = 0; index < tcyRanges.length; index += 1) {
       final range = tcyRanges[index];
       tcyRanges[index] = AstRange(
-        startIndex: range.startIndex >= pivot ? range.startIndex + delta : range.startIndex,
-        endIndex: range.endIndex >= pivot ? range.endIndex + delta : range.endIndex,
+        startIndex: range.startIndex >= pivot
+            ? range.startIndex + delta
+            : range.startIndex,
+        endIndex: range.endIndex >= pivot
+            ? range.endIndex + delta
+            : range.endIndex,
       );
     }
 
     for (var index = 0; index < chapterIndexes.length; index += 1) {
       final chapter = chapterIndexes[index];
       chapterIndexes[index] = AstChapterIndex(
-        startIndex: chapter.startIndex >= pivot ? chapter.startIndex + delta : chapter.startIndex,
-        endIndex: chapter.endIndex >= pivot ? chapter.endIndex + delta : chapter.endIndex,
+        startIndex: chapter.startIndex >= pivot
+            ? chapter.startIndex + delta
+            : chapter.startIndex,
+        endIndex: chapter.endIndex >= pivot
+            ? chapter.endIndex + delta
+            : chapter.endIndex,
         kind: chapter.kind,
         anchorName: chapter.anchorName,
       );

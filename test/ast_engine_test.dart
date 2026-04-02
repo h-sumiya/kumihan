@@ -27,6 +27,71 @@ void main() {
     expect(third.kind, AstCommandKind.pageBreak);
   });
 
+  test(
+    'compiles frame and cancel annotations into legacy-equivalent markers',
+    () {
+      const parser = AozoraAstParser();
+      final ast = parser.parse(
+        '［＃ここから罫囲み］\n'
+        '囲み\n'
+        '［＃ここで罫囲み終わり］\n'
+        '責［＃「責」に取消線］\n'
+        '語［＃「語」は罫囲み］',
+      );
+
+      final compiled = compileAozoraAst(ast);
+      final commands = compiled.entries.whereType<AstCommandEntry>().toList();
+      final paragraphs = compiled.entries
+          .whereType<AstCompiledParagraphEntry>()
+          .toList();
+
+      expect(
+        commands.any((entry) => entry.kind == AstCommandKind.frameStart),
+        isTrue,
+      );
+      expect(
+        commands.any((entry) => entry.kind == AstCommandKind.frameEnd),
+        isTrue,
+      );
+      expect(
+        paragraphs.any(
+          (entry) => entry.extras.any(
+            (extra) =>
+                extra.kind == AstParagraphExtraKind.frame &&
+                extra.frameKind == AstFrameKind.start,
+          ),
+        ),
+        isTrue,
+      );
+      expect(
+        paragraphs.any(
+          (entry) => entry.extras.any(
+            (extra) =>
+                extra.kind == AstParagraphExtraKind.frame &&
+                extra.frameKind == AstFrameKind.end,
+          ),
+        ),
+        isTrue,
+      );
+      expect(
+        paragraphs.any(
+          (entry) => entry.extras.any(
+            (extra) => extra.ruledLineKind == AstRuledLineKind.cancel,
+          ),
+        ),
+        isTrue,
+      );
+      expect(
+        paragraphs.any(
+          (entry) => entry.extras.any(
+            (extra) => extra.ruledLineKind == AstRuledLineKind.frameBox,
+          ),
+        ),
+        isTrue,
+      );
+    },
+  );
+
   testWidgets('ast engine opens parsed ast and paginates', (tester) async {
     final parser = const AozoraAstParser();
     final engine = KumihanAstEngine(
@@ -38,9 +103,7 @@ void main() {
     );
 
     await engine.resize(400, 600);
-    await engine.openAst(
-      parser.parse('［＃１字下げ］表示サンプルです。\n［＃改ページ］\n次のページです。'),
-    );
+    await engine.openAst(parser.parse('［＃１字下げ］表示サンプルです。\n［＃改ページ］\n次のページです。'));
 
     expect(engine.snapshot.totalPages, greaterThanOrEqualTo(2));
     expect(engine.snapshot.currentPage, 0);

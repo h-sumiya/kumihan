@@ -15,13 +15,26 @@ class _AozoraInlineParser {
 
   final String source;
   final List<_OpenStyleEntry> _openStyles = <_OpenStyleEntry>[];
+  static final RegExp _rubyBaseIgnorablePattern = RegExp(
+    r'[\s、。，．,.「」『』（）()［］【】〈〉《》!?！？…―ー]',
+  );
+  static final RegExp _rubyHiraganaPattern = RegExp(r'[ぁ-んゝゞ]');
+  static final RegExp _rubyKatakanaPattern = RegExp(r'[ァ-ンーヽヾヴ]');
+  static final RegExp _rubyKanjiPattern = RegExp(
+    r'[\u3400-\u9FFF\uF900-\uFAFF々〆〇ヶ]',
+  );
+  static final RegExp _rubyLatinPattern = RegExp(
+    r"[A-Za-z0-9０-９Ａ-Ｚａ-ｚΑ-Ωα-ωА-Яа-я]",
+  );
 
   AozoraData parse() {
     final tokens = <AozoraToken>[];
     var index = 0;
+    var explicitRubyStartIndex = -1;
 
     while (index < source.length) {
       if (_isAtLineStart(tokens)) {
+        explicitRubyStartIndex = -1;
         final remark = _tryParseDocumentRemark(index);
         if (remark != null) {
           tokens.add(remark.token);
@@ -59,6 +72,12 @@ class _AozoraInlineParser {
       final char = source[index];
       if (char == '\n') {
         tokens.add(const AozoraNewLine());
+        explicitRubyStartIndex = -1;
+        index += 1;
+        continue;
+      }
+      if (char == '｜') {
+        explicitRubyStartIndex = tokens.length;
         index += 1;
         continue;
       }
@@ -66,7 +85,8 @@ class _AozoraInlineParser {
         final rubyEnd = source.indexOf('》', index + 1);
         if (rubyEnd > index) {
           final ruby = source.substring(index + 1, rubyEnd);
-          _attachRuby(tokens, ruby);
+          _attachRuby(tokens, ruby, explicitStartIndex: explicitRubyStartIndex);
+          explicitRubyStartIndex = -1;
           index = rubyEnd + 1;
           continue;
         }
@@ -107,6 +127,7 @@ class _AozoraInlineParser {
     while (index < source.length) {
       final char = source[index];
       if (char == '\n' ||
+          char == '｜' ||
           char == '《' ||
           char == '〔' ||
           char == '‐' ||
@@ -525,7 +546,7 @@ class _AozoraInlineParser {
 
   _SingleTargetStyle? _parseSingleTargetStyle(String body) {
     final decorationMatch = RegExp(
-      r'^「(.+)」(の左)?に(傍点|白ゴマ傍点|丸傍点|白丸傍点|黒三角傍点|白三角傍点|二重丸傍点|蛇の目傍点|ばつ傍点|傍線|二重傍線|鎖線|破線|波線)$',
+      r'^「(.+)」(の左)?に(傍点|白ゴマ傍点|丸傍点|白丸傍点|黒三角傍点|白三角傍点|二重丸傍点|蛇の目傍点|ばつ傍点|傍線|二重傍線|鎖線|破線|波線|取消線)$',
     ).firstMatch(body);
     if (decorationMatch != null) {
       final side = decorationMatch[2] == null
@@ -724,7 +745,7 @@ class _AozoraInlineParser {
   }
 
   AozoraToken? _parseSpanEnd(String body) {
-    final inlineKindBody = body.replaceFirst('終わり', '');
+    final inlineKindBody = body.replaceFirst('ここで', '').replaceFirst('終わり', '');
     final inlineKind = _inlineDecorationKindFrom(inlineKindBody);
     if (inlineKind != null && body.endsWith('終わり')) {
       final boundary = body.startsWith('ここで')
@@ -863,6 +884,7 @@ class _AozoraInlineParser {
       '鎖線': AozoraBosenKind.chain,
       '破線': AozoraBosenKind.dashed,
       '波線': AozoraBosenKind.wave,
+      '取消線': AozoraBosenKind.cancel,
     };
 
     final side = body.startsWith('左に') ? AozoraTextSide.left : defaultSide;
@@ -1125,8 +1147,15 @@ class _AozoraInlineParser {
         .toList(growable: false);
   }
 
-  void _attachRuby(List<AozoraToken> tokens, String rubyText) {
-    final startIndex = _findRubyTargetStart(tokens);
+  void _attachRuby(
+    List<AozoraToken> tokens,
+    String rubyText, {
+    int explicitStartIndex = -1,
+  }) {
+    final startIndex = _findRubyTargetStart(
+      tokens,
+      explicitStartIndex: explicitStartIndex,
+    );
     if (startIndex == null) {
       tokens.add(AozoraText('《$rubyText》'));
       return;
@@ -1149,25 +1178,94 @@ class _AozoraInlineParser {
     );
   }
 
-  int? _findRubyTargetStart(List<AozoraToken> tokens) {
+  int? _findRubyTargetStart(
+    List<AozoraToken> tokens, {
+    int explicitStartIndex = -1,
+  }) {
+    if (tokens.isEmpty) {
+      return null;
+    }
+    if (explicitStartIndex >= 0 && explicitStartIndex < tokens.length) {
+      return explicitStartIndex;
+    }
+
     var index = tokens.length - 1;
     while (index >= 0) {
       final token = tokens[index];
-      if (_canBeRubyTarget(token)) {
+      if (token is AozoraText) {
+        final split = _splitTrailingRubyText(token.text);
+        if (split == null) {
+          final fallback = index + 1;
+          return fallback < tokens.length ? fallback : null;
+        }
+        if (split.remaining != null) {
+          tokens[index] = AozoraText(split.remaining!);
+          tokens.insert(index + 1, AozoraText(split.matched));
+          return index + 1;
+        }
+        return index;
+      }
+      if (token is AozoraGaiji ||
+          token is AozoraAccentDecomposition ||
+          token is AozoraTateTen) {
         index -= 1;
         continue;
       }
       break;
     }
+
     final start = index + 1;
     return start < tokens.length ? start : null;
   }
 
-  bool _canBeRubyTarget(AozoraToken token) {
-    return token is AozoraText ||
-        token is AozoraGaiji ||
-        token is AozoraAccentDecomposition ||
-        token is AozoraTateTen;
+  _RubyTextSplit? _splitTrailingRubyText(String text) {
+    if (text.isEmpty) {
+      return null;
+    }
+
+    final tail = text[text.length - 1];
+    final tailClass = _rubyBaseClass(tail);
+    if (!_isRubyBaseCharacter(tail) || tailClass == _RubyBaseClass.other) {
+      return null;
+    }
+
+    var splitIndex = text.length;
+    while (splitIndex > 0) {
+      final char = text[splitIndex - 1];
+      if (!_isRubyBaseCharacter(char) || _rubyBaseClass(char) != tailClass) {
+        break;
+      }
+      splitIndex -= 1;
+    }
+
+    if (splitIndex == text.length) {
+      return null;
+    }
+
+    return _RubyTextSplit(
+      remaining: splitIndex > 0 ? text.substring(0, splitIndex) : null,
+      matched: text.substring(splitIndex),
+    );
+  }
+
+  bool _isRubyBaseCharacter(String char) {
+    return !_rubyBaseIgnorablePattern.hasMatch(char);
+  }
+
+  _RubyBaseClass _rubyBaseClass(String char) {
+    if (_rubyHiraganaPattern.hasMatch(char)) {
+      return _RubyBaseClass.hiragana;
+    }
+    if (_rubyKatakanaPattern.hasMatch(char)) {
+      return _RubyBaseClass.katakana;
+    }
+    if (_rubyKanjiPattern.hasMatch(char)) {
+      return _RubyBaseClass.kanji;
+    }
+    if (_rubyLatinPattern.hasMatch(char) || "−＆’，．#-\\&',".contains(char)) {
+      return _RubyBaseClass.latinOrNumber;
+    }
+    return _RubyBaseClass.other;
   }
 
   bool _wrapLastMatchingText(
@@ -1281,6 +1379,15 @@ class _AozoraInlineParser {
     }
     return merged;
   }
+}
+
+enum _RubyBaseClass { hiragana, katakana, kanji, latinOrNumber, other }
+
+class _RubyTextSplit {
+  const _RubyTextSplit({required this.remaining, required this.matched});
+
+  final String? remaining;
+  final String matched;
 }
 
 class _RemarkResult {
