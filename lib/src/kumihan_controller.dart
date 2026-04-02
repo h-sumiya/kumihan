@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart';
 
 import 'ast.dart';
-import 'debug/render_trace.dart';
 import 'kumihan_types.dart';
 
 abstract interface class KumihanViewport {
@@ -14,7 +13,6 @@ abstract interface class KumihanViewport {
   Future<void> showPage(int page);
   Future<void> showFirstPage();
   Future<void> showLastPage();
-  KumihanRenderTrace? get renderTrace;
   KumihanSnapshot get snapshot;
 }
 
@@ -26,8 +24,6 @@ class KumihanController extends ChangeNotifier {
   );
 
   KumihanSnapshot get snapshot => _snapshot;
-
-  KumihanRenderTrace? get renderTrace => _viewport?.renderTrace;
 
   void attach(KumihanViewport viewport) {
     _viewport = viewport;

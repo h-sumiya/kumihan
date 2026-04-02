@@ -6,7 +6,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 
 import '../ast.dart';
-import '../debug/render_trace.dart';
 import '../kumihan_controller.dart';
 import '../kumihan_types.dart';
 import 'constants.dart';
@@ -217,9 +216,6 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
     currentPage: math.max(_currentPageNo, 0),
     totalPages: _contentPageCount,
   );
-
-  @override
-  KumihanRenderTrace? get renderTrace => _buildRenderTrace();
 
   @override
   MeasuredText layoutText(LayoutAtom atom, String text, Color color) {
@@ -1704,41 +1700,6 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
     _clickable = <ClickableArea>[];
     onSnapshot(snapshot);
     onInvalidate();
-  }
-
-  KumihanRenderTrace? _buildRenderTrace() {
-    if (_width <= 0 || _height <= 0 || _pageWidth <= 0 || _pageHeight <= 0) {
-      return null;
-    }
-
-    final pageNo = _currentPageNo < 0 ? 0 : _currentPageNo;
-    if (pageNo > _lastDocumentPage) {
-      return KumihanRenderTrace(
-        currentPage: pageNo,
-        writingMode: KumihanWritingMode.vertical,
-        commands: const <KumihanRenderCommand>[],
-      );
-    }
-
-    final commands = <KumihanRenderCommand>[];
-    final recorder = ui.PictureRecorder();
-    final canvas = ui.Canvas(recorder);
-    final previousClickable = _clickable;
-    _clickable = <ClickableArea>[];
-    _showOnePage(
-      canvas,
-      _documentToInternalPageNo(pageNo),
-      true,
-      traceSink: commands.add,
-    );
-    _clickable = previousClickable;
-    recorder.endRecording().dispose();
-
-    return KumihanRenderTrace(
-      currentPage: pageNo,
-      writingMode: KumihanWritingMode.vertical,
-      commands: List<KumihanRenderCommand>.unmodifiable(commands),
-    );
   }
 
   void paint(ui.Canvas canvas) {

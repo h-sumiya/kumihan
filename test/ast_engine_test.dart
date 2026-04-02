@@ -141,38 +141,4 @@ void main() {
     expect(engine.snapshot.totalPages, greaterThanOrEqualTo(2));
     expect(engine.snapshot.currentPage, 0);
   });
-
-  testWidgets('ast engine emits start middle end markers for block frames', (
-    tester,
-  ) async {
-    final parser = const AozoraParser();
-    final engine = KumihanEngine(
-      baseUri: null,
-      initialPage: 0,
-      layout: const KumihanLayoutData(),
-      onInvalidate: () {},
-      onSnapshot: (_) {},
-    );
-
-    await engine.resize(400, 600);
-    await engine.open(
-      parser.parse(
-        '［＃ここから罫囲み］\n'
-        '囲み本文\n'
-        '［＃ここで罫囲み終わり］',
-      ),
-    );
-
-    final roles =
-        engine.renderTrace?.commands
-            .where((command) => command.kind == 'marker')
-            .map((command) => command.role)
-            .whereType<String>()
-            .toList() ??
-        const <String>[];
-
-    expect(roles, contains('frameStart'));
-    expect(roles, contains('frameMiddle'));
-    expect(roles, contains('frameEnd'));
-  });
 }

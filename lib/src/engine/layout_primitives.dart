@@ -2,7 +2,6 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/painting.dart';
 
-import '../debug/render_trace.dart';
 import 'constants.dart';
 import 'helpers.dart';
 import 'line_breaker.dart';
@@ -476,7 +475,6 @@ class LayoutTextLine {
     double baseX,
     double baseY, {
     bool backPage = false,
-    KumihanRenderCommandSink? traceSink,
   }) {
     final environment = block.environment;
 
@@ -500,18 +498,6 @@ class LayoutTextLine {
         canvas.scale(rect.width / pictureWidth, rect.height / pictureHeight);
         canvas.drawPicture(atom.picture!);
         canvas.restore();
-        traceSink?.call(
-          KumihanRenderCommand(
-            kind: 'picture',
-            translateX: rect.left,
-            translateY: rect.top,
-            width: pictureWidth,
-            height: pictureHeight,
-            scaleX: rect.width / pictureWidth,
-            scaleY: rect.height / pictureHeight,
-            data: <String, Object?>{'atomIndex': index, 'backPage': backPage},
-          ),
-        );
       } else if (atom.image != null) {
         final imageWidth = atom.width!;
         final imageHeight = atom.height!;
@@ -539,18 +525,6 @@ class LayoutTextLine {
           rect,
           paint,
         );
-        traceSink?.call(
-          KumihanRenderCommand(
-            kind: 'image',
-            translateX: rect.left,
-            translateY: rect.top,
-            width: atom.image!.width.toDouble(),
-            height: atom.image!.height.toDouble(),
-            scaleX: rect.width / atom.image!.width,
-            scaleY: rect.height / atom.image!.height,
-            data: <String, Object?>{'atomIndex': index, 'backPage': backPage},
-          ),
-        );
       } else {
         final text = block.getAtomText(index);
         if (text != '￼') {
@@ -570,25 +544,6 @@ class LayoutTextLine {
             painter.paint(
               canvas,
               const Offset(0, 0) - Offset(0, painter.height / 2),
-            );
-            traceSink?.call(
-              KumihanRenderCommand(
-                kind: 'glyph',
-                text: text,
-                translateX: x,
-                translateY: translatedY,
-                localX: 0,
-                localY: -painter.height / 2,
-                width: painter.width,
-                height: painter.height,
-                rotation: 0.5 * 3.1415926535897932,
-                data: <String, Object?>{
-                  'atomIndex': index,
-                  'backPage': backPage,
-                  'fontSize': fontSize,
-                  'rotated': true,
-                },
-              ),
             );
           } else {
             if (atom.getT()) {
@@ -613,22 +568,6 @@ class LayoutTextLine {
                 y + fontSize / 2 - painter.height / 2,
               ),
             );
-            traceSink?.call(
-              KumihanRenderCommand(
-                kind: 'glyph',
-                text: text,
-                localX: x - painter.width / 2,
-                localY: y + fontSize / 2 - painter.height / 2,
-                width: painter.width,
-                height: painter.height,
-                data: <String, Object?>{
-                  'atomIndex': index,
-                  'backPage': backPage,
-                  'fontSize': fontSize,
-                  'rotated': false,
-                },
-              ),
-            );
           }
           canvas.restore();
         }
@@ -643,7 +582,6 @@ class LayoutTextLine {
     double baseX,
     double baseY, {
     bool backPage = false,
-    KumihanRenderCommandSink? traceSink,
   }) {
     final environment = block.environment;
 
@@ -667,22 +605,6 @@ class LayoutTextLine {
         canvas.scale(rect.width / pictureHeight, rect.height / pictureWidth);
         canvas.drawPicture(atom.picture!);
         canvas.restore();
-        traceSink?.call(
-          KumihanRenderCommand(
-            kind: 'picture',
-            translateX: rect.left,
-            translateY: rect.top,
-            width: pictureHeight,
-            height: pictureWidth,
-            scaleX: rect.width / pictureHeight,
-            scaleY: rect.height / pictureWidth,
-            data: <String, Object?>{
-              'atomIndex': index,
-              'backPage': backPage,
-              'writingMode': 'horizontal',
-            },
-          ),
-        );
       } else if (atom.image != null) {
         final imageHeight = atom.height!;
         final imageWidth = atom.width!;
@@ -710,22 +632,6 @@ class LayoutTextLine {
           rect,
           paint,
         );
-        traceSink?.call(
-          KumihanRenderCommand(
-            kind: 'image',
-            translateX: rect.left,
-            translateY: rect.top,
-            width: atom.image!.width.toDouble(),
-            height: atom.image!.height.toDouble(),
-            scaleX: rect.width / atom.image!.width,
-            scaleY: rect.height / atom.image!.height,
-            data: <String, Object?>{
-              'atomIndex': index,
-              'backPage': backPage,
-              'writingMode': 'horizontal',
-            },
-          ),
-        );
       } else {
         final text = block.getAtomText(index);
         if (text != '￼') {
@@ -739,22 +645,6 @@ class LayoutTextLine {
             x -= 0.26 * fontSize;
           }
           painter.paint(canvas, Offset(x, baseline - painter.height / 2));
-          traceSink?.call(
-            KumihanRenderCommand(
-              kind: 'glyph',
-              text: text,
-              localX: x,
-              localY: baseline - painter.height / 2,
-              width: painter.width,
-              height: painter.height,
-              data: <String, Object?>{
-                'atomIndex': index,
-                'backPage': backPage,
-                'fontSize': fontSize,
-                'writingMode': 'horizontal',
-              },
-            ),
-          );
           canvas.restore();
         }
       }

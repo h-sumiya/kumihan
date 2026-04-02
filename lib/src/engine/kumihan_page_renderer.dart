@@ -6,7 +6,6 @@ extension on KumihanEngine {
     int pageNo,
     bool leftSide, {
     bool backPage = false,
-    KumihanRenderCommandSink? traceSink,
   }) {
     final vertical = _currentState.startsWith('v');
     final pageStartLine = pageNo < _pages.length ? _pages[pageNo].line : 0;
@@ -39,19 +38,13 @@ extension on KumihanEngine {
               ? cursor - line.width + _pageMarginSide
               : _width - _pageMarginSide - _pageWidth + cursor - line.width;
           y = _pageMarginTop;
-          line.draw(canvas, x, y, backPage: backPage, traceSink: traceSink);
+          line.draw(canvas, x, y, backPage: backPage);
         } else {
           x = cursor + _pageMarginTop;
           y = leftSide
               ? _pageMarginSide
               : _width - _pageMarginSide - _pageWidth;
-          line.drawYoko(
-            canvas,
-            y,
-            x + line.width / 2,
-            backPage: backPage,
-            traceSink: traceSink,
-          );
+          line.drawYoko(canvas, y, x + line.width / 2, backPage: backPage);
         }
 
         line.x = x;
@@ -67,7 +60,6 @@ extension on KumihanEngine {
             y,
             vertical,
             backPage: backPage,
-            traceSink: traceSink,
           );
         }
       }
@@ -90,7 +82,6 @@ extension on KumihanEngine {
     double y,
     bool vertical, {
     required bool backPage,
-    KumihanRenderCommandSink? traceSink,
   }) {
     switch (attachment) {
       case InlineDecorationAttachment():
@@ -101,38 +92,21 @@ extension on KumihanEngine {
           x,
           y,
           vertical,
-          traceSink: traceSink,
         );
       case WarichuMarker():
         if (vertical) {
-          attachment.upperLine?.draw(
-            canvas,
-            x + line.width / 2,
-            y,
-            traceSink: traceSink,
-          );
+          attachment.upperLine?.draw(canvas, x + line.width / 2, y);
           attachment.lowerLine?.draw(
             canvas,
             x + line.width / 2 - (attachment.lowerLine?.width ?? 0),
             y,
-            traceSink: traceSink,
           );
         } else {
           final upperCenter = x + (attachment.upperLine?.width ?? 0) / 2;
           final lowerCenter =
               x + line.width - (attachment.lowerLine?.width ?? 0) / 2;
-          attachment.upperLine?.drawYoko(
-            canvas,
-            y,
-            upperCenter,
-            traceSink: traceSink,
-          );
-          attachment.lowerLine?.drawYoko(
-            canvas,
-            y,
-            lowerCenter,
-            traceSink: traceSink,
-          );
+          attachment.upperLine?.drawYoko(canvas, y, upperCenter);
+          attachment.lowerLine?.drawYoko(canvas, y, lowerCenter);
         }
       case LinkMarker():
         if (!backPage) {
@@ -157,17 +131,6 @@ extension on KumihanEngine {
                     data: attachment.linkTarget,
                   ),
           );
-          traceSink?.call(
-            KumihanRenderCommand(
-              kind: 'region',
-              role: 'link',
-              localX: vertical ? x : y + top + line.y,
-              localY: vertical ? y + top + line.y : x,
-              width: vertical ? line.width : bottom - top,
-              height: vertical ? bottom - top : line.width,
-              data: <String, Object?>{'target': attachment.linkTarget},
-            ),
-          );
         }
       case SpanMarker():
         _drawSpanOrNoteMarker(
@@ -179,7 +142,6 @@ extension on KumihanEngine {
           x,
           y,
           vertical,
-          traceSink: traceSink,
         );
       case NoteMarker():
         _drawSpanOrNoteMarker(
@@ -191,7 +153,6 @@ extension on KumihanEngine {
           x,
           y,
           vertical,
-          traceSink: traceSink,
         );
     }
   }
@@ -202,106 +163,54 @@ extension on KumihanEngine {
     LayoutTextLine line,
     double x,
     double y,
-    bool vertical, {
-    KumihanRenderCommandSink? traceSink,
-  }) {
+    bool vertical,
+  ) {
     final item = attachment.line;
     final pointOffset = item.width == _fontSize ? _fontSize / 4 : 0;
 
     switch (attachment.kind) {
       case LayoutInlineDecorationKind.rightEmphasis:
         vertical
-            ? item.draw(
-                canvas,
-                x + line.width - pointOffset,
-                y,
-                traceSink: traceSink,
-              )
-            : item.drawYoko(
-                canvas,
-                y,
-                x - item.width / 2 + pointOffset,
-                traceSink: traceSink,
-              );
+            ? item.draw(canvas, x + line.width - pointOffset, y)
+            : item.drawYoko(canvas, y, x - item.width / 2 + pointOffset);
       case LayoutInlineDecorationKind.leftEmphasis:
         vertical
-            ? item.draw(
-                canvas,
-                x - item.width + pointOffset,
-                y,
-                traceSink: traceSink,
-              )
+            ? item.draw(canvas, x - item.width + pointOffset, y)
             : item.drawYoko(
                 canvas,
                 y,
                 x + line.width + item.width / 2 - pointOffset,
-                traceSink: traceSink,
               );
       case LayoutInlineDecorationKind.referenceNote:
       case LayoutInlineDecorationKind.annotationNote:
         vertical
-            ? item.draw(canvas, x - 0.45 * line.width, y, traceSink: traceSink)
-            : item.drawYoko(
-                canvas,
-                y,
-                x + 0.95 * line.width + item.width / 2,
-                traceSink: traceSink,
-              );
+            ? item.draw(canvas, x - 0.45 * line.width, y)
+            : item.drawYoko(canvas, y, x + 0.95 * line.width + item.width / 2);
       case LayoutInlineDecorationKind.leftRuby:
         item.color = fontColor;
         vertical
-            ? item.draw(canvas, x - item.width, y, traceSink: traceSink)
-            : item.drawYoko(
-                canvas,
-                y,
-                x + line.width + item.width / 2,
-                traceSink: traceSink,
-              );
+            ? item.draw(canvas, x - item.width, y)
+            : item.drawYoko(canvas, y, x + line.width + item.width / 2);
       case LayoutInlineDecorationKind.rightRuby:
         item.color = fontColor;
         vertical
-            ? item.draw(canvas, x + line.width, y, traceSink: traceSink)
-            : item.drawYoko(
-                canvas,
-                y,
-                x - item.width / 2,
-                traceSink: traceSink,
-              );
+            ? item.draw(canvas, x + line.width, y)
+            : item.drawYoko(canvas, y, x - item.width / 2);
       case LayoutInlineDecorationKind.kaeri:
         final size = item.block.atom.first.getFontSize();
         vertical
-            ? item.draw(canvas, x - 0.2 * size, y, traceSink: traceSink)
-            : item.drawYoko(
-                canvas,
-                y,
-                x + line.width - 0.3 * size,
-                traceSink: traceSink,
-              );
+            ? item.draw(canvas, x - 0.2 * size, y)
+            : item.drawYoko(canvas, y, x + line.width - 0.3 * size);
       case LayoutInlineDecorationKind.naka:
         final size = item.block.atom.first.getFontSize();
         vertical
-            ? item.draw(
-                canvas,
-                x + line.width / 2 - size / 2,
-                y,
-                traceSink: traceSink,
-              )
-            : item.drawYoko(
-                canvas,
-                y,
-                x + line.width / 2,
-                traceSink: traceSink,
-              );
+            ? item.draw(canvas, x + line.width / 2 - size / 2, y)
+            : item.drawYoko(canvas, y, x + line.width / 2);
       case LayoutInlineDecorationKind.okuri:
         final size = item.block.atom.first.getFontSize();
         vertical
-            ? item.draw(
-                canvas,
-                x + line.width - 0.8 * size,
-                y,
-                traceSink: traceSink,
-              )
-            : item.drawYoko(canvas, y, x + 0.3 * size, traceSink: traceSink);
+            ? item.draw(canvas, x + line.width - 0.8 * size, y)
+            : item.drawYoko(canvas, y, x + 0.3 * size);
     }
   }
 
@@ -313,31 +222,8 @@ extension on KumihanEngine {
     int pageStartLine,
     double x,
     double y,
-    bool vertical, {
-    KumihanRenderCommandSink? traceSink,
-  }) {
-    final markerTop = item is SpanMarker ? item.top + y : y;
-    final markerBottom = item is SpanMarker ? item.bottom + y : y;
-    final markerRole = switch (item) {
-      SpanMarker(kind: final kind?) => kind.name,
-      SpanMarker() => item.markType,
-      NoteMarker(kind: final kind?) => kind.name,
-      NoteMarker() => item.markType,
-      _ => '',
-    };
-
-    traceSink?.call(
-      KumihanRenderCommand(
-        kind: 'marker',
-        role: markerRole,
-        localX: vertical ? x : markerTop,
-        localY: vertical ? markerTop : x,
-        width: vertical ? line.width : markerBottom - markerTop,
-        height: vertical ? markerBottom - markerTop : line.width,
-        data: <String, Object?>{'vertical': vertical, 'lineIndex': lineIndex},
-      ),
-    );
-
+    bool vertical,
+  ) {
     canvas.save();
     final paint = Paint()
       ..color = fontColor
