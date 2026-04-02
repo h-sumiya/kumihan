@@ -350,6 +350,8 @@ sealed class LayoutLineMark extends LayoutTextLineAttachment {
   const LayoutLineMark();
 }
 
+enum LayoutNoteMarkerKind { reference, annotation }
+
 class NoteMarker extends LayoutLineMark {
   const NoteMarker({
     required this.annotation,
@@ -357,13 +359,33 @@ class NoteMarker extends LayoutLineMark {
     required this.markType,
     required this.top,
     required this.width,
+    this.kind,
   });
 
   final String annotation;
   final double height;
+  final LayoutNoteMarkerKind? kind;
   final String markType;
   final double top;
   final double width;
+}
+
+enum LayoutSpanMarkerKind {
+  frameStart,
+  frameEnd,
+  frameMiddle,
+  frameBox,
+  rightSolid,
+  rightDouble,
+  rightChain,
+  rightDashed,
+  rightWave,
+  leftSolid,
+  leftDouble,
+  leftChain,
+  leftDashed,
+  leftWave,
+  cancel,
 }
 
 class SpanMarker extends LayoutLineMark {
@@ -373,11 +395,13 @@ class SpanMarker extends LayoutLineMark {
     required this.top,
     this.isEnd,
     this.isStart,
+    this.kind,
   });
 
   final double bottom;
   final bool? isEnd;
   final bool? isStart;
+  final LayoutSpanMarkerKind? kind;
   final String markType;
   final double top;
 }
