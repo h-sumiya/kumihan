@@ -4,4 +4,6 @@ export 'src/kumihan_canvas.dart';
 export 'src/kumihan_controller.dart';
 export 'src/kumihan_document.dart';
 export 'src/kumihan_types.dart';
+export 'src/parsers/aozora/ast.dart';
+export 'src/parsers/aozora/ast_parser.dart';
 export 'src/parsers/aozora_parser.dart';
