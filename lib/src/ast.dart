@@ -1,37 +1,36 @@
-typedef AozoraData = List<AozoraToken>;
+typedef AstData = List<AstToken>;
 
-typedef AozoraInlineContent = List<AozoraInlineNode>;
+typedef AstInlineContent = List<AstInlineNode>;
 
-abstract interface class AozoraInlineNode {}
+abstract interface class AstInlineNode {}
 
-sealed class AozoraToken {
-  const AozoraToken();
+sealed class AstToken {
+  const AstToken();
 }
 
-enum AozoraRangeBoundary { start, end, blockStart, blockEnd }
+enum AstRangeBoundary { start, end, blockStart, blockEnd }
 
-enum AozoraTextSide { right, left }
+enum AstTextSide { right, left }
 
-class AozoraText extends AozoraToken implements AozoraInlineNode {
+class AstText extends AstToken implements AstInlineNode {
   final String text;
 
-  const AozoraText(this.text);
+  const AstText(this.text);
 }
 
-class AozoraNewLine extends AozoraToken implements AozoraInlineNode {
-  const AozoraNewLine();
+class AstNewLine extends AstToken implements AstInlineNode {
+  const AstNewLine();
 }
 
-class AozoraWarichuNewLine extends AozoraToken implements AozoraInlineNode {
+class AstWarichuNewLine extends AstToken implements AstInlineNode {
   /*
   `［＃割り注］東は字大林四三七［＃改行］西は字神内一一一ノ一［＃割り注終わり］`
   の `［＃改行］` を表す。
   */
-  const AozoraWarichuNewLine();
+  const AstWarichuNewLine();
 }
 
-class AozoraAccentDecomposition extends AozoraToken
-    implements AozoraInlineNode {
+class AstAccentDecomposition extends AstToken implements AstInlineNode {
   /*
   `〔e'tiquette〕`
   `〔Sito^t qu'on le touche il re'sonne.〕`
@@ -40,38 +39,34 @@ class AozoraAccentDecomposition extends AozoraToken
   */
   final String text;
 
-  const AozoraAccentDecomposition(this.text);
+  const AstAccentDecomposition(this.text);
 }
 
-enum AozoraPageRegion { upper, middle, lower, one, two, three, four }
+enum AstPageRegion { upper, middle, lower, one, two, three, four }
 
-class AozoraPrintPosition {
+class AstPrintPosition {
   final int page;
   final int line;
-  final AozoraPageRegion? region;
+  final AstPageRegion? region;
 
-  const AozoraPrintPosition({
-    required this.page,
-    required this.line,
-    this.region,
-  });
+  const AstPrintPosition({required this.page, required this.line, this.region});
 }
 
-class AozoraJisCode {
+class AstJisCode {
   final int plane;
   final int row;
   final int cell;
 
-  const AozoraJisCode({
+  const AstJisCode({
     required this.plane,
     required this.row,
     required this.cell,
   });
 }
 
-enum AozoraGaijiKind { jisX0213, unicode, missingUnicode }
+enum AstGaijiKind { jisX0213, unicode, missingUnicode }
 
-class AozoraGaiji extends AozoraToken implements AozoraInlineNode {
+class AstGaiji extends AstToken implements AstInlineNode {
   /*
   `※［＃「てへん＋劣」、第3水準1-84-77］`
   `※［＃「口＋世」、U+546D、135-7］`
@@ -81,13 +76,13 @@ class AozoraGaiji extends AozoraToken implements AozoraInlineNode {
   などを表す。
   */
   final String description;
-  final AozoraGaijiKind kind;
-  final AozoraJisCode? jisCode;
+  final AstGaijiKind kind;
+  final AstJisCode? jisCode;
   final int? jisLevel;
   final int? unicodeCodePoint;
-  final AozoraPrintPosition? printPosition;
+  final AstPrintPosition? printPosition;
 
-  const AozoraGaiji({
+  const AstGaiji({
     required this.description,
     required this.kind,
     this.jisCode,
@@ -97,15 +92,15 @@ class AozoraGaiji extends AozoraToken implements AozoraInlineNode {
   });
 }
 
-class AozoraTateTen extends AozoraToken implements AozoraInlineNode {
+class AstTateTen extends AstToken implements AstInlineNode {
   /*
   `而敬‐［＃二］祭天神地祇［＃一］。`
   の全角ハイフン `‐` を、通常テキストと区別して持ちたい場合に使う。
   */
-  const AozoraTateTen();
+  const AstTateTen();
 }
 
-enum AozoraKaeritenPrimary {
+enum AstKaeritenPrimary {
   ichi,
   ni,
   san,
@@ -121,7 +116,7 @@ enum AozoraKaeritenPrimary {
   jin,
 }
 
-class AozoraKaeriten extends AozoraToken implements AozoraInlineNode {
+class AstKaeriten extends AstToken implements AstInlineNode {
   /*
   `［＃二］`
   `［＃レ］`
@@ -129,30 +124,30 @@ class AozoraKaeriten extends AozoraToken implements AozoraInlineNode {
   `［＃上レ］`
   を表す。
   */
-  final AozoraKaeritenPrimary? primary;
+  final AstKaeritenPrimary? primary;
   final bool hasRe;
 
-  const AozoraKaeriten({this.primary, this.hasRe = false});
+  const AstKaeriten({this.primary, this.hasRe = false});
 }
 
-class AozoraKuntenOkurigana extends AozoraToken implements AozoraInlineNode {
+class AstKuntenOkurigana extends AstToken implements AstInlineNode {
   /*
   `［＃（ノ）］`
   `［＃（弖）］`
   の `（...）` 内を表す。
   */
-  final AozoraInlineContent content;
+  final AstInlineContent content;
 
-  const AozoraKuntenOkurigana(this.content);
+  const AstKuntenOkurigana(this.content);
 }
 
-sealed class AozoraAnnotation extends AozoraToken implements AozoraInlineNode {
-  const AozoraAnnotation();
+sealed class AstAnnotation extends AstToken implements AstInlineNode {
+  const AstAnnotation();
 }
 
-enum AozoraAttachedTextRole { ruby, note }
+enum AstAttachedTextRole { ruby, note }
 
-class AozoraAttachedText extends AozoraAnnotation {
+class AstAttachedText extends AstAnnotation {
   /*
   右ルビ
   - `青空文庫《あおぞらぶんこ》`
@@ -170,16 +165,16 @@ class AozoraAttachedText extends AozoraAnnotation {
   - `［＃左に注記付き］...［＃左に「（銘々）」の注記付き終わり］`
 
   正規化後は、対象範囲の前後に
-  `AozoraAttachedText(start, ...)`
-  `AozoraAttachedText(end, ...)`
+  `AstAttachedText(start, ...)`
+  `AstAttachedText(end, ...)`
   を置く。
   */
-  final AozoraRangeBoundary boundary;
-  final AozoraAttachedTextRole role;
-  final AozoraTextSide side;
-  final AozoraInlineContent? content;
+  final AstRangeBoundary boundary;
+  final AstAttachedTextRole role;
+  final AstTextSide side;
+  final AstInlineContent? content;
 
-  const AozoraAttachedText({
+  const AstAttachedText({
     required this.boundary,
     required this.role,
     required this.side,
@@ -187,7 +182,7 @@ class AozoraAttachedText extends AozoraAnnotation {
   });
 }
 
-enum AozoraBoutenKind {
+enum AstBoutenKind {
   sesame,
   whiteSesame,
   blackCircle,
@@ -199,50 +194,44 @@ enum AozoraBoutenKind {
   saltire,
 }
 
-enum AozoraBosenKind { solid, doubleLine, chain, dashed, wave, cancel }
+enum AstBosenKind { solid, doubleLine, chain, dashed, wave, cancel }
 
-enum AozoraFontStyle { bold, italic }
+enum AstFontStyle { bold, italic }
 
-enum AozoraFontScaleDirection { larger, smaller }
+enum AstFontScaleDirection { larger, smaller }
 
-sealed class AozoraTextStyle {
-  const AozoraTextStyle();
+sealed class AstTextStyle {
+  const AstTextStyle();
 }
 
-class AozoraBoutenStyle extends AozoraTextStyle {
-  final AozoraBoutenKind kind;
-  final AozoraTextSide side;
+class AstBoutenStyle extends AstTextStyle {
+  final AstBoutenKind kind;
+  final AstTextSide side;
 
-  const AozoraBoutenStyle({
-    required this.kind,
-    this.side = AozoraTextSide.right,
-  });
+  const AstBoutenStyle({required this.kind, this.side = AstTextSide.right});
 }
 
-class AozoraBosenStyle extends AozoraTextStyle {
-  final AozoraBosenKind kind;
-  final AozoraTextSide side;
+class AstBosenStyle extends AstTextStyle {
+  final AstBosenKind kind;
+  final AstTextSide side;
 
-  const AozoraBosenStyle({
-    required this.kind,
-    this.side = AozoraTextSide.right,
-  });
+  const AstBosenStyle({required this.kind, this.side = AstTextSide.right});
 }
 
-class AozoraFontStyleAnnotation extends AozoraTextStyle {
-  final AozoraFontStyle style;
+class AstFontStyleAnnotation extends AstTextStyle {
+  final AstFontStyle style;
 
-  const AozoraFontStyleAnnotation(this.style);
+  const AstFontStyleAnnotation(this.style);
 }
 
-class AozoraFontScaleStyle extends AozoraTextStyle {
-  final AozoraFontScaleDirection direction;
+class AstFontScaleStyle extends AstTextStyle {
+  final AstFontScaleDirection direction;
   final int steps;
 
-  const AozoraFontScaleStyle({required this.direction, required this.steps});
+  const AstFontScaleStyle({required this.direction, required this.steps});
 }
 
-class AozoraStyledText extends AozoraAnnotation {
+class AstStyledText extends AstAnnotation {
   /*
   傍点
   - `責［＃「責」に白丸傍点］空文庫`
@@ -265,17 +254,17 @@ class AozoraStyledText extends AozoraAnnotation {
   - `［＃１段階小さな文字］...［＃小さな文字終わり］`
   - `［＃ここから２段階大きな文字］...［＃ここで大きな文字終わり］`
   */
-  final AozoraRangeBoundary boundary;
-  final AozoraTextStyle style;
+  final AstRangeBoundary boundary;
+  final AstTextStyle style;
 
-  const AozoraStyledText({required this.boundary, required this.style});
+  const AstStyledText({required this.boundary, required this.style});
 }
 
-enum AozoraHeadingForm { standalone, runIn, window }
+enum AstHeadingForm { standalone, runIn, window }
 
-enum AozoraHeadingLevel { large, medium, small }
+enum AstHeadingLevel { large, medium, small }
 
-class AozoraHeading extends AozoraAnnotation {
+class AstHeading extends AstAnnotation {
   /*
   通常見出し
   - `独り寝の別れ［＃「独り寝の別れ」は大見出し］`
@@ -292,30 +281,30 @@ class AozoraHeading extends AozoraAnnotation {
 
   前方参照型は対象範囲を特定したあと、開始・終了へ正規化して保持する。
   */
-  final AozoraRangeBoundary boundary;
-  final AozoraHeadingForm form;
-  final AozoraHeadingLevel level;
+  final AstRangeBoundary boundary;
+  final AstHeadingForm form;
+  final AstHeadingLevel level;
 
-  const AozoraHeading({
+  const AstHeading({
     required this.boundary,
     required this.form,
     required this.level,
   });
 }
 
-class AozoraCaption extends AozoraAnnotation {
+class AstCaption extends AstAnnotation {
   /*
   `神戸港頭の袂別［＃「神戸港頭の袂別」はキャプション］`
   `［＃キャプション］アケビ...［＃キャプション終わり］`
   `［＃ここからキャプション］...［＃ここでキャプション終わり］`
   を表す。
   */
-  final AozoraRangeBoundary boundary;
+  final AstRangeBoundary boundary;
 
-  const AozoraCaption(this.boundary);
+  const AstCaption(this.boundary);
 }
 
-enum AozoraInlineDecorationKind {
+enum AstInlineDecorationKind {
   tatechuyoko,
   warichu,
   lineRightSmall,
@@ -326,7 +315,7 @@ enum AozoraInlineDecorationKind {
   yokogumi,
 }
 
-class AozoraInlineDecoration extends AozoraAnnotation {
+class AstInlineDecoration extends AstAnnotation {
   /*
   縦中横
   - `29［＃「29」は縦中横］`
@@ -355,29 +344,29 @@ class AozoraInlineDecoration extends AozoraAnnotation {
   - `［＃横組み］...［＃横組み終わり］`
   - `［＃ここから横組み］...［＃ここで横組み終わり］`
   */
-  final AozoraRangeBoundary boundary;
-  final AozoraInlineDecorationKind kind;
+  final AstRangeBoundary boundary;
+  final AstInlineDecorationKind kind;
 
-  const AozoraInlineDecoration({required this.boundary, required this.kind});
+  const AstInlineDecoration({required this.boundary, required this.kind});
 }
 
-class AozoraUnsupportedAnnotation extends AozoraAnnotation {
+class AstUnsupportedAnnotation extends AstAnnotation {
   /*
   docs に載っていない独自注記や、まだ構造化していない注記を保持する。
   */
   final String raw;
 
-  const AozoraUnsupportedAnnotation(this.raw);
+  const AstUnsupportedAnnotation(this.raw);
 }
 
-class AozoraImageSize {
+class AstImageSize {
   final int width;
   final int height;
 
-  const AozoraImageSize({required this.width, required this.height});
+  const AstImageSize({required this.width, required this.height});
 }
 
-class AozoraImage extends AozoraToken {
+class AstImage extends AstToken {
   /*
   `［＃コンドル博士の図（fig47728_06.png、横320×縦322）入る］`
   `［＃石鏃二つの図（fig42154_01.png）入る］`
@@ -386,10 +375,10 @@ class AozoraImage extends AozoraToken {
   */
   final String description;
   final String fileName;
-  final AozoraImageSize? size;
+  final AstImageSize? size;
   final bool hasCaption;
 
-  const AozoraImage({
+  const AstImage({
     required this.description,
     required this.fileName,
     this.size,
@@ -397,9 +386,9 @@ class AozoraImage extends AozoraToken {
   });
 }
 
-enum AozoraPageBreakKind { kaicho, kaipage, kaimihiraki, kaidan }
+enum AstPageBreakKind { kaicho, kaipage, kaimihiraki, kaidan }
 
-class AozoraPageBreak extends AozoraToken {
+class AstPageBreak extends AstToken {
   /*
   `［＃改丁］`
   `［＃改ページ］`
@@ -407,26 +396,26 @@ class AozoraPageBreak extends AozoraToken {
   `［＃改段］`
   を表す。
 
-  `extra.md` の空白ページは `AozoraPageBreak(kaipage)` を 2 個並べて表現する。
+  `extra.md` の空白ページは `AstPageBreak(kaipage)` を 2 個並べて表現する。
   */
-  final AozoraPageBreakKind kind;
+  final AstPageBreakKind kind;
 
-  const AozoraPageBreak(this.kind);
+  const AstPageBreak(this.kind);
 }
 
-class AozoraPageCenter extends AozoraToken {
+class AstPageCenter extends AstToken {
   /*
   `［＃ページの左右中央］`
   を表す。
 
   左寄り / 右寄りは注記ではなく前後の空行数で表れるので、この型では持たない。
   */
-  const AozoraPageCenter();
+  const AstPageCenter();
 }
 
-enum AozoraIndentKind { singleLine, block }
+enum AstIndentKind { singleLine, block }
 
-class AozoraIndent extends AozoraToken {
+class AstIndent extends AstToken {
   /*
   1 行だけ
   - `［＃３字下げ］`
@@ -442,12 +431,12 @@ class AozoraIndent extends AozoraToken {
   `lineIndent == 0` かつ `hangingIndent != null` は
   `改行天付き、折り返して○字下げ` を表す。
   */
-  final AozoraIndentKind kind;
-  final AozoraRangeBoundary? boundary;
+  final AstIndentKind kind;
+  final AstRangeBoundary? boundary;
   final int lineIndent;
   final int? hangingIndent;
 
-  const AozoraIndent({
+  const AstIndent({
     required this.kind,
     this.boundary,
     required this.lineIndent,
@@ -455,11 +444,11 @@ class AozoraIndent extends AozoraToken {
   });
 }
 
-enum AozoraBottomAlignKind { bottom, raisedFromBottom }
+enum AstBottomAlignKind { bottom, raisedFromBottom }
 
-enum AozoraBottomAlignScope { inlineTail, singleLine, block }
+enum AstBottomAlignScope { inlineTail, singleLine, block }
 
-class AozoraBottomAlign extends AozoraToken {
+class AstBottomAlign extends AstToken {
   /*
   地付き
   - `［＃地付き］`
@@ -474,12 +463,12 @@ class AozoraBottomAlign extends AozoraToken {
   `offset == 0` は地付き。
   `scope == inlineTail` は行末の一部分だけが地付き / 地寄せであるケース。
   */
-  final AozoraBottomAlignKind kind;
-  final AozoraBottomAlignScope scope;
-  final AozoraRangeBoundary? boundary;
+  final AstBottomAlignKind kind;
+  final AstBottomAlignScope scope;
+  final AstRangeBoundary? boundary;
   final int offset;
 
-  const AozoraBottomAlign({
+  const AstBottomAlign({
     required this.kind,
     required this.scope,
     this.boundary,
@@ -487,34 +476,34 @@ class AozoraBottomAlign extends AozoraToken {
   });
 }
 
-class AozoraJizume extends AozoraToken {
+class AstJizume extends AstToken {
   /*
   `［＃ここから１０字詰め］`
   `［＃ここで字詰め終わり］`
   を表す。
   */
-  final AozoraRangeBoundary boundary;
+  final AstRangeBoundary boundary;
   final int? width;
 
-  const AozoraJizume({required this.boundary, this.width});
+  const AstJizume({required this.boundary, this.width});
 }
 
-class AozoraBodyEnd extends AozoraToken {
+class AstBodyEnd extends AstToken {
   /*
   `［＃本文終わり］`
   を表す。
   */
-  const AozoraBodyEnd();
+  const AstBodyEnd();
 }
 
-enum AozoraDocumentRemarkKind {
+enum AstDocumentRemarkKind {
   baseTextIsHorizontal,
   omittedLowerHeadingLevels,
   madoHeadingLineCount,
   replacedOuterKikkouWithSquareBrackets,
 }
 
-class AozoraDocumentRemark extends AozoraToken {
+class AstDocumentRemark extends AstToken {
   /*
   本文中の注記ではなく、docs に出てくるファイル末の補足を保持する。
 
@@ -523,8 +512,8 @@ class AozoraDocumentRemark extends AozoraToken {
   - `※窓見出しは、３行どりです。`
   - `※底本の「〔〕」を「［］」に置き換えました。`
   */
-  final AozoraDocumentRemarkKind kind;
+  final AstDocumentRemarkKind kind;
   final int? value;
 
-  const AozoraDocumentRemark({required this.kind, this.value});
+  const AstDocumentRemark({required this.kind, this.value});
 }

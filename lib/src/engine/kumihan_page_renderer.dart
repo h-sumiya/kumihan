@@ -319,7 +319,9 @@ extension on KumihanEngine {
     final markerTop = item is SpanMarker ? item.top + y : y;
     final markerBottom = item is SpanMarker ? item.bottom + y : y;
     final markerRole = switch (item) {
+      SpanMarker(kind: final kind?) => kind.name,
       SpanMarker() => item.markType,
+      NoteMarker(kind: final kind?) => kind.name,
       NoteMarker() => item.markType,
       _ => '',
     };
@@ -343,8 +345,8 @@ extension on KumihanEngine {
       ..style = PaintingStyle.stroke;
 
     if (item is SpanMarker) {
-      switch (item.markType) {
-        case '罫囲み始':
+      switch (item.kind) {
+        case LayoutSpanMarkerKind.frameStart:
           if (vertical) {
             final left = x;
             final right = x + line.width / 2;
@@ -372,7 +374,7 @@ extension on KumihanEngine {
               paint,
             );
           }
-        case '罫囲み終':
+        case LayoutSpanMarkerKind.frameEnd:
           if (vertical) {
             var left = x + line.width;
             if (lineIndex != pageStartLine) {
@@ -406,7 +408,7 @@ extension on KumihanEngine {
               paint,
             );
           }
-        case '罫囲み中':
+        case LayoutSpanMarkerKind.frameMiddle:
           if (vertical) {
             final left = x;
             var right = x + line.width;
@@ -428,7 +430,7 @@ extension on KumihanEngine {
             canvas.drawLine(Offset(left, top), Offset(left, bottom), paint);
             canvas.drawLine(Offset(right, top), Offset(right, bottom), paint);
           }
-        case '罫囲み':
+        case LayoutSpanMarkerKind.frameBox:
           if (vertical) {
             final left = x - 1;
             final right = x + line.width;
@@ -468,19 +470,19 @@ extension on KumihanEngine {
               paint,
             );
           }
-        case '右傍線':
-        case '右二重傍線':
-        case '右鎖線':
-        case '右破線':
-        case '右波線':
-          final position = item.markType == '右波線'
+        case LayoutSpanMarkerKind.rightSolid:
+        case LayoutSpanMarkerKind.rightDouble:
+        case LayoutSpanMarkerKind.rightChain:
+        case LayoutSpanMarkerKind.rightDashed:
+        case LayoutSpanMarkerKind.rightWave:
+          final position = item.kind == LayoutSpanMarkerKind.rightWave
               ? x + line.width + 3
               : x + line.width + 2;
-          if (item.markType == '右鎖線') {
+          if (item.kind == LayoutSpanMarkerKind.rightChain) {
             paint.strokeCap = StrokeCap.square;
           }
           if (vertical) {
-            if (item.markType == '右波線') {
+            if (item.kind == LayoutSpanMarkerKind.rightWave) {
               _drawWavyLine(
                 canvas,
                 paint,
@@ -494,7 +496,7 @@ extension on KumihanEngine {
                 Offset(position, item.bottom + y),
                 paint,
               );
-              if (item.markType == '右二重傍線') {
+              if (item.kind == LayoutSpanMarkerKind.rightDouble) {
                 canvas.drawLine(
                   Offset(position + 3, item.top + y),
                   Offset(position + 3, item.bottom + y),
@@ -502,7 +504,7 @@ extension on KumihanEngine {
                 );
               }
             }
-          } else if (item.markType == '右波線') {
+          } else if (item.kind == LayoutSpanMarkerKind.rightWave) {
             _drawWavyLineYoko(
               canvas,
               paint,
@@ -516,7 +518,7 @@ extension on KumihanEngine {
               Offset(item.bottom + y, position),
               paint,
             );
-            if (item.markType == '右二重傍線') {
+            if (item.kind == LayoutSpanMarkerKind.rightDouble) {
               canvas.drawLine(
                 Offset(item.top + y, position + 3),
                 Offset(item.bottom + y, position + 3),
@@ -524,14 +526,16 @@ extension on KumihanEngine {
               );
             }
           }
-        case '左傍線':
-        case '左二重傍線':
-        case '左鎖線':
-        case '左破線':
-        case '左波線':
-          final position = item.markType == '左波線' ? x - 3 : x - 2;
+        case LayoutSpanMarkerKind.leftSolid:
+        case LayoutSpanMarkerKind.leftDouble:
+        case LayoutSpanMarkerKind.leftChain:
+        case LayoutSpanMarkerKind.leftDashed:
+        case LayoutSpanMarkerKind.leftWave:
+          final position = item.kind == LayoutSpanMarkerKind.leftWave
+              ? x - 3
+              : x - 2;
           if (vertical) {
-            if (item.markType == '左波線') {
+            if (item.kind == LayoutSpanMarkerKind.leftWave) {
               _drawWavyLine(
                 canvas,
                 paint,
@@ -545,7 +549,7 @@ extension on KumihanEngine {
                 Offset(position, item.bottom + y),
                 paint,
               );
-              if (item.markType == '左二重傍線') {
+              if (item.kind == LayoutSpanMarkerKind.leftDouble) {
                 canvas.drawLine(
                   Offset(position - 3, item.top + y),
                   Offset(position - 3, item.bottom + y),
@@ -553,7 +557,7 @@ extension on KumihanEngine {
                 );
               }
             }
-          } else if (item.markType == '左波線') {
+          } else if (item.kind == LayoutSpanMarkerKind.leftWave) {
             _drawWavyLineYoko(
               canvas,
               paint,
@@ -567,7 +571,7 @@ extension on KumihanEngine {
               Offset(item.bottom + y, position),
               paint,
             );
-            if (item.markType == '左二重傍線') {
+            if (item.kind == LayoutSpanMarkerKind.leftDouble) {
               canvas.drawLine(
                 Offset(item.top + y, position - 3),
                 Offset(item.bottom + y, position - 3),
@@ -575,7 +579,7 @@ extension on KumihanEngine {
               );
             }
           }
-        case '取消線':
+        case LayoutSpanMarkerKind.cancel:
           final position = x + line.width / 2;
           if (vertical) {
             canvas.drawLine(
@@ -590,6 +594,8 @@ extension on KumihanEngine {
               paint,
             );
           }
+        case null:
+          break;
       }
     }
 

@@ -2,75 +2,72 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:kumihan/kumihan.dart';
 
 void main() {
-  group('AozoraAstParser', () {
+  group('AozoraParser', () {
     test('parses ruby shorthand into attached text boundaries', () {
-      const parser = AozoraAstParser();
+      const parser = AozoraParser();
 
       final tokens = parser.parse('青空文庫《あおぞらぶんこ》');
 
       expect(tokens, hasLength(3));
-      expect(tokens[0], isA<AozoraAttachedText>());
-      expect(
-        (tokens[0] as AozoraAttachedText).boundary,
-        AozoraRangeBoundary.start,
-      );
-      expect(tokens[1], isA<AozoraText>());
-      expect((tokens[1] as AozoraText).text, '青空文庫');
-      expect(tokens[2], isA<AozoraAttachedText>());
-      final end = tokens[2] as AozoraAttachedText;
-      expect(end.boundary, AozoraRangeBoundary.end);
-      expect(end.role, AozoraAttachedTextRole.ruby);
-      expect(end.side, AozoraTextSide.right);
+      expect(tokens[0], isA<AstAttachedText>());
+      expect((tokens[0] as AstAttachedText).boundary, AstRangeBoundary.start);
+      expect(tokens[1], isA<AstText>());
+      expect((tokens[1] as AstText).text, '青空文庫');
+      expect(tokens[2], isA<AstAttachedText>());
+      final end = tokens[2] as AstAttachedText;
+      expect(end.boundary, AstRangeBoundary.end);
+      expect(end.role, AstAttachedTextRole.ruby);
+      expect(end.side, AstTextSide.right);
       expect(end.content, hasLength(1));
-      expect((end.content!.single as AozoraText).text, 'あおぞらぶんこ');
+      expect((end.content!.single as AstText).text, 'あおぞらぶんこ');
     });
 
     test('splits trailing ruby target like legacy engine', () {
-      const parser = AozoraAstParser();
+      const parser = AozoraParser();
 
       final tokens = parser.parse('これは漢字《かんじ》');
 
       expect(tokens, hasLength(4));
-      expect(tokens[0], isA<AozoraText>());
-      expect((tokens[0] as AozoraText).text, 'これは');
-      expect(tokens[1], isA<AozoraAttachedText>());
-      expect(tokens[2], isA<AozoraText>());
-      expect((tokens[2] as AozoraText).text, '漢字');
-      expect(tokens[3], isA<AozoraAttachedText>());
+      expect(tokens[0], isA<AstText>());
+      expect((tokens[0] as AstText).text, 'これは');
+      expect(tokens[1], isA<AstAttachedText>());
+      expect(tokens[2], isA<AstText>());
+      expect((tokens[2] as AstText).text, '漢字');
+      expect(tokens[3], isA<AstAttachedText>());
     });
 
     test('supports explicit ruby marker without leaving splitter text', () {
-      const parser = AozoraAstParser();
+      const parser = AozoraParser();
 
       final tokens = parser.parse('この度｜拠《よんどころ》なく');
 
       expect(tokens, hasLength(5));
-      expect(tokens[0], isA<AozoraText>());
-      expect((tokens[0] as AozoraText).text, 'この度');
-      expect(tokens[1], isA<AozoraAttachedText>());
-      expect(tokens[2], isA<AozoraText>());
-      expect((tokens[2] as AozoraText).text, '拠');
-      expect(tokens[3], isA<AozoraAttachedText>());
-      expect(tokens[4], isA<AozoraText>());
-      expect((tokens[4] as AozoraText).text, 'なく');
+      expect(tokens[0], isA<AstText>());
+      expect((tokens[0] as AstText).text, 'この度');
+      expect(tokens[1], isA<AstAttachedText>());
+      expect(tokens[2], isA<AstText>());
+      expect((tokens[2] as AstText).text, '拠');
+      expect(tokens[3], isA<AstAttachedText>());
+      expect(tokens[4], isA<AstText>());
+      expect((tokens[4] as AstText).text, 'なく');
     });
 
     test('keeps full explicit ruby range until opening bracket', () {
-      const parser = AozoraAstParser();
+      const parser = AozoraParser();
 
       final tokens = parser.parse('｜複雑な文《complex sentence》');
 
       expect(tokens, hasLength(3));
-      expect(tokens[0], isA<AozoraAttachedText>());
-      expect(tokens[1], isA<AozoraText>());
-      expect((tokens[1] as AozoraText).text, '複雑な文');
-      expect(tokens[2], isA<AozoraAttachedText>());
-      final end = tokens[2] as AozoraAttachedText;
-      expect((end.content!.single as AozoraText).text, 'complex sentence');
+      expect(tokens[0], isA<AstAttachedText>());
+      expect(tokens[1], isA<AstText>());
+      expect((tokens[1] as AstText).text, '複雑な文');
+      expect(tokens[2], isA<AstAttachedText>());
+      final end = tokens[2] as AstAttachedText;
+      expect((end.content!.single as AstText).text, 'complex sentence');
     });
 
     test('parses supported block and line annotations', () {
-      const parser = AozoraAstParser();
+      const parser = AozoraParser();
 
       final tokens = parser.parse(
         '［＃ここから２字下げ、折り返して３字下げ］\n'
@@ -80,90 +77,81 @@ void main() {
         '［＃改ページ］',
       );
 
-      expect(tokens[0], isA<AozoraIndent>());
-      final indent = tokens[0] as AozoraIndent;
-      expect(indent.kind, AozoraIndentKind.block);
-      expect(indent.boundary, AozoraRangeBoundary.blockStart);
+      expect(tokens[0], isA<AstIndent>());
+      final indent = tokens[0] as AstIndent;
+      expect(indent.kind, AstIndentKind.block);
+      expect(indent.boundary, AstRangeBoundary.blockStart);
       expect(indent.lineIndent, 2);
       expect(indent.hangingIndent, 3);
 
-      expect(tokens[4], isA<AozoraIndent>());
-      expect(
-        (tokens[4] as AozoraIndent).boundary,
-        AozoraRangeBoundary.blockEnd,
-      );
+      expect(tokens[4], isA<AstIndent>());
+      expect((tokens[4] as AstIndent).boundary, AstRangeBoundary.blockEnd);
 
-      expect(tokens[6], isA<AozoraBottomAlign>());
-      final bottom = tokens[6] as AozoraBottomAlign;
-      expect(bottom.kind, AozoraBottomAlignKind.raisedFromBottom);
-      expect(bottom.scope, AozoraBottomAlignScope.singleLine);
+      expect(tokens[6], isA<AstBottomAlign>());
+      final bottom = tokens[6] as AstBottomAlign;
+      expect(bottom.kind, AstBottomAlignKind.raisedFromBottom);
+      expect(bottom.scope, AstBottomAlignScope.singleLine);
       expect(bottom.offset, 2);
 
-      expect(tokens.last, isA<AozoraPageBreak>());
-      expect(
-        (tokens.last as AozoraPageBreak).kind,
-        AozoraPageBreakKind.kaipage,
-      );
+      expect(tokens.last, isA<AstPageBreak>());
+      expect((tokens.last as AstPageBreak).kind, AstPageBreakKind.kaipage);
     });
 
     test('parses gaiji and unsupported annotations', () {
-      const parser = AozoraAstParser();
+      const parser = AozoraParser();
 
       final tokens = parser.parse(
         '※［＃「てへん＋劣」、第3水準1-84-77］'
         '［＃未対応の独自注記］',
       );
 
-      expect(tokens[0], isA<AozoraGaiji>());
-      final gaiji = tokens[0] as AozoraGaiji;
-      expect(gaiji.kind, AozoraGaijiKind.jisX0213);
+      expect(tokens[0], isA<AstGaiji>());
+      final gaiji = tokens[0] as AstGaiji;
+      expect(gaiji.kind, AstGaijiKind.jisX0213);
       expect(gaiji.jisLevel, 3);
       expect(gaiji.jisCode?.plane, 1);
       expect(gaiji.jisCode?.row, 84);
       expect(gaiji.jisCode?.cell, 77);
 
-      expect(tokens[1], isA<AozoraUnsupportedAnnotation>());
-      expect((tokens[1] as AozoraUnsupportedAnnotation).raw, '［＃未対応の独自注記］');
+      expect(tokens[1], isA<AstUnsupportedAnnotation>());
+      expect((tokens[1] as AstUnsupportedAnnotation).raw, '［＃未対応の独自注記］');
     });
 
     test('parses document remarks and wraps single-target emphasis', () {
-      const parser = AozoraAstParser();
+      const parser = AozoraParser();
 
       final tokens = parser.parse(
         '責［＃「責」に白丸傍点］\n'
         '※窓見出しは、３行どりです。',
       );
 
-      expect(tokens[0], isA<AozoraStyledText>());
-      final start = tokens[0] as AozoraStyledText;
-      expect(start.boundary, AozoraRangeBoundary.start);
-      expect(start.style, isA<AozoraBoutenStyle>());
-      expect(
-        (start.style as AozoraBoutenStyle).kind,
-        AozoraBoutenKind.whiteCircle,
-      );
+      expect(tokens[0], isA<AstStyledText>());
+      final start = tokens[0] as AstStyledText;
+      expect(start.boundary, AstRangeBoundary.start);
+      expect(start.style, isA<AstBoutenStyle>());
+      expect((start.style as AstBoutenStyle).kind, AstBoutenKind.whiteCircle);
 
-      expect(tokens[1], isA<AozoraText>());
-      expect((tokens[1] as AozoraText).text, '責');
+      expect(tokens[1], isA<AstText>());
+      expect((tokens[1] as AstText).text, '責');
 
-      expect(tokens[2], isA<AozoraStyledText>());
-      expect((tokens[2] as AozoraStyledText).boundary, AozoraRangeBoundary.end);
+      expect(tokens[2], isA<AstStyledText>());
+      expect((tokens[2] as AstStyledText).boundary, AstRangeBoundary.end);
 
-      expect(tokens.last, isA<AozoraDocumentRemark>());
-      final remark = tokens.last as AozoraDocumentRemark;
-      expect(remark.kind, AozoraDocumentRemarkKind.madoHeadingLineCount);
+      expect(tokens.last, isA<AstDocumentRemark>());
+      final remark = tokens.last as AstDocumentRemark;
+      expect(remark.kind, AstDocumentRemarkKind.madoHeadingLineCount);
       expect(remark.value, 3);
     });
 
     test('parses cancel line as supported styled text', () {
-      const parser = AozoraAstParser();
+      const parser = AozoraParser();
 
       final tokens = parser.parse('責［＃「責」に取消線］');
 
-      expect(tokens[0], isA<AozoraStyledText>());
-      final start = tokens[0] as AozoraStyledText;
-      expect(start.style, isA<AozoraBosenStyle>());
-      expect((start.style as AozoraBosenStyle).kind, AozoraBosenKind.cancel);
+      expect(tokens[0], isA<AstStyledText>());
+      final start = tokens[0] as AstStyledText;
+      expect(start.style, isA<AstBosenStyle>());
+      expect((start.style as AstBosenStyle).kind, AstBosenKind.cancel);
     });
   });
 }

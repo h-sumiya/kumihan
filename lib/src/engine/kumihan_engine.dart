@@ -5,273 +5,35 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 
-import '../kumihan_controller.dart';
+import '../ast.dart';
 import '../debug/render_trace.dart';
-import '../kumihan_document.dart';
+import '../kumihan_controller.dart';
 import '../kumihan_types.dart';
 import 'constants.dart';
 import 'document_compiler.dart';
-import 'generated/gaiji_table.dart';
 import 'helpers.dart';
 import 'layout_primitives.dart';
-import 'table_renderer.dart';
 
 part 'kumihan_page_renderer.dart';
 
 final RegExp _cjkIdeographPattern = RegExp('[⺀-⻳㐁-䶮一-龻豈-龎仝々〆〇ヶ]');
-final RegExp _imageAnnotationPattern = RegExp(
-  r'［＃([^［]*?)（([^（、]*?)(、横([0-9]+)×縦([0-9]+)|)）入る］',
-);
-final RegExp _engineImageAnnotationPattern = RegExp(
-  r'￹[外画]￺([^\t￻]+)\t([^\t￻]*)\t([^\t￻]*)￻',
-);
-const String _warichuPlaceholder = '　';
 
-LayoutAnnotationKind _parseAnnotationKind(String raw) {
-  switch (raw) {
-    case '外':
-      return LayoutAnnotationKind.outsideImage;
-    case '画':
-      return LayoutAnnotationKind.inlineImage;
-    case 'リ':
-      return LayoutAnnotationKind.link;
-    case '罫':
-      return LayoutAnnotationKind.ruledLine;
-    case '横':
-      return LayoutAnnotationKind.tcy;
-    case '字':
-      return LayoutAnnotationKind.textStyle;
-    case '割':
-      return LayoutAnnotationKind.warichu;
-    case '見':
-      return LayoutAnnotationKind.midashi;
-    case 'ア':
-      return LayoutAnnotationKind.anchor;
-    case '回':
-      return LayoutAnnotationKind.kaeritenKunten;
-    case '─':
-      return LayoutAnnotationKind.inlineStyleDash;
-    case '小':
-      return LayoutAnnotationKind.inlineStyleSmall;
-    case '合':
-      return LayoutAnnotationKind.inlineStyleCombined;
-    case '返':
-      return LayoutAnnotationKind.kaeri;
-    case '中':
-      return LayoutAnnotationKind.naka;
-    case '送':
-      return LayoutAnnotationKind.okuri;
-    case 'ル':
-      return LayoutAnnotationKind.rightRuby;
-    case 'る':
-      return LayoutAnnotationKind.leftRuby;
-    case '囲':
-      return LayoutAnnotationKind.frame;
-    case '線':
-      return LayoutAnnotationKind.span;
-    case '点':
-      return LayoutAnnotationKind.emphasis;
-    case '※':
-      return LayoutAnnotationKind.noteReference;
-    case '注':
-      return LayoutAnnotationKind.note;
-  }
+enum _IndexKind { headingLarge, headingMedium, headingSmall, anchor }
 
-  debugPrint('Unsupported annotation kind: $raw');
-  return LayoutAnnotationKind.unsupported;
-}
-
-LayoutExtraType _extraTypeFromAnnotationKind(LayoutAnnotationKind kind) {
-  switch (kind) {
-    case LayoutAnnotationKind.outsideImage:
-      return LayoutExtraType.outsideImage;
-    case LayoutAnnotationKind.inlineImage:
-      return LayoutExtraType.inlineImage;
-    case LayoutAnnotationKind.link:
-      return LayoutExtraType.link;
-    case LayoutAnnotationKind.ruledLine:
-      return LayoutExtraType.ruledLine;
-    case LayoutAnnotationKind.tcy:
-      return LayoutExtraType.tcy;
-    case LayoutAnnotationKind.textStyle:
-    case LayoutAnnotationKind.midashi:
-    case LayoutAnnotationKind.kaeritenKunten:
-    case LayoutAnnotationKind.inlineStyleDash:
-    case LayoutAnnotationKind.inlineStyleSmall:
-    case LayoutAnnotationKind.inlineStyleCombined:
-      return LayoutExtraType.textStyle;
-    case LayoutAnnotationKind.warichu:
-      return LayoutExtraType.warichu;
-    case LayoutAnnotationKind.frame:
-      return LayoutExtraType.frame;
-    case LayoutAnnotationKind.span:
-      return LayoutExtraType.span;
-    case LayoutAnnotationKind.emphasis:
-      return LayoutExtraType.emphasis;
-    case LayoutAnnotationKind.noteReference:
-      return LayoutExtraType.noteReference;
-    case LayoutAnnotationKind.note:
-      return LayoutExtraType.note;
-    case LayoutAnnotationKind.unsupported:
-    case LayoutAnnotationKind.anchor:
-    case LayoutAnnotationKind.kaeri:
-    case LayoutAnnotationKind.naka:
-    case LayoutAnnotationKind.okuri:
-    case LayoutAnnotationKind.rightRuby:
-    case LayoutAnnotationKind.leftRuby:
-      return LayoutExtraType.unsupported;
-  }
-}
-
-LayoutInlineDecorationKind? _inlineDecorationKindFromAnnotationKind(
-  LayoutAnnotationKind kind,
-) {
-  switch (kind) {
-    case LayoutAnnotationKind.kaeri:
-      return LayoutInlineDecorationKind.kaeri;
-    case LayoutAnnotationKind.naka:
-      return LayoutInlineDecorationKind.naka;
-    case LayoutAnnotationKind.okuri:
-      return LayoutInlineDecorationKind.okuri;
-    case LayoutAnnotationKind.rightRuby:
-      return LayoutInlineDecorationKind.rightRuby;
-    case LayoutAnnotationKind.leftRuby:
-      return LayoutInlineDecorationKind.leftRuby;
-    case LayoutAnnotationKind.unsupported:
-    case LayoutAnnotationKind.outsideImage:
-    case LayoutAnnotationKind.inlineImage:
-    case LayoutAnnotationKind.link:
-    case LayoutAnnotationKind.ruledLine:
-    case LayoutAnnotationKind.tcy:
-    case LayoutAnnotationKind.textStyle:
-    case LayoutAnnotationKind.warichu:
-    case LayoutAnnotationKind.midashi:
-    case LayoutAnnotationKind.anchor:
-    case LayoutAnnotationKind.kaeritenKunten:
-    case LayoutAnnotationKind.inlineStyleDash:
-    case LayoutAnnotationKind.inlineStyleSmall:
-    case LayoutAnnotationKind.inlineStyleCombined:
-    case LayoutAnnotationKind.frame:
-    case LayoutAnnotationKind.span:
-    case LayoutAnnotationKind.emphasis:
-    case LayoutAnnotationKind.noteReference:
-    case LayoutAnnotationKind.note:
-      return null;
-  }
-}
-
-String _styleNameForInlineDecorationKind(LayoutInlineDecorationKind kind) {
-  switch (kind) {
-    case LayoutInlineDecorationKind.kaeri:
-      return '返';
-    case LayoutInlineDecorationKind.naka:
-      return '中';
-    case LayoutInlineDecorationKind.okuri:
-      return '送';
-    case LayoutInlineDecorationKind.rightRuby:
-      return 'ル';
-    case LayoutInlineDecorationKind.leftRuby:
-      return 'る';
-    case LayoutInlineDecorationKind.referenceNote:
-      return '※';
-    case LayoutInlineDecorationKind.annotationNote:
-      return '注';
-    case LayoutInlineDecorationKind.rightEmphasis:
-      return '右点';
-    case LayoutInlineDecorationKind.leftEmphasis:
-      return '左点';
-  }
-}
-
-int _findEndBracket(String text, int position) {
-  var index = position;
-  while (index < text.length) {
-    final character = charAt(text, index);
-    if (character == '「') {
-      index = _findEndBracket(text, index + 1);
-      if (index < 0) {
-        break;
-      }
-    } else if (character == '」') {
-      return index;
-    }
-    index += 1;
-  }
-  return -1;
-}
-
-int _skipLastAnnotation(String text, int position) {
-  var index = position;
-  while (index >= 0 && charAt(text, index) == '￻') {
-    index = text.lastIndexOf('￹', index) - 1;
-  }
-  return index;
-}
-
-String _jointTargetString(String text, String target) {
-  var end = _skipLastAnnotation(text, text.length - 1);
-  var start = 0;
-  var targetIndex = 0;
-
-  while (end >= target.length - 1) {
-    var candidate = end;
-    targetIndex = target.length - 1;
-
-    while (candidate >= 0 && targetIndex >= 0) {
-      candidate = _skipLastAnnotation(text, candidate);
-      if (charAt(text, candidate) != charAt(target, targetIndex)) {
-        break;
-      }
-      candidate -= 1;
-      targetIndex -= 1;
-    }
-
-    if (targetIndex < 0) {
-      start = candidate + 1;
-      break;
-    }
-
-    end = _skipLastAnnotation(text, end - 1);
-  }
-
-  if (targetIndex < 0) {
-    var adjustedStart = start;
-    var adjustedEnd = end;
-    var code = text.codeUnitAt(adjustedStart);
-
-    if (code >= 0xd800 && code <= 0xdbff) {
-      adjustedStart += 1;
-    }
-    adjustedStart += 1;
-
-    code = text.codeUnitAt(adjustedEnd);
-    if (code >= 0xdc00 && code <= 0xdfff) {
-      adjustedEnd -= 1;
-    }
-
-    if (adjustedStart < adjustedEnd) {
-      return '${text.substring(0, adjustedStart)}⁠${text.substring(adjustedStart, adjustedEnd)}⁠${text.substring(adjustedEnd)}';
-    }
-    if (adjustedStart == adjustedEnd) {
-      return '${text.substring(0, adjustedStart)}⁠${text.substring(adjustedEnd)}';
-    }
-  }
-
-  return text;
-}
-
-class IndexEntry {
-  IndexEntry({
+class _IndexEntry {
+  _IndexEntry({
     required this.endIndex,
     required this.paragraphNo,
     required this.startIndex,
-    required this.type,
+    required this.kind,
+    this.anchorName,
   });
 
+  final String? anchorName;
   final int endIndex;
+  final _IndexKind kind;
   final int paragraphNo;
   final int startIndex;
-  final String type;
 }
 
 class PositionInfo {
@@ -302,20 +64,6 @@ class PageInfo {
 
   final int line;
   final bool centering;
-}
-
-class ParagraphMargins {
-  ParagraphMargins({
-    required this.alignBottom,
-    required this.bottomMargin,
-    required this.firstTopMargin,
-    required this.restTopMargin,
-  });
-
-  bool alignBottom;
-  double bottomMargin;
-  double firstTopMargin;
-  double restTopMargin;
 }
 
 class ClickableArea {
@@ -408,8 +156,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
   @override
   late Color paperColor;
 
-  List<CompiledKumihanEntry> _entries = const <CompiledKumihanEntry>[];
-  String _sourceText = '';
+  List<AstCompiledEntry> _entries = const <AstCompiledEntry>[];
   int _layoutToken = 0;
   final String _currentState = 'vsingle';
   final bool _shift1page = false;
@@ -418,15 +165,12 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
   final List<LayoutTextBlock> _blocks = <LayoutTextBlock>[];
   final List<LineGroup> _lines = <LineGroup>[];
   final List<PageInfo> _pages = <PageInfo>[PageInfo(), PageInfo()];
-  final List<IndexEntry> _indexes = <IndexEntry>[];
+  final List<_IndexEntry> _indexes = <_IndexEntry>[];
   final List<ChapterEntry> _chapterList = <ChapterEntry>[];
   final Map<String, int> _anchorList = <String, int>{};
-  final List<String> _links = <String>[];
   final Map<String, ui.Image?> _images = <String, ui.Image?>{};
   final Map<String, Future<ui.Image?>> _imageTasks =
       <String, Future<ui.Image?>>{};
-  final Map<int, RenderedTableBlock> _renderedTables =
-      <int, RenderedTableBlock>{};
   List<ClickableArea> _clickable = <ClickableArea>[];
 
   double _width = 1;
@@ -500,19 +244,9 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
   }
 
   @override
-  Future<void> open(KumihanDocument document) async {
-    final compiled = compileKumihanDocument(document);
-    _entries = compiled.entries
-        .expand<CompiledKumihanEntry>(
-          (entry) => switch (entry) {
-            CompiledKumihanTextEntry() => _preprocessText(
-              entry.text,
-            ).split('\n').map(CompiledKumihanTextEntry.new),
-            CompiledKumihanTableEntry() => <CompiledKumihanEntry>[entry],
-          },
-        )
-        .toList(growable: false);
-    _sourceText = _preprocessText(compiled.sourceText);
+  Future<void> open(AstData data) async {
+    final compiled = compileAst(data);
+    _entries = compiled.entries;
     _currentPosition = PositionInfo(
       leftToRight: false,
       length: 0,
@@ -615,27 +349,6 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
 
   int _step() => 1;
 
-  String _preprocessText(String text) {
-    var source = text.replaceAll(RegExp(r'(\r\n|\r)'), '\n');
-    source = source.replaceAllMapped(
-      RegExp(r'(.)［＃地'),
-      (match) => '${match[1]}\n‌［＃地',
-    );
-    source = source.replaceAll(RegExp('[\u2014\u2015]'), '─');
-    source = source.replaceAllMapped(
-      RegExp(r'─(─+)'),
-      (match) => '─⁠${match[1]}',
-    );
-    source = source.replaceAllMapped(
-      RegExp(r'…(…+)'),
-      (match) => '…⁠${match[1]}',
-    );
-    source = source.replaceAll('\u3099', '゛');
-    source = source.replaceAll('\u309a', '゜');
-    source = source.replaceFirst(RegExp(r'\n$'), '');
-    return source;
-  }
-
   Future<void> _relayout(bool preservePosition) async {
     final token = ++_layoutToken;
     final position = preservePosition && _blocks.isNotEmpty
@@ -643,7 +356,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
         : _currentPosition;
 
     _updateSizes();
-    await _ensureImagesLoaded(_sourceText, token);
+    await _ensureImagesLoaded(token);
     if (token != _layoutToken) {
       return;
     }
@@ -667,49 +380,27 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
     _showPage(_currentPageNo >= 0 ? _currentPageNo : 0);
   }
 
-  void _clearRenderedTables() {
-    _renderedTables.clear();
-  }
-
   Future<void> _ensureTablesPrepared(int token) async {
-    _clearRenderedTables();
-    for (var index = 0; index < _entries.length; index += 1) {
-      final entry = _entries[index];
-      if (entry is! CompiledKumihanTableEntry) {
-        continue;
-      }
-      if (token != _layoutToken) {
-        return;
-      }
-
-      _renderedTables[index] = await renderTableBlock(
-        block: entry.table,
-        fontColor: fontColor,
-        fontSize: _fontSize,
-        gothicFontFamilies: gothicFontFamilies,
-        maxHeight: math.max(_pageHeight, _fontSize * 6),
-        maxWidth: math.max(_pageWidth, _fontSize * 8),
-        minchoFontFamilies: minchoFontFamilies,
-      );
-    }
+    return;
   }
 
-  Future<void> _ensureImagesLoaded(String text, int token) async {
+  Future<void> _ensureImagesLoaded(int token) async {
     if (imageLoader == null) {
       return;
     }
 
     final paths = <String>{};
-    for (final match in _imageAnnotationPattern.allMatches(text)) {
-      final path = match.group(2);
-      if (path != null && path.isNotEmpty) {
-        paths.add(path);
+    for (final entry in _entries) {
+      if (entry is! AstCompiledParagraphEntry) {
+        continue;
       }
-    }
-    for (final match in _engineImageAnnotationPattern.allMatches(text)) {
-      final path = match.group(1);
-      if (path != null && path.isNotEmpty) {
-        paths.add(path);
+      for (final extra in entry.extras) {
+        if ((extra.kind == AstParagraphExtraKind.inlineImage ||
+                extra.kind == AstParagraphExtraKind.outsideImage) &&
+            extra.imagePath != null &&
+            extra.imagePath!.isNotEmpty) {
+          paths.add(extra.imagePath!);
+        }
       }
     }
 
@@ -763,7 +454,6 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
     _indexes.clear();
     _chapterList.clear();
     _anchorList.clear();
-    _links.clear();
     _clickable = <ClickableArea>[];
     _currentPageWidth = -_lineSpace;
     _currentPageNo = -1;
@@ -772,205 +462,30 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
     final pageInlineSize = _pageWidth;
     final pageBlockSize = _pageHeight;
 
-    for (var entryIndex = 0; entryIndex < _entries.length; entryIndex += 1) {
-      final entry = _entries[entryIndex];
+    for (final entry in _entries) {
       final paragraphNo = _blocks.length;
 
-      if (entry is CompiledKumihanTableEntry) {
-        final rendered = _renderedTables[entryIndex];
-        if (rendered == null) {
-          continue;
-        }
-
-        final extras = <LayoutExtra>[];
-        if (_frameDrawing) {
-          extras.add(LayoutExtra(type: LayoutExtraType.frame, ruby: '罫囲み中'));
-        }
-
-        final firstTopMargin = _firstTopMargin;
-        final restTopMargin = _restTopMargin;
-        final bottomMargin = _bottomMargin;
-        final alignBottom = _alignBottom;
-        final block = LayoutTextBlock(this)
-          ..setText(
-            '￼',
-            _currentFontSize,
-            _currentFontType,
-            _currentFontBold,
-            _currentFontItalic,
-            _currentTextRotation,
-          )
-          ..userData = LayoutBlockUserData(extras: extras);
-        final atom = block.atom.first;
-        if (_currentState.startsWith('v')) {
-          atom.width = rendered.width;
-          atom.height = rendered.height;
-        } else {
-          atom.width = rendered.height;
-          atom.height = rendered.width;
-        }
-        atom.picture = rendered.picture;
-        _blocks.add(block);
-        _layoutPreparedBlock(
-          alignBottom: alignBottom,
-          block: block,
-          bottomMargin: bottomMargin,
-          extras: extras,
-          firstTopMargin: firstTopMargin,
-          inserts: const <LayoutInsert>[],
-          nonBreak: false,
-          pageBlockSize: pageBlockSize,
-          pageInlineSize: pageInlineSize,
-          paragraphNo: paragraphNo,
-          restTopMargin: restTopMargin,
-          rubies: const <LayoutRuby>[],
-        );
+      if (entry is AstCommandEntry) {
+        _handleAstCommandEntry(entry, pageBlockSize);
         continue;
       }
 
-      if (entry is! CompiledKumihanTextEntry) {
+      if (entry is! AstCompiledParagraphEntry) {
         continue;
       }
 
       var paragraph = entry.text;
-      var nonBreak = false;
-
-      if (paragraph.isNotEmpty && paragraph.startsWith('‌')) {
-        nonBreak = true;
-        paragraph = paragraph.substring(1);
-      }
-
-      var firstTopMargin = _firstTopMargin;
-      var restTopMargin = _restTopMargin;
-      var bottomMargin = _bottomMargin;
-      var alignBottom = _alignBottom;
-
-      if (paragraph.startsWith('［＃')) {
-        if (_handleBlockAnnotation(paragraph, pageBlockSize)) {
-          continue;
-        }
-
-        final margins = ParagraphMargins(
-          alignBottom: alignBottom,
-          bottomMargin: bottomMargin,
-          firstTopMargin: firstTopMargin,
-          restTopMargin: restTopMargin,
-        );
-        paragraph = _applyLeadingParagraphAnnotation(
-          paragraph,
-          pageBlockSize,
-          margins,
-        );
-        alignBottom = margins.alignBottom;
-        bottomMargin = margins.bottomMargin;
-        firstTopMargin = margins.firstTopMargin;
-        restTopMargin = margins.restTopMargin;
-      }
-
-      var textStyles = <LayoutExtra>[];
-      var inlineStyles = <LayoutExtra>[];
-      var tcyEntries = <LayoutExtra>[];
-      var inserts = <LayoutInsert>[];
-      var rubies = <LayoutRuby>[];
-      var extras = <LayoutExtra>[];
-
-      if (paragraph == '［＃ここから罫囲み］') {
-        _frameDrawing = true;
-        _frameTop = math.min(_firstTopMargin, _restTopMargin);
-        _frameBottom = pageBlockSize - _bottomMargin;
-        _firstTopMargin += _fontSize;
-        _restTopMargin += _fontSize;
-        _bottomMargin += _fontSize;
-        extras.add(LayoutExtra(type: LayoutExtraType.frame, ruby: '罫囲み始'));
-        paragraph = '';
-      } else if (paragraph == '［＃ここで罫囲み終わり］') {
-        _firstTopMargin = math.max(_firstTopMargin - _fontSize, 0);
-        _restTopMargin = math.max(_restTopMargin - _fontSize, 0);
-        _bottomMargin = math.max(_bottomMargin - _fontSize, 0);
-        _frameDrawing = false;
-        extras.add(LayoutExtra(type: LayoutExtraType.frame, ruby: '罫囲み終'));
-        paragraph = '';
-      } else {
-        if (_frameDrawing) {
-          extras.add(LayoutExtra(type: LayoutExtraType.frame, ruby: '罫囲み中'));
-        }
-
-        paragraph = paragraph.replaceAll('［＃改行］', '');
-        paragraph = _currentState.startsWith('v')
-            ? paragraph.replaceAll('／＼', '〳〵').replaceAll('／″＼', '〴〵')
-            : paragraph.replaceAll('／＼', '／⁠＼').replaceAll('／″＼', '／⁠"⁠＼');
-
-        if (paragraph.contains('〔')) {
-          paragraph = paragraph.replaceAllMapped(
-            RegExp(r'〔(.+?)〕'),
-            (match) => _accentsCallback(match[1] ?? ''),
-          );
-        }
-
-        if (_currentState.startsWith('v') && _currentTextRotation != 'h') {
-          paragraph = paragraph.replaceAll('“', '〝').replaceAll('”', '〟');
-        }
-
-        if (paragraph.contains('［＃アンカー：')) {
-          paragraph = paragraph.replaceAllMapped(
-            RegExp(r'［＃アンカー：(.+?)］'),
-            (match) => '￹ア￺${match[1]}￻',
-          );
-        }
-        if (paragraph.contains('［＃リンク：')) {
-          paragraph = paragraph.replaceAllMapped(
-            RegExp(r'［＃リンク：(.+?)］'),
-            (match) => _linkCallback(match[1] ?? ''),
-          );
-        }
-        if (paragraph.contains('http')) {
-          paragraph = paragraph.replaceAllMapped(
-            RegExp(
-              r"([^\ufffa]|^)(https?:\/\/[-_.!~*'()a-zA-Z0-9;\/?:@&=+$,%#]+)",
-            ),
-            (match) => _link2Callback(match[1] ?? '', match[2] ?? ''),
-          );
-        }
-        if (paragraph.contains('《')) {
-          paragraph = _convertRubies(paragraph);
-        }
-
-        paragraph = paragraph.replaceAllMapped(
-          RegExp(r'※［＃(.*?)］'),
-          (match) => _gaijiCallback(match[1] ?? ''),
-        );
-
-        if (paragraph.contains('終わり］')) {
-          paragraph = _convertSpanFormat(paragraph);
-        }
-
-        paragraph = paragraph.replaceAll('\u2010', '￹中￺―￻');
-
-        while (RegExp(r'［＃[^［]*］').hasMatch(paragraph)) {
-          paragraph = paragraph.replaceFirstMapped(
-            RegExp(r'(.*?)(［＃[^［]*?］)'),
-            (match) => _annotationCallback(match[1] ?? '', match[2] ?? ''),
-          );
-        }
-
-        final extracted = _extractInlineAnnotations(
-          paragraph,
-          extras,
-          inlineStyles,
-          inserts,
-          rubies,
-          tcyEntries,
-          textStyles,
-          paragraphNo,
-        );
-        extras = extracted.extras;
-        inlineStyles = extracted.inlineStyles;
-        inserts = extracted.inserts;
-        paragraph = extracted.paragraph;
-        rubies = extracted.rubies;
-        tcyEntries = extracted.tcyEntries;
-        textStyles = extracted.textStyles;
-      }
+      final extras = <AstParagraphExtra>[
+        if (_frameDrawing &&
+            !entry.extras.any(
+              (extra) => extra.kind == AstParagraphExtraKind.frame,
+            ))
+          const AstParagraphExtra(
+            kind: AstParagraphExtraKind.frame,
+            frameKind: AstFrameKind.middle,
+          ),
+        ...entry.extras,
+      ];
 
       if (paragraph.isEmpty) {
         paragraph = ' ';
@@ -985,88 +500,87 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
           _currentFontItalic,
           _currentTextRotation,
         )
-        ..userData = LayoutBlockUserData(
-          extras: extras,
-          inserts: inserts,
-          rubies: rubies,
-        );
+        ..userData = LayoutBlockUserData();
       _blocks.add(block);
 
-      for (final style in textStyles) {
-        _applyStyle(
-          block,
-          style.startIndex ?? 0,
-          style.endIndex ?? 0,
-          style.style ?? '',
-        );
+      for (final style in entry.styles) {
+        _applyStyle(block, style.startIndex, style.endIndex, style);
       }
 
-      for (final style in inlineStyles) {
-        if (style.type == LayoutExtraType.outsideImage) {
+      for (final extra in entry.extras) {
+        if (extra.kind == AstParagraphExtraKind.outsideImage) {
           _insertImage(
             block,
-            style.startIndex ?? 0,
-            style.style ?? '',
+            extra.startIndex ?? 0,
+            extra.imagePath ?? '',
             0,
             _currentFontSize,
           );
           continue;
         }
-        if (style.type == LayoutExtraType.inlineImage) {
+        if (extra.kind == AstParagraphExtraKind.inlineImage) {
           _insertImage(
             block,
-            style.startIndex ?? 0,
-            style.style ?? '',
-            style.imageWidth ?? 0,
-            double.tryParse(style.ruby ?? '') ?? 0,
+            extra.startIndex ?? 0,
+            extra.imagePath ?? '',
+            extra.imageWidth ?? 0,
+            extra.imageHeight ?? 0,
           );
-          continue;
         }
-        if (style.type == LayoutExtraType.link) {
-          _applyStyle(
-            block,
-            style.startIndex ?? 0,
-            style.endIndex ?? 0,
-            style.style ?? '',
-            userData: style.linkTarget ?? '',
-          );
-          continue;
-        }
-        _applyStyle(
-          block,
-          style.startIndex ?? 0,
-          style.endIndex ?? 0,
-          style.style ?? '',
-        );
       }
 
       if (_inCaption) {
-        _applyStyle(block, 0, block.rawtext.length, 'キャプション');
+        _applyStyle(
+          block,
+          0,
+          block.rawtext.length,
+          const AstStyleSpan(
+            startIndex: 0,
+            endIndex: 0,
+            kind: AstStyleKind.caption,
+          ),
+        );
       }
       if (_inYokogumi) {
-        _applyStyle(block, 0, block.rawtext.length, '横組み');
+        _applyStyle(
+          block,
+          0,
+          block.rawtext.length,
+          const AstStyleSpan(
+            startIndex: 0,
+            endIndex: 0,
+            kind: AstStyleKind.yokogumi,
+          ),
+        );
       }
       if (_currentState.startsWith('v') && _currentTextRotation == 'v') {
-        for (final tcy in tcyEntries) {
-          block.setTCY(tcy.startIndex ?? 0, tcy.endIndex ?? 0);
+        for (final tcy in entry.tcyRanges) {
+          block.setTCY(tcy.startIndex, tcy.endIndex);
         }
       }
 
-      _insertTextLine(block, inserts);
-      _adjustRubies(block, rubies);
+      _insertTextLine(block, entry.inserts);
+      _adjustRubies(block, entry.rubies, entry.inserts);
       _layoutPreparedBlock(
-        alignBottom: alignBottom,
+        alignBottom: entry.alignBottom || _alignBottom,
         block: block,
-        bottomMargin: bottomMargin,
+        bottomMargin: entry.alignBottom
+            ? entry.bottomMargin * _currentFontSize
+            : _bottomMargin,
         extras: extras,
-        firstTopMargin: firstTopMargin,
-        inserts: inserts,
-        nonBreak: nonBreak,
+        firstTopMargin: entry.firstTopMargin > 0
+            ? entry.firstTopMargin * _currentFontSize
+            : _firstTopMargin,
+        inserts: entry.inserts,
+        nonBreak: entry.nonBreak,
         pageBlockSize: pageBlockSize,
         pageInlineSize: pageInlineSize,
         paragraphNo: paragraphNo,
-        restTopMargin: restTopMargin,
-        rubies: rubies,
+        restTopMargin: entry.restTopMargin > 0
+            ? entry.restTopMargin * _currentFontSize
+            : _restTopMargin,
+        rubies: entry.rubies,
+        chapterIndexes: entry.chapterIndexes,
       );
     }
 
@@ -1084,15 +598,16 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
     required bool alignBottom,
     required LayoutTextBlock block,
     required double bottomMargin,
-    required List<LayoutExtra> extras,
+    required List<AstParagraphExtra> extras,
+    required List<AstChapterIndex> chapterIndexes,
     required double firstTopMargin,
-    required List<LayoutInsert> inserts,
+    required List<AstInlineInsert> inserts,
     required bool nonBreak,
     required double pageBlockSize,
     required double pageInlineSize,
     required int paragraphNo,
     required double restTopMargin,
-    required List<LayoutRuby> rubies,
+    required List<AstRubySpan> rubies,
   }) {
     var initialTop = firstTopMargin;
     if (_forceIndent &&
@@ -1136,6 +651,22 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
       availableHeight = pageBlockSize - nextTop - bottomMargin;
     }
 
+    for (final chapter in chapterIndexes) {
+      _indexes.add(
+        _IndexEntry(
+          endIndex: chapter.endIndex,
+          kind: switch (chapter.kind) {
+            AstChapterKind.large => _IndexKind.headingLarge,
+            AstChapterKind.medium => _IndexKind.headingMedium,
+            AstChapterKind.small => _IndexKind.headingSmall,
+            AstChapterKind.anchor => _IndexKind.anchor,
+          },
+          paragraphNo: paragraphNo,
+          startIndex: chapter.startIndex,
+          anchorName: chapter.anchorName,
+        ),
+      );
+    }
     _attachParagraphDecorations(block, inserts, rubies, extras, paragraphNo);
   }
 
@@ -1156,185 +687,119 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
     _frameBottom = 0;
   }
 
-  bool _handleBlockAnnotation(String paragraph, double pageBlockSize) {
+  void _handleAstCommandEntry(AstCommandEntry entry, double pageBlockSize) {
     final pageEmpty = _lines.length == _pages.last.line;
-
-    if (paragraph.startsWith('［＃ここから')) {
-      var matched = true;
-
-      if (RegExp(r'［＃ここから[０-９]+字下げ').hasMatch(paragraph)) {
-        var value = _getIntValue(paragraph);
-        if (value > 5) {
-          value = (value * (pageBlockSize / _currentFontSize)) / 40;
-        }
-        _firstTopMargin = value * _currentFontSize;
-        _restTopMargin = _firstTopMargin;
-      } else if (paragraph.startsWith('［＃ここから改行天付き')) {
+    switch (entry.kind) {
+      case AstCommandKind.indentStart:
+        _firstTopMargin = entry.indentLine * _currentFontSize;
+        _restTopMargin =
+            (entry.indentHanging ?? entry.indentLine) * _currentFontSize;
+      case AstCommandKind.indentEnd:
         _firstTopMargin = 0;
         _restTopMargin = 0;
-      } else if (RegExp(r'^［＃ここから地から[０-９]+字上げ').hasMatch(paragraph)) {
-        var value = _getIntValue(paragraph);
-        if (value > 5) {
-          value = (value * (pageBlockSize / _currentFontSize)) / 40;
-        }
-        _bottomMargin = value * _currentFontSize;
+      case AstCommandKind.bottomAlignStart:
+        _bottomMargin = entry.bottomAlignKind == AstBottomAlignKind.bottom
+            ? 0
+            : entry.bottomAlignOffset * _currentFontSize;
         _alignBottom = true;
-      } else if (paragraph.startsWith('［＃ここから地付き')) {
+      case AstCommandKind.bottomAlignEnd:
         _bottomMargin = 0;
-        _alignBottom = true;
-      } else if (paragraph.startsWith('［＃ここから') && paragraph.contains('字詰め')) {
+        _alignBottom = false;
+      case AstCommandKind.jizumeStart:
+        final width = entry.jizumeWidth ?? 0;
         if (_alignBottom) {
-          _firstTopMargin =
-              pageBlockSize -
-              _bottomMargin -
-              _getIntValue(paragraph) * _currentFontSize;
-          _firstTopMargin = math.max(_firstTopMargin, 0);
+          _firstTopMargin = math.max(
+            pageBlockSize - _bottomMargin - width * _currentFontSize,
+            0,
+          );
           _restTopMargin = _firstTopMargin;
         } else {
-          _bottomMargin =
-              pageBlockSize -
-              _firstTopMargin -
-              _getIntValue(paragraph) * _currentFontSize;
-          _bottomMargin = math.max(_bottomMargin, 0);
+          _bottomMargin = math.max(
+            pageBlockSize - _firstTopMargin - width * _currentFontSize,
+            0,
+          );
         }
-      } else {
-        matched = false;
-      }
-
-      if (matched) {
-        final wrapped = paragraph.indexOf('折り返して');
-        if (wrapped > 0) {
-          var value = _getIntValue(paragraph.substring(wrapped));
-          if (value > 5) {
-            value = (value * (pageBlockSize / _currentFontSize)) / 40;
-          }
-          _restTopMargin = value * _currentFontSize;
-        }
-        return true;
-      }
-
-      if (paragraph == '［＃ここから太字］') {
-        _currentFontType = 2;
-        return true;
-      }
-      if (paragraph == '［＃ここから斜体］') {
-        _currentFontItalic = true;
-        return true;
-      }
-      if (paragraph == '［＃ここからキャプション］') {
-        _inCaption = true;
-        return true;
-      }
-      if (paragraph == '［＃ここから横組み］') {
-        _inYokogumi = true;
-        _currentTextRotation = 'h';
-        return true;
-      }
-      if (RegExp(r'^［＃ここから[大中小]見出し］$').hasMatch(paragraph)) {
-        switch (charAt(paragraph, 6)) {
-          case '大':
-            _currentFontSize = _fontSize * _fontScaleL * _fontScaleL;
-          case '中':
-            _currentFontSize = _fontSize * _fontScaleL;
-          default:
-            _currentFontSize = _fontSize;
-        }
-        _currentFontType = 2;
-        _indexes.add(
-          IndexEntry(
-            endIndex: 9007199254740991,
-            paragraphNo: _blocks.length + 1,
-            startIndex: 0,
-            type: paragraph.substring(6, 10),
-          ),
-        );
-        return true;
-      }
-      if (RegExp(r'［＃ここから[１-５]段階(大き|小さ)な文字').hasMatch(paragraph)) {
-        var value = _getIntValue(paragraph);
-        if (value > 5) {
-          value = 5;
-        }
-        _currentFontSize = charAt(paragraph, 9) == '大'
-            ? _fontSize * math.pow(_fontScaleL, value)
-            : _fontSize * math.pow(_fontScaleS, value);
-        return true;
-      }
-    }
-
-    if (paragraph.startsWith('［＃ここで')) {
-      if (RegExp(r'^［＃ここで[大中小]見出し終わり］$').hasMatch(paragraph)) {
-        _currentFontSize = _fontSize;
-        _currentFontType = 0;
-        return true;
-      }
-
-      switch (paragraph) {
-        case '［＃ここで字下げ終わり］':
+      case AstCommandKind.jizumeEnd:
+        if (_alignBottom) {
           _firstTopMargin = 0;
           _restTopMargin = 0;
-          return true;
-        case '［＃ここで字上げ終わり］':
-        case '［＃ここで地付き終わり］':
+        } else {
           _bottomMargin = 0;
-          _alignBottom = false;
-          return true;
-        case '［＃ここで字詰め終わり］':
-          if (_alignBottom) {
-            _firstTopMargin = 0;
-            _restTopMargin = 0;
-          } else {
-            _bottomMargin = 0;
-          }
-          return true;
-        case '［＃ここで太字終わり］':
-          _currentFontType = 0;
-          return true;
-        case '［＃ここで斜体終わり］':
-          _currentFontType = 0;
-          _currentFontItalic = false;
-          return true;
-        case '［＃ここでキャプション終わり］':
-          _inCaption = false;
-          return true;
-        case '［＃ここで大きな文字終わり］':
-        case '［＃ここで小さな文字終わり］':
-          _currentFontSize = _fontSize;
-          return true;
-        case '［＃ここで横組み終わり］':
-          _inYokogumi = false;
-          _currentTextRotation = _currentState.startsWith('h') ? 'h' : 'v';
-          return true;
-      }
-    }
-
-    switch (paragraph) {
-      case '［＃改ページ］':
-      case '［＃改段］':
-        if (!pageEmpty) {
-          _pages.add(PageInfo(line: _lines.length));
+        }
+      case AstCommandKind.boldStart:
+        _currentFontType = 2;
+      case AstCommandKind.boldEnd:
+        _currentFontType = 0;
+      case AstCommandKind.italicStart:
+        _currentFontItalic = true;
+      case AstCommandKind.italicEnd:
+        _currentFontItalic = false;
+      case AstCommandKind.captionStart:
+        _inCaption = true;
+      case AstCommandKind.captionEnd:
+        _inCaption = false;
+      case AstCommandKind.yokogumiStart:
+        _inYokogumi = true;
+        _currentTextRotation = 'h';
+      case AstCommandKind.yokogumiEnd:
+        _inYokogumi = false;
+        _currentTextRotation = _currentState.startsWith('h') ? 'h' : 'v';
+      case AstCommandKind.headingStart:
+        _currentFontType = 2;
+        _currentFontSize = switch (entry.headingLevel) {
+          AstHeadingLevel.large => _fontSize * _fontScaleL * _fontScaleL,
+          AstHeadingLevel.medium => _fontSize * _fontScaleL,
+          _ => _fontSize,
+        };
+      case AstCommandKind.headingEnd:
+        _currentFontSize = _fontSize;
+        _currentFontType = 0;
+      case AstCommandKind.fontScaleStart:
+        final steps = entry.fontScaleSteps ?? 0;
+        _currentFontSize =
+            entry.fontScaleDirection == AstFontScaleDirection.larger
+            ? _fontSize * math.pow(_fontScaleL, steps)
+            : _fontSize * math.pow(_fontScaleS, steps);
+      case AstCommandKind.fontScaleEnd:
+        _currentFontSize = _fontSize;
+      case AstCommandKind.frameStart:
+        _frameDrawing = true;
+        _frameTop = math.min(_firstTopMargin, _restTopMargin);
+        _frameBottom = pageBlockSize - _bottomMargin;
+        _firstTopMargin += _fontSize;
+        _restTopMargin += _fontSize;
+        _bottomMargin += _fontSize;
+      case AstCommandKind.frameEnd:
+        _firstTopMargin = math.max(_firstTopMargin - _fontSize, 0);
+        _restTopMargin = math.max(_restTopMargin - _fontSize, 0);
+        _bottomMargin = math.max(_bottomMargin - _fontSize, 0);
+        _frameDrawing = false;
+      case AstCommandKind.pageBreak:
+        switch (entry.pageBreakKind) {
+          case AstPageBreakKind.kaidan:
+          case AstPageBreakKind.kaipage:
+            if (!pageEmpty) {
+              _pages.add(PageInfo(line: _lines.length));
+            }
+          case AstPageBreakKind.kaicho:
+            if (_pages.length.isOdd) {
+              _pages.add(PageInfo(line: _lines.length));
+            } else if (!pageEmpty) {
+              _pages.add(PageInfo(line: _lines.length));
+              _pages.add(PageInfo(line: _lines.length));
+            }
+          case AstPageBreakKind.kaimihiraki:
+            if (_pages.length.isEven) {
+              _pages.add(PageInfo(line: _lines.length));
+            } else if (!pageEmpty) {
+              _pages.add(PageInfo(line: _lines.length));
+              _pages.add(PageInfo(line: _lines.length));
+            }
+          case null:
+            break;
         }
         _currentPageWidth = -_lineSpace;
-        return true;
-      case '［＃改丁］':
-        if (_pages.length.isOdd) {
-          _pages.add(PageInfo(line: _lines.length));
-        } else if (!pageEmpty) {
-          _pages.add(PageInfo(line: _lines.length));
-          _pages.add(PageInfo(line: _lines.length));
-        }
-        _currentPageWidth = -_lineSpace;
-        return true;
-      case '［＃改見開き］':
-        if (_pages.length.isEven) {
-          _pages.add(PageInfo(line: _lines.length));
-        } else if (!pageEmpty) {
-          _pages.add(PageInfo(line: _lines.length));
-          _pages.add(PageInfo(line: _lines.length));
-        }
-        _currentPageWidth = -_lineSpace;
-        return true;
-      case '［＃ページの左右中央］':
+      case AstCommandKind.pageCenter:
         if (pageEmpty) {
           _pages[_pages.length - 1] = PageInfo(
             line: _pages.last.line,
@@ -1344,395 +809,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
           _pages.add(PageInfo(line: _lines.length, centering: true));
         }
         _currentPageWidth = -_lineSpace;
-        return true;
     }
-
-    return false;
-  }
-
-  String _applyLeadingParagraphAnnotation(
-    String paragraph,
-    double pageBlockSize,
-    ParagraphMargins margins,
-  ) {
-    double resolveMarginValue() {
-      var value = _getIntValue(paragraph);
-      if (value > 5) {
-        value = (value * (pageBlockSize / _currentFontSize)) / 40;
-      }
-      return value * _currentFontSize;
-    }
-
-    if (RegExp(r'^［＃(天から|)[０-９]+字下げ］').hasMatch(paragraph)) {
-      final margin = resolveMarginValue();
-      margins.firstTopMargin = margin;
-      margins.restTopMargin = margin;
-      return paragraph.replaceFirst(RegExp(r'(［.*?］)'), '');
-    }
-
-    if (RegExp(r'^［＃(地から|)[０-９]+字上げ］').hasMatch(paragraph)) {
-      margins.bottomMargin = resolveMarginValue();
-      margins.alignBottom = true;
-      return paragraph.replaceFirst(RegExp(r'(［.*?］)'), '');
-    }
-
-    if (paragraph.startsWith('［＃地付き］')) {
-      margins.bottomMargin = 0;
-      margins.alignBottom = true;
-      return paragraph.substring(6);
-    }
-
-    return paragraph;
-  }
-
-  ({
-    List<LayoutExtra> extras,
-    List<LayoutExtra> inlineStyles,
-    List<LayoutInsert> inserts,
-    String paragraph,
-    List<LayoutRuby> rubies,
-    List<LayoutExtra> tcyEntries,
-    List<LayoutExtra> textStyles,
-  })
-  _extractInlineAnnotations(
-    String paragraph,
-    List<LayoutExtra> extras,
-    List<LayoutExtra> inlineStyles,
-    List<LayoutInsert> inserts,
-    List<LayoutRuby> rubies,
-    List<LayoutExtra> tcyEntries,
-    List<LayoutExtra> textStyles,
-    int paragraphNo,
-  ) {
-    var working = paragraph;
-    var annotationStart = working.indexOf('￹');
-
-    while (annotationStart >= 0) {
-      final annotationKind = _parseAnnotationKind(
-        charAt(working, annotationStart + 1),
-      );
-      var bodyStart = working.indexOf('￺', annotationStart + 2);
-      var nested = working.indexOf('￹', annotationStart + 2);
-      while (nested >= 0 && nested < bodyStart) {
-        bodyStart = working.indexOf('￺', bodyStart + 1);
-        nested = working.indexOf('￹', nested + 1);
-      }
-
-      var annotationEnd = working.indexOf('￻', bodyStart + 1);
-      nested = working.indexOf('￹', bodyStart + 1);
-      while (nested >= 0 && nested < annotationEnd) {
-        annotationEnd = working.indexOf('￻', annotationEnd + 1);
-        nested = working.indexOf('￹', nested + 1);
-      }
-
-      final targetText = working.substring(annotationStart + 2, bodyStart);
-      var annotationText = working.substring(bodyStart + 1, annotationEnd);
-      var startIndex = annotationStart;
-      var endIndex = bodyStart;
-      var replacement = '';
-      var replaceTargetText = false;
-
-      if (targetText.isNotEmpty) {
-        var normalizedTarget = targetText
-            .replaceAll(RegExp('\ufff9.*\ufffb'), '')
-            .replaceAll('⁠', '');
-        startIndex = -1;
-        endIndex = annotationStart;
-        if (normalizedTarget.isNotEmpty) {
-          final targetLength = normalizedTarget.length;
-          for (var probe = annotationStart; probe > 0; probe -= 1) {
-            var sourceIndex = probe - 1;
-            var compareIndex = targetLength - 1;
-            while (sourceIndex >= 0 && compareIndex >= 0) {
-              final current = charAt(working, sourceIndex);
-              sourceIndex -= 1;
-              if ('​⁠'.contains(current)) {
-                continue;
-              }
-              if (current != charAt(normalizedTarget, compareIndex)) {
-                break;
-              }
-              compareIndex -= 1;
-            }
-            if (compareIndex < 0) {
-              startIndex = sourceIndex + 1;
-              break;
-            }
-            if (sourceIndex < 0) {
-              break;
-            }
-          }
-        }
-      } else if (annotationKind == LayoutAnnotationKind.kaeri ||
-          annotationKind == LayoutAnnotationKind.naka ||
-          annotationKind == LayoutAnnotationKind.okuri) {
-        if (working.substring(annotationStart - 1, annotationStart) == '￼') {
-          startIndex -= 1;
-        } else {
-          replacement += '⁠￼';
-          startIndex += 1;
-        }
-      } else if (annotationKind == LayoutAnnotationKind.note ||
-          annotationKind == LayoutAnnotationKind.anchor) {
-        endIndex = startIndex;
-        if (startIndex > 0) {
-          startIndex -= 1;
-        }
-      }
-
-      if (startIndex >= 0) {
-        switch (annotationKind) {
-          case LayoutAnnotationKind.outsideImage:
-          case LayoutAnnotationKind.inlineImage:
-            final parts = annotationText.split('\t');
-            inlineStyles.add(
-              LayoutExtra(
-                endIndex: endIndex,
-                imageWidth: parts.length > 1 ? double.tryParse(parts[1]) : null,
-                startIndex: startIndex,
-                style: parts.isNotEmpty ? parts[0] : '',
-                ruby: parts.length > 2 ? parts[2] : '',
-                type: _extraTypeFromAnnotationKind(annotationKind),
-              ),
-            );
-            replacement += '￼';
-          case LayoutAnnotationKind.link:
-            inlineStyles.add(
-              LayoutExtra(
-                endIndex: endIndex,
-                linkTarget: annotationText,
-                startIndex: startIndex,
-                style: 'リンク',
-                type: LayoutExtraType.link,
-              ),
-            );
-          case LayoutAnnotationKind.ruledLine:
-            extras.add(
-              LayoutExtra(
-                endIndex: endIndex,
-                ruby: annotationText,
-                startIndex: startIndex,
-                type: LayoutExtraType.ruledLine,
-              ),
-            );
-          case LayoutAnnotationKind.tcy:
-            tcyEntries.add(
-              LayoutExtra(
-                endIndex: endIndex,
-                startIndex: startIndex,
-                type: LayoutExtraType.tcy,
-              ),
-            );
-          case LayoutAnnotationKind.textStyle:
-            textStyles.add(
-              LayoutExtra(
-                endIndex: endIndex,
-                startIndex: startIndex,
-                style: annotationText,
-                type: LayoutExtraType.textStyle,
-              ),
-            );
-          case LayoutAnnotationKind.warichu:
-            final innerLength = (annotationText.length + 1) ~/ 2;
-            replacement = '（${_warichuPlaceholder * innerLength}）';
-            replaceTargetText = true;
-            inlineStyles.add(
-              LayoutExtra(
-                endIndex: startIndex + 1,
-                startIndex: startIndex,
-                style: '割り注括弧',
-                type: LayoutExtraType.textStyle,
-              ),
-            );
-            inlineStyles.add(
-              LayoutExtra(
-                endIndex: startIndex + replacement.length - 1,
-                startIndex: startIndex + 1,
-                style: '割り注占位',
-                type: LayoutExtraType.textStyle,
-              ),
-            );
-            inlineStyles.add(
-              LayoutExtra(
-                endIndex: startIndex + replacement.length,
-                startIndex: startIndex + replacement.length - 1,
-                style: '割り注括弧',
-                type: LayoutExtraType.textStyle,
-              ),
-            );
-            extras.add(
-              LayoutExtra(
-                endIndex: startIndex + replacement.length,
-                ruby: annotationText,
-                startIndex: startIndex,
-                type: LayoutExtraType.warichu,
-              ),
-            );
-          case LayoutAnnotationKind.midashi:
-            textStyles.add(
-              LayoutExtra(
-                endIndex: endIndex,
-                startIndex: startIndex,
-                style: annotationText,
-                type: LayoutExtraType.textStyle,
-              ),
-            );
-            _indexes.add(
-              IndexEntry(
-                endIndex: endIndex,
-                paragraphNo: paragraphNo,
-                startIndex: startIndex,
-                type: annotationText,
-              ),
-            );
-          case LayoutAnnotationKind.anchor:
-            _indexes.add(
-              IndexEntry(
-                endIndex: endIndex,
-                paragraphNo: paragraphNo,
-                startIndex: startIndex,
-                type: '#$annotationText',
-              ),
-            );
-          case LayoutAnnotationKind.kaeritenKunten:
-            for (var index = startIndex; index < bodyStart; index += 1) {
-              final character = charAt(working, index);
-              if (character == '〝') {
-                working =
-                    '${working.substring(0, index)}“${working.substring(index + 1)}';
-              } else if (character == '〟') {
-                working =
-                    '${working.substring(0, index)}”${working.substring(index + 1)}';
-              }
-            }
-            inlineStyles.add(
-              LayoutExtra(
-                endIndex: endIndex,
-                startIndex: startIndex,
-                style: annotationText,
-                type: LayoutExtraType.textStyle,
-              ),
-            );
-          case LayoutAnnotationKind.inlineStyleDash:
-          case LayoutAnnotationKind.inlineStyleSmall:
-          case LayoutAnnotationKind.inlineStyleCombined:
-            inlineStyles.add(
-              LayoutExtra(
-                endIndex: endIndex,
-                startIndex: startIndex,
-                style: annotationText,
-                type: LayoutExtraType.textStyle,
-              ),
-            );
-          case LayoutAnnotationKind.kaeri:
-          case LayoutAnnotationKind.naka:
-          case LayoutAnnotationKind.okuri:
-            inserts.add(
-              LayoutInsert(
-                startIndex: startIndex,
-                text: annotationText,
-                type: _inlineDecorationKindFromAnnotationKind(annotationKind)!,
-              ),
-            );
-          case LayoutAnnotationKind.rightRuby:
-          case LayoutAnnotationKind.leftRuby:
-            final spans = <LayoutInsert>[];
-            var nestedStart = annotationText.indexOf('￹');
-            while (nestedStart >= 0) {
-              final nestedKind = _parseAnnotationKind(
-                charAt(annotationText, nestedStart + 1),
-              );
-              final nestedEnd = annotationText.indexOf('￻', nestedStart + 2);
-              if (nestedEnd < 0) {
-                break;
-              }
-              if (nestedKind == LayoutAnnotationKind.kaeri ||
-                  nestedKind == LayoutAnnotationKind.okuri ||
-                  nestedKind == LayoutAnnotationKind.naka) {
-                final body = annotationText.substring(
-                  nestedStart + 3,
-                  nestedEnd,
-                );
-                if (nestedKind != LayoutAnnotationKind.naka) {
-                  spans.add(
-                    LayoutInsert(
-                      startIndex: nestedStart,
-                      text: body,
-                      type: _inlineDecorationKindFromAnnotationKind(
-                        nestedKind,
-                      )!,
-                    ),
-                  );
-                }
-                annotationText =
-                    annotationText.substring(0, nestedStart) +
-                    body +
-                    annotationText.substring(nestedEnd + 1);
-              } else {
-                annotationText =
-                    annotationText.substring(0, nestedStart) +
-                    annotationText.substring(nestedEnd + 1);
-              }
-              nestedStart = annotationText.indexOf('￹');
-            }
-            rubies.add(
-              LayoutRuby(
-                endIndex: endIndex,
-                ruby: annotationText,
-                spans: spans
-                    .map(
-                      (span) => LayoutStyleSpan(
-                        endIndex: span.startIndex + span.text.length,
-                        startIndex: span.startIndex,
-                        type: _styleNameForInlineDecorationKind(span.type),
-                      ),
-                    )
-                    .toList(),
-                startIndex: startIndex,
-                type: _inlineDecorationKindFromAnnotationKind(annotationKind)!,
-              ),
-            );
-          case LayoutAnnotationKind.unsupported:
-          case LayoutAnnotationKind.frame:
-          case LayoutAnnotationKind.span:
-          case LayoutAnnotationKind.emphasis:
-          case LayoutAnnotationKind.noteReference:
-          case LayoutAnnotationKind.note:
-            extras.add(
-              LayoutExtra(
-                endIndex: endIndex,
-                ruby: annotationText,
-                startIndex: startIndex,
-                type: _extraTypeFromAnnotationKind(annotationKind),
-              ),
-            );
-        }
-      }
-
-      if (replaceTargetText) {
-        working =
-            working.substring(0, startIndex) +
-            replacement +
-            working.substring(annotationEnd + 1);
-        annotationStart = working.indexOf('￹', startIndex + replacement.length);
-      } else {
-        working =
-            working.substring(0, annotationStart) +
-            replacement +
-            working.substring(annotationEnd + 1);
-        annotationStart = working.indexOf('￹');
-      }
-    }
-
-    return (
-      extras: extras,
-      inlineStyles: inlineStyles,
-      inserts: inserts,
-      paragraph: working,
-      rubies: rubies,
-      tcyEntries: tcyEntries,
-      textStyles: textStyles,
-    );
   }
 
   void _pushLine(LayoutTextLine line, double pageInlineSize, bool nonBreak) {
@@ -1773,9 +850,9 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
 
   void _attachParagraphDecorations(
     LayoutTextBlock block,
-    List<LayoutInsert> inserts,
-    List<LayoutRuby> rubies,
-    List<LayoutExtra> extras,
+    List<AstInlineInsert> inserts,
+    List<AstRubySpan> rubies,
+    List<AstParagraphExtra> extras,
     int paragraphNo,
   ) {
     for (final insert in inserts) {
@@ -1804,7 +881,15 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
       final endY = endAtom > line.end
           ? line.y + line.textWidth
           : line.y + line.getAtomY(endAtom);
-      var segmentHeight = endY - startY;
+      var segmentHeight =
+          endY -
+          startY -
+          _inlineInsertExtentInRange(
+            block,
+            inserts,
+            ruby.startIndex,
+            math.min(ruby.endIndex, _lineEndOffset(block, line)),
+          );
       final rubyBlock = ruby.tb!;
       var rubyLine = endAtom > line.end
           ? rubyBlock.createTextLine(null, segmentHeight + ruby.trackingStart)
@@ -1847,6 +932,14 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
         segmentHeight = endAtom > line.end
             ? line.textWidth
             : line.getAtomY(endAtom);
+        segmentHeight -= _inlineInsertExtentInRange(
+          block,
+          inserts,
+          line.start < block.atom.length
+              ? block.atom[line.start].index
+              : block.rawtext.length,
+          math.min(ruby.endIndex, _lineEndOffset(block, line)),
+        );
         rubyLine = endAtom > line.end
             ? rubyBlock.createTextLine(rubyLine, segmentHeight)
             : rubyBlock.createTextLine(rubyLine);
@@ -1868,9 +961,9 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
     }
 
     for (final extra in extras) {
-      if (extra.type == LayoutExtraType.warichu) {
+      if (extra.kind == AstParagraphExtraKind.warichu) {
         _attachWarichu(block, extra);
-      } else if (extra.type == LayoutExtraType.noteReference) {
+      } else if (extra.kind == AstParagraphExtraKind.noteReference) {
         final startIndex = extra.startIndex ?? 0;
         final line = block.getTextLineAtCharIndex(startIndex);
         if (line == null) {
@@ -1903,16 +996,17 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
         );
         line.attachments.add(
           NoteMarker(
-            annotation: extra.ruby ?? '',
+            annotation: extra.noteText ?? '',
             height: markerLine.textWidth,
+            kind: LayoutNoteMarkerKind.reference,
             markType: '※',
             top: markerLine.y,
             width: markerLine.width,
           ),
         );
-      } else if (extra.type == LayoutExtraType.span ||
-          extra.type == LayoutExtraType.ruledLine ||
-          extra.type == LayoutExtraType.link) {
+      } else if (extra.kind == AstParagraphExtraKind.span ||
+          extra.kind == AstParagraphExtraKind.ruledLine ||
+          extra.kind == AstParagraphExtraKind.link) {
         final startIndex = extra.startIndex ?? 0;
         final endIndex = (extra.endIndex ?? 1) - 1;
         var startLine = block.getTextLineAtCharIndex(startIndex);
@@ -1926,18 +1020,20 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
             startLine.y +
             startLine.getAtomY(
               startAtom,
-              includeTrailingTracking: extra.type == LayoutExtraType.ruledLine,
+              includeTrailingTracking:
+                  extra.kind == AstParagraphExtraKind.ruledLine,
             );
         final endAtom = block.getAtomIndexAt(endIndex);
         final bottom =
             endLine.y +
             endLine.getAtomY(
               endAtom,
-              includeTrailingTracking: extra.type == LayoutExtraType.ruledLine,
+              includeTrailingTracking:
+                  extra.kind == AstParagraphExtraKind.ruledLine,
             ) +
             block.getAtomHeight(endAtom);
 
-        if (extra.type == LayoutExtraType.link) {
+        if (extra.kind == AstParagraphExtraKind.link) {
           final linkEnd = block.getAtomIndexAt(extra.endIndex ?? 0);
           LayoutTextLine? currentLine = startLine;
           var currentStart = startAtom;
@@ -1964,9 +1060,10 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
           currentLine.attachments.add(
             SpanMarker(
               bottom: currentLine.y + currentLine.textWidth,
+              kind: _spanMarkerKind(extra),
               isEnd: false,
               isStart: isStart,
-              markType: extra.ruby ?? '',
+              markType: '',
               top: top,
             ),
           );
@@ -1978,26 +1075,38 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
         currentLine?.attachments.add(
           SpanMarker(
             bottom: bottom,
+            kind: _spanMarkerKind(extra),
             isEnd: true,
             isStart: isStart,
-            markType: extra.ruby ?? '',
+            markType: '',
             top: top,
           ),
         );
-      } else if (extra.type == LayoutExtraType.frame) {
+      } else if (extra.kind == AstParagraphExtraKind.frame) {
         var line = block.textLine;
         while (line != null) {
           line.attachments.add(
             SpanMarker(
               bottom: _frameBottom,
-              markType: extra.ruby ?? '',
+              kind: _spanMarkerKind(extra),
+              markType: '',
               top: _frameTop,
             ),
           );
           line = line.nextLine;
         }
-      } else if (extra.type == LayoutExtraType.emphasis) {
-        final emphasisChar = charAt(extra.ruby ?? '', 1);
+      } else if (extra.kind == AstParagraphExtraKind.emphasis) {
+        final emphasisChar = switch (extra.emphasisKind) {
+          AstEmphasisKind.whiteSesame => '﹆',
+          AstEmphasisKind.blackCircle => '⬤',
+          AstEmphasisKind.whiteCircle => '○',
+          AstEmphasisKind.blackTriangle => '▲',
+          AstEmphasisKind.whiteTriangle => '△',
+          AstEmphasisKind.bullseye => '◎',
+          AstEmphasisKind.fisheye => '◉',
+          AstEmphasisKind.saltire => '❌',
+          _ => '﹅',
+        };
         final size =
             ((emphasisChar != '﹅' && emphasisChar != '﹆') ||
                 _settings.smallBouten)
@@ -2031,14 +1140,14 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
               (block.getAtomHeight(atomIndex) - markerLine.textWidth) / 2;
           line.attachments.add(
             InlineDecorationAttachment(
-              kind: charAt(extra.ruby ?? '', 0) == '右'
+              kind: (extra.rightSide ?? true)
                   ? LayoutInlineDecorationKind.rightEmphasis
                   : LayoutInlineDecorationKind.leftEmphasis,
               line: markerLine,
             ),
           );
         }
-      } else if (extra.type == LayoutExtraType.note) {
+      } else if (extra.kind == AstParagraphExtraKind.note) {
         final endIndex = (extra.endIndex ?? 0) - 1;
         final line = block.getTextLineAtCharIndex(endIndex < 0 ? 0 : endIndex);
         if (line == null) {
@@ -2077,8 +1186,9 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
         );
         line.attachments.add(
           NoteMarker(
-            annotation: extra.ruby ?? '',
+            annotation: extra.noteText ?? '',
             height: markerLine.textWidth,
+            kind: LayoutNoteMarkerKind.annotation,
             markType: '注',
             top: markerLine.y,
             width: markerLine.width,
@@ -2086,394 +1196,6 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
         );
       }
     }
-  }
-
-  String _gaijiCallback(String body) {
-    final jisMatch = RegExp(
-      r'^.*([12]-[0-9]{1,2}-[0-9]{1,2}).*$',
-    ).firstMatch(body);
-    if (jisMatch != null) {
-      final jis = jisMatch.group(1)!;
-      final character = kumihanGaijiTable[jis];
-      if (character != null) {
-        return character;
-      }
-    }
-
-    final unicodeMatch = RegExp(r'^.*、U\+([0-9A-Fa-f]+)、.*$').firstMatch(body);
-    if (unicodeMatch != null) {
-      return String.fromCharCode(int.parse(unicodeMatch.group(1)!, radix: 16));
-    }
-
-    final dakuten = RegExp(r'^濁点付き(平|片)仮名(.).*$').firstMatch(body);
-    if (dakuten != null) {
-      return '${dakuten.group(2)}゛';
-    }
-
-    final handakuten = RegExp(r'^半濁点付き(平|片)仮名(.).*$').firstMatch(body);
-    if (handakuten != null) {
-      return '${handakuten.group(2)}゜';
-    }
-
-    return '※￹※※￺$body￻';
-  }
-
-  String _accentsCallback(String body) {
-    final converted = body.replaceAllMapped(
-      RegExp(r"(AE&|OE&|[!?ACEINOSUY][@`'^~:&,/_])", caseSensitive: false),
-      (match) => accentsTable[match[0]!] ?? match[0]!,
-    );
-    return converted != body ? converted : '〔$body〕';
-  }
-
-  String _linkCallback(String link) {
-    final glyph = _currentState.startsWith('v') ? '◀' : '▶';
-    if (link.startsWith('#')) {
-      return '$glyph￹リ$glyph￺$link￻';
-    }
-    final index = _links.length;
-    _links.add(link);
-    return '$glyph￹リ$glyph￺$index￻';
-  }
-
-  String _link2Callback(String prefix, String url) {
-    final index = _links.length;
-    _links.add(url);
-    return '$prefix$url￹リ$url￺$index￻';
-  }
-
-  String _annotationCallback(String prefix, String annotation) {
-    var extracted = '';
-    var openSide = '右';
-    final start = annotation.indexOf('「');
-
-    if (start >= 0) {
-      final end = _findEndBracket(annotation, start + 1);
-      if (end >= 0) {
-        extracted = annotation
-            .substring(start + 1, end)
-            .replaceAll(RegExp(r'［＃[^［]*?］'), '')
-            .replaceAll(RegExp('\ufff9.*?\ufffb'), '')
-            .replaceAll('\ufff7', '「')
-            .replaceAll('\ufff8', '」');
-
-        if (annotation.indexOf('の左', end + 1) >= 0) {
-          openSide = '左';
-        }
-
-        String marker(String suffix, String body) =>
-            '$prefix￹$suffix$extracted￺$body￻';
-
-        if (annotation.indexOf('に傍点］', end + 1) >= 0) {
-          return marker('点', '$openSide﹅');
-        }
-        if (annotation.indexOf('白ゴマ傍点］', end + 1) >= 0) {
-          return marker('点', '$openSide﹆');
-        }
-        if (annotation.indexOf('に丸傍点］', end + 1) >= 0) {
-          return marker('点', '$openSide⬤');
-        }
-        if (annotation.indexOf('白丸傍点］', end + 1) >= 0) {
-          return marker('点', '$openSide○');
-        }
-        if (annotation.indexOf('黒三角傍点］', end + 1) >= 0) {
-          return marker('点', '$openSide▲');
-        }
-        if (annotation.indexOf('白三角傍点］', end + 1) >= 0) {
-          return marker('点', '$openSide△');
-        }
-        if (annotation.indexOf('二重丸傍点］', end + 1) >= 0) {
-          return marker('点', '$openSide◎');
-        }
-        if (annotation.indexOf('蛇の目傍点］', end + 1) >= 0) {
-          return marker('点', '$openSide◉');
-        }
-        if (annotation.indexOf('ばつ傍点］', end + 1) >= 0) {
-          return marker('点', '$openSide❌');
-        }
-        if (annotation.indexOf('に傍線］', end + 1) >= 0) {
-          return marker('線', '$openSide傍線');
-        }
-        if (annotation.indexOf('二重傍線］', end + 1) >= 0) {
-          return marker('線', '$openSide二重傍線');
-        }
-        if (annotation.indexOf('鎖線］', end + 1) >= 0) {
-          return marker('線', '$openSide鎖線');
-        }
-        if (annotation.indexOf('破線］', end + 1) >= 0) {
-          return marker('線', '$openSide破線');
-        }
-        if (annotation.indexOf('波線］', end + 1) >= 0) {
-          return marker('線', '$openSide波線');
-        }
-        if (annotation.indexOf('取消線］', end + 1) >= 0) {
-          return '$prefix￹線$extracted￺取消線￻';
-        }
-        if (annotation.indexOf('縦中横］', end + 1) >= 0) {
-          return '$prefix￹横$extracted￺縦中横￻';
-        }
-        if (annotation.indexOf('罫囲み］', end + 1) >= 0) {
-          return '$prefix￹罫$extracted￺罫囲み￻';
-        }
-
-        if ((annotation.indexOf('」のルビ］', end + 1) >= 0 ||
-                annotation.indexOf('」の注記］', end + 1) >= 0) &&
-            annotation.lastIndexOf('」') > annotation.indexOf('「', end + 1)) {
-          final rubyStart = annotation.indexOf('「', end + 1);
-          final rubyEnd = annotation.lastIndexOf('」');
-          final ruby = annotation.substring(rubyStart + 1, rubyEnd);
-          return '${openSide == '左' ? _jointTargetString(prefix, extracted) : prefix}￹${openSide == '左' ? 'る' : 'ル'}$extracted￺$ruby￻';
-        }
-
-        if (annotation.indexOf('見出し］', end + 1) >= 0) {
-          if (annotation.indexOf('大見出し］', end + 1) >= 0) {
-            return '$prefix￹見$extracted￺大見出し￻';
-          }
-          if (annotation.indexOf('中見出し］', end + 1) >= 0) {
-            return '$prefix￹見$extracted￺中見出し￻';
-          }
-          if (annotation.indexOf('小見出し］', end + 1) >= 0) {
-            return '$prefix￹見$extracted￺小見出し￻';
-          }
-        }
-
-        if (annotation.indexOf('段階大きな文字］', end + 1) >= 0 ||
-            annotation.indexOf('段階小さな文字］', end + 1) >= 0) {
-          return '$prefix￹字$extracted￺${annotation.substring(end + 2, end + 10)}￻';
-        }
-
-        if (annotation.indexOf('太字］', end + 1) >= 0) {
-          return '$prefix￹字$extracted￺太字￻';
-        }
-        if (annotation.indexOf('斜体］', end + 1) >= 0) {
-          return '$prefix￹字$extracted￺斜体￻';
-        }
-        if (annotation.indexOf('キャプション］', end + 1) >= 0) {
-          return '$prefix￹字$extracted￺キャプション￻';
-        }
-        if (annotation.indexOf('横組み］', end + 1) >= 0) {
-          return '$prefix￹回$extracted￺横組み￻';
-        }
-        if (annotation.indexOf('行右小書き］', end + 1) >= 0) {
-          return '$prefix￹小$extracted￺行右小書き￻';
-        }
-        if (annotation.indexOf('行左小書き］', end + 1) >= 0) {
-          return '$prefix￹小$extracted￺行左小書き￻';
-        }
-        if (annotation.indexOf('上付き小文字］', end + 1) >= 0) {
-          return '$prefix￹小$extracted￺上付き小文字￻';
-        }
-        if (annotation.indexOf('下付き小文字］', end + 1) >= 0) {
-          return '$prefix￹小$extracted￺下付き小文字￻';
-        }
-        if (annotation.indexOf('割り注］', end + 1) >= 0) {
-          return '$prefix￹割$extracted￺$extracted￻';
-        }
-      }
-    } else {
-      if (RegExp(r'^［＃[レ一二三四五上中下甲乙丙丁天地人]{1,2}］$').hasMatch(annotation)) {
-        final text = annotation.replaceFirstMapped(
-          RegExp(r'^［＃([レ一二三四五上中下甲乙丙丁天地人]{1,2})］$'),
-          (match) => '$prefix￹返￺${match[1]}￻',
-        );
-        return text;
-      }
-      if (RegExp(r'^［＃（(.*)）］$').hasMatch(annotation)) {
-        return annotation.replaceFirstMapped(
-          RegExp(r'^［＃（(.*)）］$'),
-          (match) => '$prefix￹送￺${match[1]}￻',
-        );
-      }
-    }
-
-    final imageMatch = RegExp(
-      r'^［＃外字（([^（、]*)(、横([0-9]+)×縦([0-9]+)|)）入る］$',
-    ).firstMatch(annotation);
-    if (imageMatch != null) {
-      return '$prefix￼￹外￺${imageMatch[1]}\t${imageMatch[3] ?? ''}\t${imageMatch[4] ?? ''}￻';
-    }
-    final paintedImageMatch = RegExp(
-      r'^［＃(.*?)（([^（、]*)(、横([0-9]+)×縦([0-9]+)|)）入る］$',
-    ).firstMatch(annotation);
-    if (paintedImageMatch != null) {
-      return '$prefix￼￹画￺${paintedImageMatch[2]}\t${paintedImageMatch[4] ?? ''}\t${paintedImageMatch[5] ?? ''}￻';
-    }
-    return prefix +
-        annotation.replaceFirstMapped(
-          RegExp(r'^［＃(.*)］$'),
-          (match) => '￹注￺${match[1]}￻',
-        );
-  }
-
-  String _convertSpanFormat(String text) {
-    var working = text;
-    var style = working.replaceFirstMapped(
-      RegExp(
-        r'^.*［＃(左に|)(傍点|白ゴマ傍点|丸傍点|白丸傍点|黒三角傍点|白三角傍点|二重丸傍点|蛇の目傍点|ばつ傍点|傍線|二重傍線|鎖線|破線|波線|取消線|注記付き|ルビ付き)］.*$',
-      ),
-      (match) => '${match[1]}${match[2]}',
-    );
-
-    while (working != style) {
-      final start = working.indexOf('［＃$style］');
-      final startEnd = working.indexOf('］', start + 2);
-      working = working.substring(0, start) + working.substring(startEnd + 1);
-      var end = -1;
-      var suffixEnd = -1;
-
-      if (style.endsWith('注記付き')) {
-        end = style.startsWith('左に')
-            ? RegExp(r'［＃左に「[^［]*?」の注記付き終わり］').firstMatch(working)?.start ?? -1
-            : RegExp(r'［＃「[^［]*?」の注記付き終わり］').firstMatch(working)?.start ?? -1;
-        if (end < 0) {
-          break;
-        }
-        suffixEnd = working.indexOf('」の注記付き終わり］', end + 2) + 9;
-        style = '${working.substring(end + 2, suffixEnd - 7)}ルビ';
-      } else if (style.endsWith('ルビ付き')) {
-        end = style.startsWith('左に')
-            ? RegExp(r'［＃左に「[^［]*?」のルビ付き終わり］').firstMatch(working)?.start ?? -1
-            : RegExp(r'［＃「[^［]*?」のルビ付き終わり］').firstMatch(working)?.start ?? -1;
-        if (end < 0) {
-          break;
-        }
-        suffixEnd = working.indexOf('」のルビ付き終わり］', end + 2) + 9;
-        style = '${working.substring(end + 2, suffixEnd - 7)}ルビ';
-      } else {
-        end = working.indexOf('［＃$style終わり］');
-        if (end < 0) {
-          break;
-        }
-        suffixEnd = end + style.length + 5;
-      }
-
-      var target = working
-          .substring(start, end)
-          .replaceAll(RegExp(r'［＃[^［]*?］'), '');
-      target = target
-          .replaceAll(RegExp('\ufff9.*?\ufffb'), '')
-          .replaceAll('「', '￷')
-          .replaceAll('」', '￸');
-      if (target.isNotEmpty) {
-        working = style.startsWith('左に')
-            ? '${working.substring(0, end + 2)}「$target」の$style${working.substring(suffixEnd)}'
-            : '${working.substring(0, end + 2)}「$target」に$style${working.substring(suffixEnd)}';
-      }
-
-      style = working.replaceFirstMapped(
-        RegExp(
-          r'^.*［＃(左に|)(傍点|白ゴマ傍点|丸傍点|白丸傍点|黒三角傍点|白三角傍点|二重丸傍点|蛇の目傍点|ばつ傍点|傍線|二重傍線|鎖線|破線|波線|取消線|注記付き|ルビ付き)］.*$',
-        ),
-        (match) => '${match[1]}${match[2]}',
-      );
-    }
-
-    style = working.replaceFirstMapped(
-      RegExp(
-        r'^.*［＃(縦中横|大見出し|中見出し|小見出し|同行大見出し|同行中見出し|同行小見出し|窓大見出し|窓中見出し|窓小見出し|太字|斜体|キャプション|横組み|罫囲み|行右小書き|行左小書き|上付き小文字|下付き小文字|割り注)］.*$',
-      ),
-      (match) => '${match[1]}',
-    );
-
-    while (working != style) {
-      final start = working.indexOf('［＃$style］');
-      final startEnd = working.indexOf('］', start + 2);
-      working = working.substring(0, start) + working.substring(startEnd + 1);
-      final end = working.indexOf('［＃$style終わり］');
-      if (end < 0) {
-        break;
-      }
-
-      var target = working
-          .substring(start, end)
-          .replaceAll(RegExp(r'［＃[^［]*?］'), '');
-      target = target
-          .replaceAll(RegExp('\ufff9.*?\ufffb'), '')
-          .replaceAll('「', '￷')
-          .replaceAll('」', '￸');
-      if (target.isNotEmpty) {
-        working =
-            '${working.substring(0, end + 2)}「$target」は$style${working.substring(end + style.length + 5)}';
-      }
-
-      style = working.replaceFirstMapped(
-        RegExp(
-          r'^.*［＃(縦中横|大見出し|中見出し|小見出し|同行大見出し|同行中見出し|同行小見出し|窓大見出し|窓中見出し|窓小見出し|太字|斜体|キャプション|横組み|罫囲み|行右小書き|行左小書き|上付き小文字|下付き小文字|割り注)］.*$',
-        ),
-        (match) => '${match[1]}',
-      );
-    }
-
-    var match = RegExp(r'［＃[１-５]段階(大き|小さ)な文字］').firstMatch(working);
-    while (match != null) {
-      final start = match.start;
-      final startEnd = working.indexOf('］', start + 2);
-      final body = working.substring(start + 2, startEnd);
-      working = working.substring(0, start) + working.substring(startEnd + 1);
-      final end = working.indexOf('［＃${body.substring(3)}終わり］');
-      if (end >= 0) {
-        var target = working
-            .substring(start, end)
-            .replaceAll(RegExp(r'［＃[^［]*?］'), '');
-        target = target
-            .replaceAll(RegExp('\ufff9.*?\ufffb'), '')
-            .replaceAll('「', '￷')
-            .replaceAll('」', '￸');
-        if (target.isNotEmpty) {
-          working =
-              '${working.substring(0, end + 2)}「$target」は$body${working.substring(end + body.length + 2)}';
-        }
-      }
-      match = RegExp(r'［＃[１-５]段階(大き|小さ)な文字］').firstMatch(working);
-    }
-
-    return working;
-  }
-
-  String _convertRubies(String text) {
-    return text
-        .replaceAllMapped(RegExp(r'［＃(.+?)］'), (match) {
-          var escaped = (match[1] ?? '').replaceAll('《', '※［＃始め二重山括弧、1-1-52］');
-          escaped = escaped.replaceAll('》', '※［＃終わり二重山括弧、1-1-53］');
-          escaped = escaped.replaceAll('｜', '※［＃縦線、1-1-35］');
-          return '［＃$escaped］';
-        })
-        .replaceAllMapped(
-          RegExp(r'｜(.+?)《(.+?)》'),
-          (match) => '${match[1]}［＃「${match[1]}」に「${match[2]}」の注記］',
-        )
-        .replaceAllMapped(
-          RegExp(r'(([⺀-⻳㐁-䶮一-龻豈-龎仝々〆〇ヶ]|※［＃[^］]*］)+?)《(.+?)》'),
-          (match) => '${match[1]}［＃「${match[1]}」に「${match[3]}」の注記］',
-        )
-        .replaceAllMapped(
-          RegExp(r'([ぁ-ゖゝゞゟ]+?)《(.+?)》'),
-          (match) => '${match[1]}［＃「${match[1]}」に「${match[2]}」の注記］',
-        )
-        .replaceAllMapped(
-          RegExp(r'([゠-ヿ]+?)《(.+?)》'),
-          (match) => '${match[1]}［＃「${match[1]}」に「${match[2]}」の注記］',
-        )
-        .replaceAllMapped(
-          RegExp(r'([！-～Α-Ωα-ωА-я]+?)《(.+?)》'),
-          (match) => '${match[1]}［＃「${match[1]}」に「${match[2]}」の注記］',
-        )
-        .replaceAllMapped(
-          RegExp(r'([\x21-\x7e¡¿-ž]+?)《(.+?)》'),
-          (match) => '${match[1]}［＃「${match[1]}」に「${match[2]}」の注記］',
-        );
-  }
-
-  double _getIntValue(String text) {
-    final digits = text.replaceFirstMapped(
-      RegExp(r'^(.*?)([０-９]+)(.*?)$'),
-      (match) => '${match[2]}',
-    );
-    var value = 0;
-    for (var index = 0; index < digits.length; index += 1) {
-      value = value * 10 + (digits.codeUnitAt(index) - 65296);
-    }
-    return value.toDouble();
   }
 
   void _insertImage(
@@ -2524,7 +1246,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
     atom.image = image;
   }
 
-  void _insertTextLine(LayoutTextBlock block, List<LayoutInsert> inserts) {
+  void _insertTextLine(LayoutTextBlock block, List<AstInlineInsert> inserts) {
     for (final insert in inserts) {
       final atomIndex = block.splitAtom(insert.startIndex);
       block.splitAtom(insert.startIndex + 1);
@@ -2564,9 +1286,8 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
     LayoutTextBlock block,
     int startIndex,
     int endIndex,
-    String style, {
-    String? userData,
-  }) {
+    AstStyleSpan style,
+  ) {
     if (endIndex <= math.max(startIndex, 0)) {
       return;
     }
@@ -2575,46 +1296,46 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
     final end = block.splitAtom(endIndex);
     final atoms = block.atom;
 
-    switch (style) {
-      case '大見出し':
+    switch (style.kind) {
+      case AstStyleKind.headingLarge:
         for (var index = start; index < end; index += 1) {
           atoms[index]
             ..setFontSize(_fontSize * _fontScaleL * _fontScaleL)
             ..setFontGothic();
         }
-      case '中見出し':
+      case AstStyleKind.headingMedium:
         for (var index = start; index < end; index += 1) {
           atoms[index]
             ..setFontSize(_fontSize * _fontScaleL)
             ..setFontGothic();
         }
-      case '小見出し':
-      case '太字':
+      case AstStyleKind.headingSmall:
+      case AstStyleKind.bold:
         for (var index = start; index < end; index += 1) {
           atoms[index].setFontGothic();
         }
-      case '斜体':
+      case AstStyleKind.italic:
         for (var index = start; index < end; index += 1) {
           atoms[index].setFontItalic();
         }
-      case 'キャプション':
+      case AstStyleKind.caption:
         for (var index = start; index < end; index += 1) {
           atoms[index].color = fontColor;
         }
-      case '横組み':
+      case AstStyleKind.yokogumi:
         for (var index = start; index < end; index += 1) {
           atoms[index].setRotated();
         }
-      case '返':
+      case AstStyleKind.kaeri:
         for (var index = start; index < end; index += 1) {
           atoms[index].offsetX = -atoms[index].getFontSize() / 8;
         }
-      case '送':
+      case AstStyleKind.okuri:
         for (var index = start; index < end; index += 1) {
           atoms[index].offsetX = atoms[index].getFontSize() / 8;
         }
-      case '行右小書き':
-      case '上付き小文字':
+      case AstStyleKind.lineRightSmall:
+      case AstStyleKind.superscript:
         final size = 0.6 * _currentFontSize;
         final offset = 0.2 * _currentFontSize;
         for (var index = start; index < end; index += 1) {
@@ -2622,8 +1343,8 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
             ..setFontSize(size)
             ..offsetX = offset;
         }
-      case '行左小書き':
-      case '下付き小文字':
+      case AstStyleKind.lineLeftSmall:
+      case AstStyleKind.subscript:
         final size = 0.6 * _currentFontSize;
         final offset = -0.2 * _currentFontSize;
         for (var index = start; index < end; index += 1) {
@@ -2631,14 +1352,14 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
             ..setFontSize(size)
             ..offsetX = offset;
         }
-      case '割り注占位':
+      case AstStyleKind.warichuPlaceholder:
         final size = 0.5 * _currentFontSize;
         for (var index = start; index < end; index += 1) {
           atoms[index]
             ..setFontSize(size)
             ..color = const Color(0x00000000);
         }
-      case '割り注括弧':
+      case AstStyleKind.warichuBracket:
         final advance = 0.5 * _currentFontSize;
         for (var index = start; index < end; index += 1) {
           final text = block.getAtomText(index);
@@ -2646,35 +1367,25 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
             ..height = advance
             ..offsetY = openingBrackets.contains(text) ? -advance : 0;
         }
-      case 'リンク':
-        for (var index = start; index < end; index += 1) {
-          atoms[index].color = fontColor;
+      case AstStyleKind.fontScale:
+        var value = style.fontScaleSteps ?? 0;
+        if (value > 5) {
+          value = 5;
         }
-        block.userData.extras.add(
-          LayoutExtra(
-            endIndex: endIndex,
-            linkTarget: userData ?? '',
-            startIndex: startIndex,
-            type: LayoutExtraType.link,
-          ),
-        );
-      default:
-        if (RegExp(r'[１-５]段階(大き|小さ)な文字').hasMatch(style)) {
-          var value = _getIntValue(style).toInt();
-          if (value > 5) {
-            value = 5;
-          }
-          final size = charAt(style, 3) == '大'
-              ? _fontSize * math.pow(_fontScaleL, value)
-              : _fontSize * math.pow(_fontScaleS, value);
-          for (var index = start; index < end; index += 1) {
-            atoms[index].setFontSize(size.toDouble());
-          }
+        final size = style.fontScaleDirection == AstFontScaleDirection.larger
+            ? _fontSize * math.pow(_fontScaleL, value)
+            : _fontSize * math.pow(_fontScaleS, value);
+        for (var index = start; index < end; index += 1) {
+          atoms[index].setFontSize(size.toDouble());
         }
     }
   }
 
-  void _adjustRubies(LayoutTextBlock block, List<LayoutRuby> rubies) {
+  void _adjustRubies(
+    LayoutTextBlock block,
+    List<AstRubySpan> rubies,
+    List<AstInlineInsert> inserts,
+  ) {
     final line = block.createTextLine();
     if (line == null) {
       return;
@@ -2684,7 +1395,20 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
       final start = block.splitAtom(ruby.startIndex);
       final end = block.splitAtom(ruby.endIndex);
       final startY = line.getAtomY(start, includeTrailingTracking: true);
-      final segmentHeight = line.getAtomY(end) - startY;
+      final insertCount = _inlineInsertCountInRange(
+        inserts,
+        ruby.startIndex,
+        ruby.endIndex,
+      );
+      final segmentHeight =
+          line.getAtomY(end) -
+          startY -
+          _inlineInsertExtentInRange(
+            block,
+            inserts,
+            ruby.startIndex,
+            ruby.endIndex,
+          );
       final rubyBlock = LayoutTextBlock(this)
         ..setText(
           ruby.ruby,
@@ -2695,9 +1419,8 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
           _currentState.startsWith('h') ? 'h' : 'v',
         );
       for (final span in ruby.spans) {
-        _applyStyle(rubyBlock, span.startIndex, span.endIndex, span.type);
+        _applyStyle(rubyBlock, span.startIndex, span.endIndex, span);
       }
-
       ruby
         ..tb = rubyBlock
         ..trackingStart = 0
@@ -2739,7 +1462,8 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
 
         overflow -= startPadding + endPadding;
         if (overflow > 0) {
-          final tracking = overflow / (end - start + 1);
+          final visibleAtomCount = math.max(end - start + 1 - insertCount, 1);
+          final tracking = overflow / visibleAtomCount;
           for (
             var index = math.min(end, block.atom.length - 1);
             index >= start;
@@ -2762,8 +1486,8 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
     }
   }
 
-  void _attachWarichu(LayoutTextBlock block, LayoutExtra extra) {
-    final body = extra.ruby ?? '';
+  void _attachWarichu(LayoutTextBlock block, AstParagraphExtra extra) {
+    final body = extra.warichuText ?? '';
     final startIndex = extra.startIndex ?? 0;
     final endIndex = extra.endIndex ?? startIndex;
     final innerStart = startIndex + 1;
@@ -2861,6 +1585,65 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
         : block.rawtext.length;
   }
 
+  int _inlineInsertCountInRange(
+    List<AstInlineInsert> inserts,
+    int startOffset,
+    int endOffset,
+  ) {
+    return inserts
+        .where(
+          (insert) =>
+              insert.startIndex >= startOffset && insert.startIndex < endOffset,
+        )
+        .length;
+  }
+
+  double _inlineInsertExtentInRange(
+    LayoutTextBlock block,
+    List<AstInlineInsert> inserts,
+    int startOffset,
+    int endOffset,
+  ) {
+    var extent = 0.0;
+    for (final insert in inserts) {
+      if (insert.startIndex < startOffset || insert.startIndex >= endOffset) {
+        continue;
+      }
+      final atomIndex = block.getAtomIndexAt(insert.startIndex);
+      extent += block.getAtomHeight(atomIndex, includeTracking: true);
+    }
+    return extent;
+  }
+
+  LayoutSpanMarkerKind _spanMarkerKind(AstParagraphExtra extra) {
+    if (extra.kind == AstParagraphExtraKind.frame) {
+      return switch (extra.frameKind) {
+        AstFrameKind.start => LayoutSpanMarkerKind.frameStart,
+        AstFrameKind.end => LayoutSpanMarkerKind.frameEnd,
+        _ => LayoutSpanMarkerKind.frameMiddle,
+      };
+    }
+    if (extra.ruledLineKind == AstRuledLineKind.frameBox) {
+      return LayoutSpanMarkerKind.frameBox;
+    }
+    if (extra.ruledLineKind == AstRuledLineKind.cancel) {
+      return LayoutSpanMarkerKind.cancel;
+    }
+    final right = extra.rightSide ?? true;
+    return switch ((right, extra.ruledLineKind)) {
+      (true, AstRuledLineKind.doubleLine) => LayoutSpanMarkerKind.rightDouble,
+      (true, AstRuledLineKind.chain) => LayoutSpanMarkerKind.rightChain,
+      (true, AstRuledLineKind.dashed) => LayoutSpanMarkerKind.rightDashed,
+      (true, AstRuledLineKind.wave) => LayoutSpanMarkerKind.rightWave,
+      (true, _) => LayoutSpanMarkerKind.rightSolid,
+      (false, AstRuledLineKind.doubleLine) => LayoutSpanMarkerKind.leftDouble,
+      (false, AstRuledLineKind.chain) => LayoutSpanMarkerKind.leftChain,
+      (false, AstRuledLineKind.dashed) => LayoutSpanMarkerKind.leftDashed,
+      (false, AstRuledLineKind.wave) => LayoutSpanMarkerKind.leftWave,
+      (false, _) => LayoutSpanMarkerKind.leftSolid,
+    };
+  }
+
   double _warichuRowOffset(LayoutTextLine line, double segmentExtent) {
     final slack = segmentExtent - line.textWidth;
     return slack > 0 ? slack / 2 : 0;
@@ -2885,13 +1668,13 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
         continue;
       }
       final pageNo = _internalToDocumentPageNo(pageIndex);
-      if (index.type.startsWith('#')) {
-        _anchorList[index.type] = pageNo;
+      if (index.kind == _IndexKind.anchor) {
+        _anchorList['#${index.anchorName ?? ''}'] = pageNo;
       } else {
         var label = block.rawtext.substring(index.startIndex, index.endIndex);
-        if (index.type == '中見出し') {
+        if (index.kind == _IndexKind.headingMedium) {
           label = '　$label';
-        } else if (index.type == '小見出し') {
+        } else if (index.kind == _IndexKind.headingSmall) {
           label = '　　$label';
         }
         _chapterList.add(ChapterEntry(label: label, pageNo: pageNo));

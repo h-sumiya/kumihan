@@ -3,16 +3,16 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/widgets.dart';
 
+import 'ast.dart';
 import 'engine/kumihan_engine.dart';
 import 'kumihan_controller.dart';
-import 'kumihan_document.dart';
 import 'kumihan_types.dart';
 import 'parsers/aozora_parser.dart';
 
 class KumihanCanvas extends StatefulWidget {
   const KumihanCanvas({
     super.key,
-    required this.document,
+    required this.data,
     this.controller,
     this.imageLoader,
     this.initialPage = 0,
@@ -23,8 +23,6 @@ class KumihanCanvas extends StatefulWidget {
   factory KumihanCanvas.aozora({
     Key? key,
     required String text,
-    String? title,
-    String? author,
     KumihanController? controller,
     KumihanImageLoader? imageLoader,
     int initialPage = 0,
@@ -33,7 +31,7 @@ class KumihanCanvas extends StatefulWidget {
   }) {
     return KumihanCanvas(
       key: key,
-      document: KumihanAozoraParser(author: author, title: title).parse(text),
+      data: const AozoraParser().parse(text),
       controller: controller,
       imageLoader: imageLoader,
       initialPage: initialPage,
@@ -42,7 +40,7 @@ class KumihanCanvas extends StatefulWidget {
     );
   }
 
-  final KumihanDocument document;
+  final AstData data;
   final KumihanController? controller;
   final KumihanImageLoader? imageLoader;
   final int initialPage;
@@ -62,7 +60,7 @@ class _KumihanCanvasState extends State<KumihanCanvas> {
     super.initState();
     _engine = _createEngine();
     widget.controller?.attach(_engine);
-    unawaited(_engine.open(widget.document));
+    unawaited(_engine.open(widget.data));
   }
 
   @override
@@ -85,7 +83,7 @@ class _KumihanCanvasState extends State<KumihanCanvas> {
       if (_lastSize != Size.zero) {
         unawaited(_engine.resize(_lastSize.width, _lastSize.height));
       }
-      unawaited(_engine.open(widget.document));
+      unawaited(_engine.open(widget.data));
       return;
     }
 
@@ -93,8 +91,8 @@ class _KumihanCanvasState extends State<KumihanCanvas> {
       unawaited(_engine.updateLayout(widget.layout));
     }
 
-    if (!identical(oldWidget.document, widget.document)) {
-      unawaited(_engine.open(widget.document));
+    if (!identical(oldWidget.data, widget.data)) {
+      unawaited(_engine.open(widget.data));
     }
   }
 

@@ -3,7 +3,7 @@ import 'package:kumihan/kumihan.dart';
 
 void main() {
   test('compiles aozora ast into structured paragraphs', () {
-    const parser = AozoraAstParser();
+    const parser = AozoraParser();
     final ast = parser.parse(
       '青空文庫《あおぞらぶんこ》\n'
       '責［＃「責」に白丸傍点］\n'
@@ -11,7 +11,7 @@ void main() {
       '終わり',
     );
 
-    final compiled = compileAozoraAst(ast);
+    final compiled = compileAst(ast);
 
     expect(compiled.entries, hasLength(4));
     expect(compiled.entries[0], isA<AstCompiledParagraphEntry>());
@@ -30,7 +30,7 @@ void main() {
   test(
     'compiles frame and cancel annotations into legacy-equivalent markers',
     () {
-      const parser = AozoraAstParser();
+      const parser = AozoraParser();
       final ast = parser.parse(
         '［＃ここから罫囲み］\n'
         '囲み\n'
@@ -39,7 +39,7 @@ void main() {
         '語［＃「語」は罫囲み］',
       );
 
-      final compiled = compileAozoraAst(ast);
+      final compiled = compileAst(ast);
       final commands = compiled.entries.whereType<AstCommandEntry>().toList();
       final paragraphs = compiled.entries
           .whereType<AstCompiledParagraphEntry>()
@@ -95,10 +95,10 @@ void main() {
   test(
     'compiles inline tail bottom alignment into a non-breaking tail block',
     () {
-      const parser = AozoraAstParser();
+      const parser = AozoraParser();
       final ast = parser.parse('行の最後の部分だけ、地付き［＃地付き］地付き');
 
-      final compiled = compileAozoraAst(ast);
+      final compiled = compileAst(ast);
       final paragraphs = compiled.entries
           .whereType<AstCompiledParagraphEntry>()
           .toList();
@@ -126,8 +126,8 @@ void main() {
   );
 
   testWidgets('ast engine opens parsed ast and paginates', (tester) async {
-    final parser = const AozoraAstParser();
-    final engine = KumihanAstEngine(
+    final parser = const AozoraParser();
+    final engine = KumihanEngine(
       baseUri: null,
       initialPage: 0,
       layout: const KumihanLayoutData(),
@@ -136,7 +136,7 @@ void main() {
     );
 
     await engine.resize(400, 600);
-    await engine.openAst(parser.parse('［＃１字下げ］表示サンプルです。\n［＃改ページ］\n次のページです。'));
+    await engine.open(parser.parse('［＃１字下げ］表示サンプルです。\n［＃改ページ］\n次のページです。'));
 
     expect(engine.snapshot.totalPages, greaterThanOrEqualTo(2));
     expect(engine.snapshot.currentPage, 0);
@@ -145,8 +145,8 @@ void main() {
   testWidgets('ast engine emits start middle end markers for block frames', (
     tester,
   ) async {
-    final parser = const AozoraAstParser();
-    final engine = KumihanAstEngine(
+    final parser = const AozoraParser();
+    final engine = KumihanEngine(
       baseUri: null,
       initialPage: 0,
       layout: const KumihanLayoutData(),
@@ -155,7 +155,7 @@ void main() {
     );
 
     await engine.resize(400, 600);
-    await engine.openAst(
+    await engine.open(
       parser.parse(
         '［＃ここから罫囲み］\n'
         '囲み本文\n'
