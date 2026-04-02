@@ -53,7 +53,7 @@
 
 ## コードブロック
 
-```
+```dart
 void main() {
   print('kumihan');
 }
