@@ -144,6 +144,60 @@ void main() {
       );
     });
 
+    test('blockquote attribution drops leading dash and adds extra indent', () {
+      final compiled = compileAst(
+        const MarkdownParser().parse('> 雨ニモマケズ\n>\n> 風ニモマケズ\n>\n> ――宮沢賢治\n'),
+      );
+      final entries = compiled.entries;
+
+      final paragraphs = entries
+          .whereType<AstCompiledParagraphEntry>()
+          .toList();
+      expect(paragraphs, hasLength(4));
+      expect(paragraphs[2].text, '　');
+      expect(paragraphs[2].alignBottom, isFalse);
+      expect(paragraphs[2].suppressQuote, isFalse);
+      expect(paragraphs[3].text, '宮沢賢治');
+      expect(paragraphs[3].firstTopMargin, 0);
+      expect(paragraphs[3].restTopMargin, 0);
+      expect(paragraphs[3].alignBottom, isTrue);
+      expect(paragraphs[3].bottomMargin, 2);
+      expect(paragraphs[3].nonBreak, isTrue);
+      expect(paragraphs[3].suppressQuote, isTrue);
+      expect(
+        entries.indexWhere(
+          (entry) =>
+              entry is AstCommandEntry && entry.kind == AstCommandKind.quoteEnd,
+        ),
+        greaterThan(
+          entries.lastIndexWhere((entry) => entry is AstCompiledParagraphEntry),
+        ),
+      );
+    });
+
+    test('blockquote attribution detects labeled source lines', () {
+      final compiled = compileAst(
+        const MarkdownParser().parse(
+          '> これは本文です。\n'
+          '>\n'
+          '> 作者：太郎\n',
+        ),
+      );
+
+      final paragraphs = compiled.entries
+          .whereType<AstCompiledParagraphEntry>()
+          .toList();
+      expect(paragraphs, hasLength(3));
+      expect(paragraphs[1].text, '　');
+      expect(paragraphs[1].suppressQuote, isFalse);
+      expect(paragraphs[2].text, '太郎');
+      expect(paragraphs[2].firstTopMargin, 0);
+      expect(paragraphs[2].alignBottom, isTrue);
+      expect(paragraphs[2].bottomMargin, 2);
+      expect(paragraphs[2].nonBreak, isTrue);
+      expect(paragraphs[2].suppressQuote, isTrue);
+    });
+
     testWidgets('opens markdown with a rendered table', (tester) async {
       final engine = KumihanEngine(
         baseUri: null,

@@ -28,6 +28,7 @@ class AstCompiledParagraphEntry extends AstCompiledEntry {
     this.restTopMargin = 0,
     this.rubies = const <AstRubySpan>[],
     this.styles = const <AstStyleSpan>[],
+    this.suppressQuote = false,
     this.tcyRanges = const <AstRange>[],
   });
 
@@ -43,6 +44,7 @@ class AstCompiledParagraphEntry extends AstCompiledEntry {
   final List<AstParagraphExtra> extras;
   final List<AstRange> tcyRanges;
   final List<AstChapterIndex> chapterIndexes;
+  final bool suppressQuote;
 }
 
 class AstCompiledTableEntry extends AstCompiledEntry {
@@ -395,6 +397,22 @@ class _AstDocumentCompiler {
       final tailAlign = line[splitIndex] as AstBottomAlign;
       final tailTokens = line.sublist(splitIndex + 1);
 
+      if (leadingTokens.every((token) => token is AstBlockQuoteAttribution)) {
+        if (tailTokens.isNotEmpty) {
+          commands.add(
+            _compileParagraph(
+              <AstToken>[...leadingTokens, ...tailTokens],
+              nonBreak: true,
+              forcedAlignBottom: true,
+              forcedBottomMargin: tailAlign.kind == AstBottomAlignKind.bottom
+                  ? 0
+                  : tailAlign.offset.toDouble(),
+            ),
+          );
+        }
+        return commands;
+      }
+
       if (leadingTokens.isNotEmpty) {
         commands.add(_compileParagraph(leadingTokens, nonBreak: nonBreak));
       }
@@ -428,9 +446,15 @@ class _AstDocumentCompiler {
     var restTopMargin = 0.0;
     var bottomMargin = forcedBottomMargin;
     var alignBottom = forcedAlignBottom;
+    var suppressQuote = false;
 
     while (line.isNotEmpty) {
       final token = line.first;
+      if (token is AstBlockQuoteAttribution) {
+        suppressQuote = true;
+        line.removeAt(0);
+        continue;
+      }
       if (token case AstIndent(kind: AstIndentKind.singleLine)) {
         final margin = token.lineIndent.toDouble();
         firstTopMargin = margin;
@@ -466,6 +490,7 @@ class _AstDocumentCompiler {
       restTopMargin: restTopMargin,
       bottomMargin: bottomMargin,
       alignBottom: alignBottom,
+      suppressQuote: suppressQuote,
       styles: List<AstStyleSpan>.unmodifiable(builder.styles),
       inserts: List<AstInlineInsert>.unmodifiable(builder.inserts),
       rubies: List<AstRubySpan>.unmodifiable(builder.rubies),
@@ -643,6 +668,7 @@ class _AstDocumentCompiler {
       case AstCaption():
         builder.handleCaption(token);
       case AstBlockQuote():
+      case AstBlockQuoteAttribution():
         builder.handleUnsupported('［＃未対応の引用］');
       case AstLink():
         builder.handleLink(token);

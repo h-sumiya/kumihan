@@ -8,6 +8,18 @@ import '../document.dart';
 class MarkdownParser {
   const MarkdownParser();
 
+  static final RegExp _blockquoteAttributionPrefixPattern = RegExp(
+    r'^(?:'
+    r'[―—–-]{1,3}\s*'
+    r'|[（(]\s*'
+    r'|(?:出典|引用元|作者|作|著|訳|編|監修|原文|source|by|from)\s*[:：]\s*'
+    r')(.+?)'
+    r'(?:\s*[）)])?$',
+    caseSensitive: false,
+  );
+
+  static const List<AstToken> _quotedSpacerLine = <AstToken>[AstText('　')];
+
   Document parse(String input) {
     final normalized = input
         .replaceAll(RegExp(r'(\r\n|\r)'), '\n')
@@ -321,14 +333,104 @@ class MarkdownParser {
 
   List<AstToken> _blockquoteTokens(md.Element node) {
     final tokens = <AstToken>[const AstBlockQuote(AstRangeBoundary.blockStart)];
-    for (final child in node.children ?? const <md.Node>[]) {
-      _appendBlock(tokens, _parseBlock(child));
+    final children = node.children ?? const <md.Node>[];
+    final blocks = <List<AstToken>>[
+      for (final child in children) _parseBlock(child),
+    ];
+    _rewriteBlockquoteAttribution(blocks);
+    for (final block in blocks) {
+      _appendBlock(tokens, block);
     }
     if (tokens.isNotEmpty && tokens.last is! AstNewLine) {
       tokens.add(const AstNewLine());
     }
     tokens.add(const AstBlockQuote(AstRangeBoundary.blockEnd));
     return tokens;
+  }
+
+  void _rewriteBlockquoteAttribution(List<List<AstToken>> blocks) {
+    if (blocks.isEmpty) {
+      return;
+    }
+    final lastIndex = blocks.length - 1;
+    final text = _plainParagraphText(blocks[lastIndex]);
+    if (text == null) {
+      return;
+    }
+
+    final lines = text.split('\n');
+    if (lines.isEmpty) {
+      return;
+    }
+
+    final attribution = _normalizeBlockquoteAttribution(lines.last);
+    if (attribution == null) {
+      return;
+    }
+
+    if (lines.length >= 2) {
+      blocks[lastIndex] = _blockquoteBodyTokens(lines);
+      blocks.add(_quotedSpacerLine);
+      blocks.add(_blockquoteAttributionTailTokens(attribution));
+      return;
+    }
+
+    blocks[lastIndex] = _quotedSpacerLine;
+    blocks.add(_blockquoteAttributionTailTokens(attribution));
+  }
+
+  List<AstToken> _blockquoteBodyTokens(List<String> lines) {
+    final prefixLines = lines.sublist(0, lines.length - 2);
+    final anchorLine = lines[lines.length - 2];
+    final tokens = <AstToken>[];
+    if (prefixLines.isNotEmpty) {
+      tokens.addAll(_paragraphTokensFromText(prefixLines.join('\n')));
+      tokens.add(const AstNewLine());
+    }
+    if (anchorLine.isNotEmpty) {
+      tokens.add(AstText(anchorLine));
+    }
+    return tokens;
+  }
+
+  List<AstToken> _blockquoteAttributionTailTokens(String attribution) {
+    return <AstToken>[
+      const AstBlockQuoteAttribution(),
+      const AstBottomAlign(
+        kind: AstBottomAlignKind.raisedFromBottom,
+        scope: AstBottomAlignScope.inlineTail,
+        offset: 2,
+      ),
+      AstText(attribution),
+    ];
+  }
+
+  String? _plainParagraphText(List<AstToken> block) {
+    final buffer = StringBuffer();
+    for (final token in block) {
+      switch (token) {
+        case AstText(text: final text):
+          buffer.write(text);
+        case AstNewLine():
+          buffer.write('\n');
+        default:
+          return null;
+      }
+    }
+    return buffer.toString();
+  }
+
+  String? _normalizeBlockquoteAttribution(String line) {
+    final trimmed = line.trim();
+    if (trimmed.isEmpty) {
+      return null;
+    }
+    final match = _blockquoteAttributionPrefixPattern.firstMatch(trimmed);
+    if (match == null) {
+      return null;
+    }
+    final normalized = match.group(1)?.trim();
+    return normalized == null || normalized.isEmpty ? null : normalized;
   }
 
   List<AstToken> _parseInlineChildren(List<md.Node>? nodes) {

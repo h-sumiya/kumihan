@@ -316,6 +316,10 @@ class AstBlockQuote extends AstToken {
   const AstBlockQuote(this.boundary);
 }
 
+class AstBlockQuoteAttribution extends AstToken {
+  const AstBlockQuoteAttribution();
+}
+
 class AstLink extends AstAnnotation {
   final AstRangeBoundary boundary;
   final String? target;

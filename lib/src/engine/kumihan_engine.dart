@@ -512,7 +512,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
 
       var paragraph = entry.text;
       final extras = <AstParagraphExtra>[
-        if (_quoteDrawing)
+        if (_quoteDrawing && !entry.suppressQuote)
           const AstParagraphExtra(kind: AstParagraphExtraKind.quote),
         if (_frameDrawing &&
             !entry.extras.any(
