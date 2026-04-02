@@ -1321,6 +1321,15 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
         for (var index = start; index < end; index += 1) {
           atoms[index].setFontItalic();
         }
+      case AstStyleKind.textColor:
+        final colorValue = style.colorValue;
+        if (colorValue == null) {
+          return;
+        }
+        final color = Color(colorValue);
+        for (var index = start; index < end; index += 1) {
+          atoms[index].color = color;
+        }
       case AstStyleKind.caption:
         for (var index = start; index < end; index += 1) {
           atoms[index].color = fontColor;

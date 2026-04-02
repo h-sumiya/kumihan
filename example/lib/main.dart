@@ -3,7 +3,8 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:kumihan/kumihan.dart';
+import 'package:kumihan/kumihan.dart' hide Text;
+import 'package:kumihan_example/dsl_sample.dart';
 
 void main() {
   runApp(const KumihanExampleApp());
@@ -38,6 +39,15 @@ class _ReaderScreenState extends State<ReaderScreen> {
     totalPages: 0,
   );
 
+  void _loadDocument({required String fileName, required AstData document}) {
+    setState(() {
+      _fileName = fileName;
+      _document = document;
+      _snapshot = const KumihanSnapshot(currentPage: 0, totalPages: 0);
+      _pageController.text = '1';
+    });
+  }
+
   @override
   void dispose() {
     _controller.dispose();
@@ -59,13 +69,14 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
     final bytes = file.bytes ?? await File(file.path!).readAsBytes();
     final text = utf8.decode(bytes, allowMalformed: true);
+    _loadDocument(
+      fileName: file.name,
+      document: const AozoraParser().parse(text),
+    );
+  }
 
-    setState(() {
-      _fileName = file.name;
-      _document = const AozoraParser().parse(text);
-      _snapshot = const KumihanSnapshot(currentPage: 0, totalPages: 0);
-      _pageController.text = '1';
-    });
+  void _loadDslSample() {
+    _loadDocument(fileName: 'DSLサンプル', document: buildDslSampleDocument());
   }
 
   bool get _canNavigate => _snapshot.totalPages > 0;
@@ -141,6 +152,11 @@ class _ReaderScreenState extends State<ReaderScreen> {
                 ElevatedButton(
                   onPressed: _pickFile,
                   child: const Text('ファイルを選択'),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton(
+                  onPressed: _loadDslSample,
+                  child: const Text('DSL'),
                 ),
                 const SizedBox(width: 12),
                 Expanded(child: Text(_fileName ?? '未選択')),

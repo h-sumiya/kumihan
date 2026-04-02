@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/painting.dart';
 import 'package:kumihan/kumihan.dart';
 
 void main() {
@@ -140,5 +141,25 @@ void main() {
 
     expect(engine.snapshot.totalPages, greaterThanOrEqualTo(2));
     expect(engine.snapshot.currentPage, 0);
+  });
+
+  test('compiles text color style into paragraph style spans', () {
+    final compiled = compileAst(
+      ast([
+        '通常',
+        TextColor(color: const Color(0xff1e88e5), children: ['青']),
+        '文字',
+      ]),
+    );
+
+    final paragraph = compiled.entries.single as AstCompiledParagraphEntry;
+    final span = paragraph.styles.singleWhere(
+      (style) => style.kind == AstStyleKind.textColor,
+    );
+
+    expect(paragraph.text, '通常青文字');
+    expect(span.startIndex, 2);
+    expect(span.endIndex, 3);
+    expect(span.colorValue, const Color(0xff1e88e5).toARGB32());
   });
 }

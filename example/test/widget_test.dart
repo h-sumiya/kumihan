@@ -10,6 +10,7 @@ void main() {
 
     expect(find.text('kumihan example'), findsOneWidget);
     expect(find.text('ファイルを選択'), findsOneWidget);
+    expect(find.text('DSL'), findsOneWidget);
     expect(find.byType(MaterialApp), findsOneWidget);
   });
 }

@@ -1,4 +1,5 @@
 import 'ast.dart';
+import 'package:flutter/painting.dart';
 
 typedef KumihanAstDslChildren = List<Object>;
 
@@ -21,6 +22,10 @@ class LineBreak implements KumihanAstDslNode {
       inWarichu ? const AstWarichuNewLine() : const AstNewLine(),
     ];
   }
+}
+
+class Br extends LineBreak {
+  const Br();
 }
 
 class WarichuBreak implements KumihanAstDslNode {
@@ -92,6 +97,143 @@ class Note implements KumihanAstDslNode {
   }
 }
 
+class Text implements KumihanAstDslNode {
+  final String? value;
+  final KumihanAstDslChildren children;
+  final Color? color;
+  final bool bold;
+  final bool italic;
+  final int? size;
+  final KumihanAstDslChildren? ruby;
+  final AstTextSide rubySide;
+  final AstBoutenKind? bouten;
+  final AstBosenKind? border;
+  final bool tatechuyoko;
+  final bool block;
+
+  const Text({
+    this.value,
+    this.children = const <Object>[],
+    this.color,
+    this.bold = false,
+    this.italic = false,
+    this.size,
+    this.ruby,
+    this.rubySide = AstTextSide.right,
+    this.bouten,
+    this.border,
+    this.tatechuyoko = false,
+    this.block = false,
+  }) : assert(
+         value != null || children.length > 0,
+         'Text requires value or children.',
+       );
+
+  KumihanAstDslChildren get _content {
+    return <Object>[if (value != null) value!, ...children];
+  }
+
+  @override
+  AstData toAst({bool inWarichu = false}) {
+    AstData tokens = _AstDslBuilder.flatten(_content, inWarichu: inWarichu);
+
+    if (tatechuyoko) {
+      tokens = _wrapTokens(
+        start: const AstInlineDecoration(
+          boundary: AstRangeBoundary.start,
+          kind: AstInlineDecorationKind.tatechuyoko,
+        ),
+        children: tokens,
+        end: const AstInlineDecoration(
+          boundary: AstRangeBoundary.end,
+          kind: AstInlineDecorationKind.tatechuyoko,
+        ),
+      );
+    }
+
+    if (size case final steps?) {
+      final boundary = block
+          ? AstRangeBoundary.blockStart
+          : AstRangeBoundary.start;
+      final endBoundary = block
+          ? AstRangeBoundary.blockEnd
+          : AstRangeBoundary.end;
+      if (steps > 0) {
+        final style = AstFontScaleStyle(
+          direction: AstFontScaleDirection.larger,
+          steps: steps,
+        );
+        tokens = _wrapTokens(
+          start: AstStyledText(boundary: boundary, style: style),
+          children: tokens,
+          end: AstStyledText(boundary: endBoundary, style: style),
+        );
+      } else if (steps < 0) {
+        final style = AstFontScaleStyle(
+          direction: AstFontScaleDirection.smaller,
+          steps: -steps,
+        );
+        tokens = _wrapTokens(
+          start: AstStyledText(boundary: boundary, style: style),
+          children: tokens,
+          end: AstStyledText(boundary: endBoundary, style: style),
+        );
+      }
+    }
+
+    if (italic) {
+      tokens = _wrapStyledTokens(
+        tokens,
+        style: const AstFontStyleAnnotation(AstFontStyle.italic),
+        block: block,
+      );
+    }
+
+    if (bold) {
+      tokens = _wrapStyledTokens(
+        tokens,
+        style: const AstFontStyleAnnotation(AstFontStyle.bold),
+        block: block,
+      );
+    }
+
+    if (border case final kind?) {
+      tokens = _wrapStyledTokens(
+        tokens,
+        style: AstBosenStyle(kind: kind),
+        block: block,
+      );
+    }
+
+    if (bouten case final kind?) {
+      tokens = _wrapStyledTokens(
+        tokens,
+        style: AstBoutenStyle(kind: kind),
+        block: block,
+      );
+    }
+
+    if (color case final textColor?) {
+      tokens = _wrapStyledTokens(
+        tokens,
+        style: AstTextColorStyle(textColor.toARGB32()),
+        block: block,
+      );
+    }
+
+    if (ruby case final rubyContent?) {
+      tokens = _wrapAttachedTextTokens(
+        children: tokens,
+        role: AstAttachedTextRole.ruby,
+        content: rubyContent,
+        side: rubySide,
+      );
+    }
+
+    return tokens;
+  }
+}
+
 class Styled implements KumihanAstDslNode {
   final AstTextStyle style;
   final KumihanAstDslChildren children;
@@ -146,6 +288,11 @@ class FontScale extends Styled {
           steps: steps,
         ),
       );
+}
+
+class TextColor extends Styled {
+  TextColor({required Color color, required super.children, super.block})
+    : super(style: AstTextColorStyle(color.toARGB32()));
 }
 
 class Bouten extends Styled {
@@ -533,11 +680,19 @@ AstData _wrapBoundary({
   required AstToken end,
   required bool inWarichu,
 }) {
-  return <AstToken>[
-    start,
-    ..._AstDslBuilder.flatten(children, inWarichu: inWarichu),
-    end,
-  ];
+  return _wrapTokens(
+    start: start,
+    children: _AstDslBuilder.flatten(children, inWarichu: inWarichu),
+    end: end,
+  );
+}
+
+AstData _wrapTokens({
+  required AstToken start,
+  required AstData children,
+  required AstToken end,
+}) {
+  return <AstToken>[start, ...children, end];
 }
 
 AstData _wrapAttachedText({
@@ -546,9 +701,23 @@ AstData _wrapAttachedText({
   required KumihanAstDslChildren content,
   required AstTextSide side,
 }) {
+  return _wrapAttachedTextTokens(
+    children: _AstDslBuilder.flatten(children, inWarichu: false),
+    role: role,
+    content: content,
+    side: side,
+  );
+}
+
+AstData _wrapAttachedTextTokens({
+  required AstData children,
+  required AstAttachedTextRole role,
+  required KumihanAstDslChildren content,
+  required AstTextSide side,
+}) {
   return <AstToken>[
     AstAttachedText(boundary: AstRangeBoundary.start, role: role, side: side),
-    ..._AstDslBuilder.flatten(children, inWarichu: false),
+    ...children,
     AstAttachedText(
       boundary: AstRangeBoundary.end,
       role: role,
@@ -556,4 +725,22 @@ AstData _wrapAttachedText({
       content: _AstDslBuilder.inline(content),
     ),
   ];
+}
+
+AstData _wrapStyledTokens(
+  AstData children, {
+  required AstTextStyle style,
+  required bool block,
+}) {
+  return _wrapTokens(
+    start: AstStyledText(
+      boundary: block ? AstRangeBoundary.blockStart : AstRangeBoundary.start,
+      style: style,
+    ),
+    children: children,
+    end: AstStyledText(
+      boundary: block ? AstRangeBoundary.blockEnd : AstRangeBoundary.end,
+      style: style,
+    ),
+  );
 }

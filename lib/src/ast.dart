@@ -231,6 +231,12 @@ class AstFontScaleStyle extends AstTextStyle {
   const AstFontScaleStyle({required this.direction, required this.steps});
 }
 
+class AstTextColorStyle extends AstTextStyle {
+  final int colorValue;
+
+  const AstTextColorStyle(this.colorValue);
+}
+
 class AstStyledText extends AstAnnotation {
   /*
   傍点

@@ -54,6 +54,19 @@ KumihanCanvas(
 )
 ```
 
+DSL 経由で一部分だけ色を変えることもできる。
+
+```dart
+final document = ast([
+  '通常の本文と',
+  TextColor(
+    color: const Color(0xffd32f2f),
+    children: ['赤文字'],
+  ),
+  'です。',
+]);
+```
+
 ## インストール
 
 ```yaml

@@ -100,6 +100,7 @@ enum AstStyleKind {
   headingSmall,
   bold,
   italic,
+  textColor,
   caption,
   yokogumi,
   kaeri,
@@ -118,6 +119,7 @@ class AstStyleSpan {
     required this.endIndex,
     required this.kind,
     required this.startIndex,
+    this.colorValue,
     this.fontScaleDirection,
     this.fontScaleSteps,
   });
@@ -125,6 +127,7 @@ class AstStyleSpan {
   final int startIndex;
   final int endIndex;
   final AstStyleKind kind;
+  final int? colorValue;
   final AstFontScaleDirection? fontScaleDirection;
   final int? fontScaleSteps;
 }
@@ -1164,6 +1167,15 @@ class _ParagraphBuilder {
             fontScaleSteps: steps,
           ),
         );
+      case AstTextColorStyle(colorValue: final colorValue):
+        styles.add(
+          AstStyleSpan(
+            startIndex: startIndex,
+            endIndex: endIndex,
+            kind: AstStyleKind.textColor,
+            colorValue: colorValue,
+          ),
+        );
     }
   }
 
@@ -1236,6 +1248,7 @@ class _ParagraphBuilder {
             ? span.endIndex + delta
             : span.endIndex,
         kind: span.kind,
+        colorValue: span.colorValue,
         fontScaleDirection: span.fontScaleDirection,
         fontScaleSteps: span.fontScaleSteps,
       );
@@ -1273,6 +1286,7 @@ class _ParagraphBuilder {
                     ? span.endIndex + delta
                     : span.endIndex,
                 kind: span.kind,
+                colorValue: span.colorValue,
                 fontScaleDirection: span.fontScaleDirection,
                 fontScaleSteps: span.fontScaleSteps,
               ),
