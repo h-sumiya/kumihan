@@ -48,6 +48,7 @@ extension on KumihanEngine {
         }
 
         line.x = x;
+        _recordSelectableGlyphs(line, x, y, vertical);
 
         for (final attachment in line.attachments) {
           _drawLineAttachment(
@@ -70,6 +71,77 @@ extension on KumihanEngine {
     }
 
     canvas.restore();
+  }
+
+  void _recordSelectableGlyphs(
+    LayoutTextLine line,
+    double x,
+    double y,
+    bool vertical,
+  ) {
+    if (line.start >= line.end || line.start >= line.block.atom.length) {
+      return;
+    }
+
+    for (var atomIndex = line.start; atomIndex < line.end; atomIndex += 1) {
+      final atomText = line.block.getAtomText(atomIndex);
+      final glyphs = _visibleGlyphs(atomText);
+      if (glyphs.isEmpty) {
+        continue;
+      }
+
+      final atomExtent = line.block.getAtomHeight(atomIndex);
+      if (atomExtent <= 0) {
+        continue;
+      }
+
+      final glyphExtent = atomExtent / glyphs.length;
+      final atomOffset = line.getAtomY(atomIndex);
+
+      for (var index = 0; index < glyphs.length; index += 1) {
+        final rect = vertical
+            ? Rect.fromLTWH(
+                x,
+                y + line.y + atomOffset + glyphExtent * index,
+                line.width,
+                glyphExtent,
+              )
+            : Rect.fromLTWH(
+                y + line.y + atomOffset + glyphExtent * index,
+                x,
+                glyphExtent,
+                line.width,
+              );
+        _selectableGlyphs.add(
+          KumihanSelectableGlyph(
+            order: _selectableGlyphOrder++,
+            rect: rect,
+            text: glyphs[index],
+          ),
+        );
+      }
+    }
+  }
+
+  List<String> _visibleGlyphs(String text) {
+    if (text.trim().isEmpty) {
+      return const <String>[];
+    }
+
+    final glyphs = <String>[];
+    for (final rune in text.runes) {
+      switch (rune) {
+        case 0x2060:
+        case 0xfffc:
+        case 0x200b:
+        case 0x200c:
+        case 0x200d:
+        case 0xfeff:
+          continue;
+      }
+      glyphs.add(String.fromCharCode(rune));
+    }
+    return glyphs;
   }
 
   void _drawLineAttachment(

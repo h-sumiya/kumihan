@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kumihan/kumihan.dart';
@@ -24,5 +26,32 @@ void main() {
 
     expect(controller.snapshot.totalPages, greaterThanOrEqualTo(2));
     expect(controller.snapshot.currentPage, 0);
+  });
+
+  test('selectable text contains only body text without ruby', () async {
+    final engine = KumihanEngine(
+      baseUri: null,
+      initialPage: 0,
+      onInvalidate: () {},
+      onSnapshot: (_) {},
+    );
+
+    await engine.resize(400, 600);
+    await engine.open(const AozoraParser().parse('青空文庫《あおぞらぶんこ》です。'));
+
+    final recorder = PictureRecorder();
+    final canvas = Canvas(recorder);
+    engine.paint(canvas);
+    recorder.endRecording();
+
+    expect(engine.selectableGlyphs, isNotEmpty);
+    expect(
+      engine.selectableGlyphs.map((item) => item.text).join().contains('青空文庫です。'),
+      isTrue,
+    );
+    expect(
+      engine.selectableGlyphs.any((item) => item.text.contains('あおぞらぶんこ')),
+      isFalse,
+    );
   });
 }

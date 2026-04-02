@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/foundation.dart';
 
 const double defaultKumihanFontSize = 18;
@@ -35,4 +37,19 @@ class KumihanSnapshot {
         currentPage: currentPage ?? this.currentPage,
         totalPages: totalPages ?? this.totalPages,
       );
+}
+
+@immutable
+class KumihanSelectableGlyph {
+  const KumihanSelectableGlyph({
+    required this.order,
+    required this.rect,
+    required this.text,
+  });
+
+  final int order;
+  final Rect rect;
+  final String text;
+
+  bool hitTest(Offset position) => rect.contains(position);
 }

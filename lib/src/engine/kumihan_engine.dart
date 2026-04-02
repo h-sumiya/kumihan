@@ -171,6 +171,8 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
   final Map<String, Future<ui.Image?>> _imageTasks =
       <String, Future<ui.Image?>>{};
   List<ClickableArea> _clickable = <ClickableArea>[];
+  List<KumihanSelectableGlyph> _selectableGlyphs = <KumihanSelectableGlyph>[];
+  int _selectableGlyphOrder = 0;
 
   double _width = 1;
   double _height = 1;
@@ -216,6 +218,9 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
     currentPage: math.max(_currentPageNo, 0),
     totalPages: _contentPageCount,
   );
+
+  List<KumihanSelectableGlyph> get selectableGlyphs =>
+      List<KumihanSelectableGlyph>.unmodifiable(_selectableGlyphs);
 
   @override
   MeasuredText layoutText(LayoutAtom atom, String text, Color color) {
@@ -451,6 +456,8 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
     _chapterList.clear();
     _anchorList.clear();
     _clickable = <ClickableArea>[];
+    _selectableGlyphs = <KumihanSelectableGlyph>[];
+    _selectableGlyphOrder = 0;
     _currentPageWidth = -_lineSpace;
     _currentPageNo = -1;
     _resetParagraphState();
@@ -1698,6 +1705,8 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
 
     _currentPageNo = pageNo;
     _clickable = <ClickableArea>[];
+    _selectableGlyphs = <KumihanSelectableGlyph>[];
+    _selectableGlyphOrder = 0;
     onSnapshot(snapshot);
     onInvalidate();
   }
@@ -1708,6 +1717,8 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
     }
 
     _clickable = <ClickableArea>[];
+    _selectableGlyphs = <KumihanSelectableGlyph>[];
+    _selectableGlyphOrder = 0;
     _drawPaperSurface(canvas, Rect.fromLTWH(0, 0, _width, _height));
 
     final pageNo = _currentPageNo < 0 ? 0 : _currentPageNo;
