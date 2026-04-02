@@ -101,6 +101,11 @@ void main() {
         paragraphs[0].styles.any((style) => style.kind == AstStyleKind.bold),
         isTrue,
       );
+      final boldSpan = paragraphs[0].styles.singleWhere(
+        (style) => style.kind == AstStyleKind.bold,
+      );
+      expect(boldSpan.startIndex, 2);
+      expect(boldSpan.endIndex, 3);
       expect(
         paragraphs[0].styles.any(
           (style) => style.kind == AstStyleKind.yokogumi,

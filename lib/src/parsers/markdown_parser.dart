@@ -214,12 +214,6 @@ class MarkdownParser {
   }
 
   void _prependPrefix(List<AstToken> tokens, String prefix) {
-    final firstTextIndex = tokens.indexWhere((token) => token is AstText);
-    if (firstTextIndex >= 0) {
-      final text = tokens[firstTextIndex] as AstText;
-      tokens[firstTextIndex] = AstText(prefix + text.text);
-      return;
-    }
     tokens.insert(0, AstText(prefix));
   }
 
