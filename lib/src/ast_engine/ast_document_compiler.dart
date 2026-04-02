@@ -353,10 +353,49 @@ class _AstDocumentCompiler {
       return commands;
     }
 
+    final splitIndex = line.indexWhere(
+      (token) =>
+          token is AozoraBottomAlign &&
+          token.scope == AozoraBottomAlignScope.inlineTail,
+    );
+    if (splitIndex >= 0) {
+      final leadingTokens = line.sublist(0, splitIndex);
+      final tailAlign = line[splitIndex] as AozoraBottomAlign;
+      final tailTokens = line.sublist(splitIndex + 1);
+
+      if (leadingTokens.isNotEmpty) {
+        commands.add(_compileParagraph(leadingTokens, nonBreak: nonBreak));
+      }
+      if (tailTokens.isNotEmpty) {
+        commands.add(
+          _compileParagraph(
+            tailTokens,
+            nonBreak: true,
+            forcedAlignBottom: true,
+            forcedBottomMargin: tailAlign.kind == AozoraBottomAlignKind.bottom
+                ? 0
+                : tailAlign.offset.toDouble(),
+          ),
+        );
+      }
+      return commands;
+    }
+
+    commands.add(_compileParagraph(line, nonBreak: nonBreak));
+    return commands;
+  }
+
+  AstCompiledParagraphEntry _compileParagraph(
+    List<AozoraToken> sourceLine, {
+    required bool nonBreak,
+    bool forcedAlignBottom = false,
+    double forcedBottomMargin = 0,
+  }) {
+    final line = List<AozoraToken>.from(sourceLine);
     var firstTopMargin = 0.0;
     var restTopMargin = 0.0;
-    var bottomMargin = 0.0;
-    var alignBottom = false;
+    var bottomMargin = forcedBottomMargin;
+    var alignBottom = forcedAlignBottom;
 
     while (line.isNotEmpty) {
       final token = line.first;
@@ -367,11 +406,11 @@ class _AstDocumentCompiler {
         line.removeAt(0);
         continue;
       }
-      if (token case AozoraBottomAlign(
-        scope: AozoraBottomAlignScope.singleLine,
-        kind: final kind,
-        offset: final offset,
-      )) {
+      if (!forcedAlignBottom &&
+          token is AozoraBottomAlign &&
+          token.scope == AozoraBottomAlignScope.singleLine) {
+        final kind = token.kind;
+        final offset = token.offset;
         alignBottom = true;
         bottomMargin = kind == AozoraBottomAlignKind.bottom
             ? 0
@@ -388,25 +427,22 @@ class _AstDocumentCompiler {
     }
     builder.applyAutoLinks();
 
-    commands.add(
-      AstCompiledParagraphEntry(
-        text: builder.text.isEmpty ? ' ' : builder.text,
-        nonBreak: nonBreak,
-        firstTopMargin: firstTopMargin,
-        restTopMargin: restTopMargin,
-        bottomMargin: bottomMargin,
-        alignBottom: alignBottom,
-        styles: List<AstStyleSpan>.unmodifiable(builder.styles),
-        inserts: List<AstInlineInsert>.unmodifiable(builder.inserts),
-        rubies: List<AstRubySpan>.unmodifiable(builder.rubies),
-        extras: List<AstParagraphExtra>.unmodifiable(builder.extras),
-        tcyRanges: List<AstRange>.unmodifiable(builder.tcyRanges),
-        chapterIndexes: List<AstChapterIndex>.unmodifiable(
-          builder.chapterIndexes,
-        ),
+    return AstCompiledParagraphEntry(
+      text: builder.text.isEmpty ? ' ' : builder.text,
+      nonBreak: nonBreak,
+      firstTopMargin: firstTopMargin,
+      restTopMargin: restTopMargin,
+      bottomMargin: bottomMargin,
+      alignBottom: alignBottom,
+      styles: List<AstStyleSpan>.unmodifiable(builder.styles),
+      inserts: List<AstInlineInsert>.unmodifiable(builder.inserts),
+      rubies: List<AstRubySpan>.unmodifiable(builder.rubies),
+      extras: List<AstParagraphExtra>.unmodifiable(builder.extras),
+      tcyRanges: List<AstRange>.unmodifiable(builder.tcyRanges),
+      chapterIndexes: List<AstChapterIndex>.unmodifiable(
+        builder.chapterIndexes,
       ),
     );
-    return commands;
   }
 
   AstCompiledEntry? _consumeStandaloneCommand(AozoraToken token) {

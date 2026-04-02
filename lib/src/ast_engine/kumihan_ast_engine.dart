@@ -1100,7 +1100,7 @@ class KumihanAstEngine implements LayoutEnvironment, KumihanViewport {
           line.attachments.add(
             SpanMarker(
               bottom: _frameBottom,
-              kind: LayoutSpanMarkerKind.frameMiddle,
+              kind: _spanMarkerKind(extra),
               markType: '',
               top: _frameTop,
             ),

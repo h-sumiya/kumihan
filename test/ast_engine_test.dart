@@ -92,6 +92,39 @@ void main() {
     },
   );
 
+  test(
+    'compiles inline tail bottom alignment into a non-breaking tail block',
+    () {
+      const parser = AozoraAstParser();
+      final ast = parser.parse('行の最後の部分だけ、地付き［＃地付き］地付き');
+
+      final compiled = compileAozoraAst(ast);
+      final paragraphs = compiled.entries
+          .whereType<AstCompiledParagraphEntry>()
+          .toList();
+
+      expect(paragraphs, hasLength(2));
+      expect(paragraphs[0].text, '行の最後の部分だけ、地付き');
+      expect(paragraphs[0].alignBottom, isFalse);
+      expect(paragraphs[1].text, '地付き');
+      expect(paragraphs[1].alignBottom, isTrue);
+      expect(paragraphs[1].bottomMargin, 0);
+      expect(paragraphs[1].nonBreak, isTrue);
+      expect(
+        paragraphs.expand((entry) => entry.extras),
+        isNot(
+          contains(
+            isA<AstParagraphExtra>().having(
+              (extra) => extra.kind,
+              'kind',
+              AstParagraphExtraKind.note,
+            ),
+          ),
+        ),
+      );
+    },
+  );
+
   testWidgets('ast engine opens parsed ast and paginates', (tester) async {
     final parser = const AozoraAstParser();
     final engine = KumihanAstEngine(
@@ -107,5 +140,39 @@ void main() {
 
     expect(engine.snapshot.totalPages, greaterThanOrEqualTo(2));
     expect(engine.snapshot.currentPage, 0);
+  });
+
+  testWidgets('ast engine emits start middle end markers for block frames', (
+    tester,
+  ) async {
+    final parser = const AozoraAstParser();
+    final engine = KumihanAstEngine(
+      baseUri: null,
+      initialPage: 0,
+      layout: const KumihanLayoutData(),
+      onInvalidate: () {},
+      onSnapshot: (_) {},
+    );
+
+    await engine.resize(400, 600);
+    await engine.openAst(
+      parser.parse(
+        '［＃ここから罫囲み］\n'
+        '囲み本文\n'
+        '［＃ここで罫囲み終わり］',
+      ),
+    );
+
+    final roles =
+        engine.renderTrace?.commands
+            .where((command) => command.kind == 'marker')
+            .map((command) => command.role)
+            .whereType<String>()
+            .toList() ??
+        const <String>[];
+
+    expect(roles, contains('frameStart'));
+    expect(roles, contains('frameMiddle'));
+    expect(roles, contains('frameEnd'));
   });
 }
