@@ -310,6 +310,12 @@ class AstCaption extends AstAnnotation {
   const AstCaption(this.boundary);
 }
 
+class AstBlockQuote extends AstToken {
+  final AstRangeBoundary boundary;
+
+  const AstBlockQuote(this.boundary);
+}
+
 class AstLink extends AstAnnotation {
   final AstRangeBoundary boundary;
   final String? target;

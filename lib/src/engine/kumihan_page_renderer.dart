@@ -226,7 +226,51 @@ extension on KumihanEngine {
           y,
           vertical,
         );
+      case QuoteMarker():
+        _drawQuoteMarker(canvas, line, lineIndex, x, y, vertical);
     }
+  }
+
+  bool _lineGroupHasQuote(int lineIndex) {
+    if (lineIndex < 0 || lineIndex >= _lines.length) {
+      return false;
+    }
+    return _lines[lineIndex].lines.any(
+      (line) => line.attachments.any((attachment) => attachment is QuoteMarker),
+    );
+  }
+
+  void _drawQuoteMarker(
+    ui.Canvas canvas,
+    LayoutTextLine line,
+    int lineIndex,
+    double x,
+    double y,
+    bool vertical,
+  ) {
+    final thickness = (_fontSize * 0.18).clamp(3.0, 6.0);
+    final paint = Paint()
+      ..color = fontColor.withAlpha(112)
+      ..strokeWidth = thickness
+      ..strokeCap = StrokeCap.butt
+      ..style = PaintingStyle.stroke;
+    final hasPrevious = _lineGroupHasQuote(lineIndex - 1);
+    final hasNext = _lineGroupHasQuote(lineIndex + 1);
+    final halfGap = _lineSpace / 2;
+    final center = _fontSize / 2;
+
+    if (vertical) {
+      final top = y + line.y - center;
+      final left = x - (hasNext ? halfGap : 0);
+      final right = x + line.width + (hasPrevious ? halfGap : 0);
+      canvas.drawLine(Offset(left, top), Offset(right, top), paint);
+      return;
+    }
+
+    final left = y + line.y - center;
+    final top = x - (hasPrevious ? halfGap : 0);
+    final bottom = x + line.width + (hasNext ? halfGap : 0);
+    canvas.drawLine(Offset(left, top), Offset(left, bottom), paint);
   }
 
   void _drawInlineDecorationAttachment(

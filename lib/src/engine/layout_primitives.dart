@@ -425,6 +425,10 @@ class WarichuMarker extends LayoutLineMark {
   final LayoutTextLine? upperLine;
 }
 
+class QuoteMarker extends LayoutLineMark {
+  const QuoteMarker();
+}
+
 class LayoutTextLine {
   LayoutTextLine(this.block, this.start, this.end, this.width, this.textWidth);
 

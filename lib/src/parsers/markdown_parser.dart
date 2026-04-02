@@ -57,7 +57,7 @@ class MarkdownParser {
       case 'p':
         return _paragraphTokensFromInlines(_parseInlineChildren(node.children));
       case 'blockquote':
-        return _paragraphTokensFromText(_blockquoteText(node));
+        return _blockquoteTokens(node);
       case 'ul':
         return _listTokens(node, ordered: false);
       case 'ol':
@@ -141,7 +141,9 @@ class MarkdownParser {
       if (pendingInlineNodes.isEmpty) {
         return;
       }
-      appendBody(_paragraphTokensFromInlines(_parseInlineChildren(pendingInlineNodes)));
+      appendBody(
+        _paragraphTokensFromInlines(_parseInlineChildren(pendingInlineNodes)),
+      );
       pendingInlineNodes.clear();
     }
 
@@ -163,7 +165,9 @@ class MarkdownParser {
       }
       if (child.tag == 'p') {
         flushInlineNodes();
-        appendBody(_paragraphTokensFromInlines(_parseInlineChildren(child.children)));
+        appendBody(
+          _paragraphTokensFromInlines(_parseInlineChildren(child.children)),
+        );
         continue;
       }
       pendingInlineNodes.add(child);
@@ -228,15 +232,19 @@ class MarkdownParser {
       if (index > 0) {
         tokens.add(const AstNewLine());
       }
-      tokens.add(const AstInlineDecoration(
-        boundary: AstRangeBoundary.start,
-        kind: AstInlineDecorationKind.yokogumi,
-      ));
+      tokens.add(
+        const AstInlineDecoration(
+          boundary: AstRangeBoundary.start,
+          kind: AstInlineDecorationKind.yokogumi,
+        ),
+      );
       tokens.addAll(_highlightCodeLine(lines[index], language: language));
-      tokens.add(const AstInlineDecoration(
-        boundary: AstRangeBoundary.end,
-        kind: AstInlineDecorationKind.yokogumi,
-      ));
+      tokens.add(
+        const AstInlineDecoration(
+          boundary: AstRangeBoundary.end,
+          kind: AstInlineDecorationKind.yokogumi,
+        ),
+      );
     }
 
     tokens.add(const AstNewLine());
@@ -265,7 +273,9 @@ class MarkdownParser {
             final text = cell.textContent.trim();
             cells.add(
               AstTableCell(
-                content: text.isEmpty ? const <AstInlineNode>[] : <AstInlineNode>[AstText(text)],
+                content: text.isEmpty
+                    ? const <AstInlineNode>[]
+                    : <AstInlineNode>[AstText(text)],
                 alignment: _tableAlignment(cell.attributes['align']),
               ),
             );
@@ -279,7 +289,9 @@ class MarkdownParser {
     if (rows.isEmpty) {
       return const <AstToken>[];
     }
-    return <AstToken>[AstTable(rows: rows, headerRowCount: _headerRowCount(table))];
+    return <AstToken>[
+      AstTable(rows: rows, headerRowCount: _headerRowCount(table)),
+    ];
   }
 
   List<AstToken> _paragraphTokensFromText(String text) {
@@ -307,6 +319,18 @@ class MarkdownParser {
     return children;
   }
 
+  List<AstToken> _blockquoteTokens(md.Element node) {
+    final tokens = <AstToken>[const AstBlockQuote(AstRangeBoundary.blockStart)];
+    for (final child in node.children ?? const <md.Node>[]) {
+      _appendBlock(tokens, _parseBlock(child));
+    }
+    if (tokens.isNotEmpty && tokens.last is! AstNewLine) {
+      tokens.add(const AstNewLine());
+    }
+    tokens.add(const AstBlockQuote(AstRangeBoundary.blockEnd));
+    return tokens;
+  }
+
   List<AstToken> _parseInlineChildren(List<md.Node>? nodes) {
     if (nodes == null || nodes.isEmpty) {
       return const <AstToken>[];
@@ -320,7 +344,9 @@ class MarkdownParser {
 
   List<AstToken> _parseInline(md.Node node) {
     if (node is md.Text) {
-      return node.text.isEmpty ? const <AstToken>[] : <AstToken>[AstText(node.text)];
+      return node.text.isEmpty
+          ? const <AstToken>[]
+          : <AstToken>[AstText(node.text)];
     }
     if (node is! md.Element) {
       return const <AstToken>[];
@@ -455,11 +481,21 @@ class MarkdownParser {
     for (final segment in segments) {
       final color = _colorForHighlightScope(segment.scopes);
       if (color != null) {
-        tokens.add(AstStyledText(boundary: AstRangeBoundary.start, style: AstTextColorStyle(color.toARGB32())));
+        tokens.add(
+          AstStyledText(
+            boundary: AstRangeBoundary.start,
+            style: AstTextColorStyle(color.toARGB32()),
+          ),
+        );
       }
       tokens.add(AstText(segment.text));
       if (color != null) {
-        tokens.add(AstStyledText(boundary: AstRangeBoundary.end, style: AstTextColorStyle(color.toARGB32())));
+        tokens.add(
+          AstStyledText(
+            boundary: AstRangeBoundary.end,
+            style: AstTextColorStyle(color.toARGB32()),
+          ),
+        );
       }
     }
     return _mergeAdjacentText(tokens);
@@ -477,8 +513,7 @@ class MarkdownParser {
 
     final value = node.value;
     if (value != null && value.isNotEmpty) {
-      if (output.isNotEmpty &&
-          _sameScopes(output.last.scopes, nextScopes)) {
+      if (output.isNotEmpty && _sameScopes(output.last.scopes, nextScopes)) {
         output[output.length - 1] = _HighlightedSegment(
           text: output.last.text + value,
           scopes: output.last.scopes,
@@ -545,9 +580,7 @@ class MarkdownParser {
   List<AstToken> _mergeAdjacentText(List<AstToken> tokens) {
     final merged = <AstToken>[];
     for (final token in tokens) {
-      if (token is AstText &&
-          merged.isNotEmpty &&
-          merged.last is AstText) {
+      if (token is AstText && merged.isNotEmpty && merged.last is AstText) {
         final previous = merged.removeLast() as AstText;
         merged.add(AstText(previous.text + token.text));
         continue;
@@ -555,20 +588,6 @@ class MarkdownParser {
       merged.add(token);
     }
     return merged;
-  }
-
-  String _blockquoteText(md.Element node) {
-    final lines = <String>[];
-    for (final child in node.children ?? const <md.Node>[]) {
-      final text = child.textContent.trim();
-      if (text.isEmpty) {
-        continue;
-      }
-      for (final line in text.split('\n')) {
-        lines.add('> $line');
-      }
-    }
-    return lines.join('\n');
   }
 
   AstHeadingLevel _headingLevel(String tag) {
@@ -636,7 +655,11 @@ class MarkdownParser {
     }
     const numerals = <String>['', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
     const units = <String>['', '十', '百', '千'];
-    final digits = value.toString().split('').map(int.parse).toList(growable: false);
+    final digits = value
+        .toString()
+        .split('')
+        .map(int.parse)
+        .toList(growable: false);
     final buffer = StringBuffer();
     for (var index = 0; index < digits.length; index += 1) {
       final digit = digits[index];

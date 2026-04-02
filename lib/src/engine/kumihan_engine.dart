@@ -202,6 +202,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
   double _bottomMargin = 0;
   bool _alignBottom = false;
   bool _frameDrawing = false;
+  bool _quoteDrawing = false;
   double _frameTop = 0;
   double _frameBottom = 0;
 
@@ -511,6 +512,8 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
 
       var paragraph = entry.text;
       final extras = <AstParagraphExtra>[
+        if (_quoteDrawing)
+          const AstParagraphExtra(kind: AstParagraphExtraKind.quote),
         if (_frameDrawing &&
             !entry.extras.any(
               (extra) => extra.kind == AstParagraphExtraKind.frame,
@@ -768,6 +771,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
     _bottomMargin = 0;
     _alignBottom = false;
     _frameDrawing = false;
+    _quoteDrawing = false;
     _frameTop = 0;
     _frameBottom = 0;
   }
@@ -780,6 +784,14 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
         _restTopMargin =
             (entry.indentHanging ?? entry.indentLine) * _currentFontSize;
       case AstCommandKind.indentEnd:
+        _firstTopMargin = 0;
+        _restTopMargin = 0;
+      case AstCommandKind.quoteStart:
+        _quoteDrawing = true;
+        _firstTopMargin = math.max(_firstTopMargin, _currentFontSize);
+        _restTopMargin = math.max(_restTopMargin, _currentFontSize);
+      case AstCommandKind.quoteEnd:
+        _quoteDrawing = false;
         _firstTopMargin = 0;
         _restTopMargin = 0;
       case AstCommandKind.bottomAlignStart:
@@ -1279,6 +1291,12 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
             width: markerLine.width,
           ),
         );
+      } else if (extra.kind == AstParagraphExtraKind.quote) {
+        var line = block.textLine;
+        while (line != null) {
+          line.attachments.add(const QuoteMarker());
+          line = line.nextLine;
+        }
       }
     }
   }

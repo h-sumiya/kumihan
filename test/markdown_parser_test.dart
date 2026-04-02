@@ -92,7 +92,9 @@ void main() {
         ),
       );
 
-      final paragraphs = compiled.entries.whereType<AstCompiledParagraphEntry>().toList();
+      final paragraphs = compiled.entries
+          .whereType<AstCompiledParagraphEntry>()
+          .toList();
       expect(paragraphs, hasLength(4));
       expect(paragraphs[0].text, '一、春はあけぼの');
       expect(
@@ -100,12 +102,44 @@ void main() {
         isTrue,
       );
       expect(
-        paragraphs[0].styles.any((style) => style.kind == AstStyleKind.yokogumi),
+        paragraphs[0].styles.any(
+          (style) => style.kind == AstStyleKind.yokogumi,
+        ),
         isTrue,
       );
       expect(paragraphs[3].text, '四、冬はつとめて');
       expect(
         paragraphs[3].styles.any((style) => style.kind == AstStyleKind.italic),
+        isTrue,
+      );
+    });
+
+    test('blockquote compiles to quoted paragraph with indentation', () {
+      final compiled = compileAst(
+        const MarkdownParser().parse('> 雨ニモマケズ\n>\n> 風ニモマケズ\n'),
+      );
+
+      expect(
+        compiled.entries.first,
+        isA<AstCommandEntry>().having(
+          (entry) => entry.kind,
+          'kind',
+          AstCommandKind.quoteStart,
+        ),
+      );
+
+      final paragraphs = compiled.entries
+          .whereType<AstCompiledParagraphEntry>()
+          .toList();
+      expect(paragraphs, hasLength(2));
+      expect(paragraphs[0].text, '雨ニモマケズ');
+      expect(paragraphs[0].firstTopMargin, 0);
+      expect(paragraphs[0].restTopMargin, 0);
+      expect(paragraphs[1].text, '風ニモマケズ');
+      expect(
+        compiled.entries.whereType<AstCommandEntry>().any(
+          (entry) => entry.kind == AstCommandKind.quoteEnd,
+        ),
         isTrue,
       );
     });

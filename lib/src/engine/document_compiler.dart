@@ -56,10 +56,7 @@ class AstCompiledTableEntry extends AstCompiledEntry {
 }
 
 class AstCompiledTableCell {
-  const AstCompiledTableCell({
-    required this.alignment,
-    required this.text,
-  });
+  const AstCompiledTableCell({required this.alignment, required this.text});
 
   final String text;
   final AstTableAlignment alignment;
@@ -68,6 +65,8 @@ class AstCompiledTableCell {
 enum AstCommandKind {
   indentStart,
   indentEnd,
+  quoteStart,
+  quoteEnd,
   bottomAlignStart,
   bottomAlignEnd,
   jizumeStart,
@@ -205,6 +204,7 @@ enum AstParagraphExtraKind {
   link,
   frame,
   anchor,
+  quote,
 }
 
 enum AstRuledLineKind {
@@ -508,6 +508,10 @@ class _AstDocumentCompiler {
           indentLine: lineIndent,
           indentHanging: hangingIndent,
         ),
+      AstBlockQuote(boundary: AstRangeBoundary.blockStart) =>
+        const AstCommandEntry(kind: AstCommandKind.quoteStart),
+      AstBlockQuote(boundary: AstRangeBoundary.blockEnd) =>
+        const AstCommandEntry(kind: AstCommandKind.quoteEnd),
       AstIndent(
         kind: AstIndentKind.block,
         boundary: AstRangeBoundary.blockEnd,
@@ -638,6 +642,8 @@ class _AstDocumentCompiler {
         builder.handleHeading(token);
       case AstCaption():
         builder.handleCaption(token);
+      case AstBlockQuote():
+        builder.handleUnsupported('［＃未対応の引用］');
       case AstLink():
         builder.handleLink(token);
       case AstInlineDecoration():
@@ -727,6 +733,7 @@ class _AstDocumentCompiler {
         case AstStyledText():
         case AstHeading():
         case AstCaption():
+        case AstBlockQuote():
         case AstLink():
         case AstInlineDecoration():
         case AstUnsupportedAnnotation():
@@ -891,7 +898,6 @@ class _ParagraphBuilder {
   final List<_OpenSpan<AstLink>> _links = <_OpenSpan<AstLink>>[];
   final List<_OpenSpan<AstInlineDecoration>> _decorations =
       <_OpenSpan<AstInlineDecoration>>[];
-
   String get text => _buffer.toString();
 
   void appendText(String text) {
