@@ -1,16 +1,10 @@
-import 'ast.dart';
 import 'package:flutter/painting.dart';
 
-typedef KumihanAstDslChildren = List<Object>;
+import 'ast.dart';
+import 'document.dart';
 
-abstract interface class KumihanAstDslNode {
-  const KumihanAstDslNode();
-
-  AstData toAst({bool inWarichu = false});
-}
-
-AstData ast(Iterable<Object> nodes) {
-  return _AstDslBuilder.flatten(nodes, inWarichu: false);
+Document ast(Iterable<Object> nodes) {
+  return Document(nodes);
 }
 
 class LineBreak implements KumihanAstDslNode {
@@ -130,12 +124,12 @@ class Text implements KumihanAstDslNode {
        );
 
   KumihanAstDslChildren get _content {
-    return <Object>[if (value != null) value!, ...children];
+    return <Object>[?value, ...children];
   }
 
   @override
   AstData toAst({bool inWarichu = false}) {
-    AstData tokens = _AstDslBuilder.flatten(_content, inWarichu: inWarichu);
+    AstData tokens = KumihanAstDsl.flatten(_content, inWarichu: inWarichu);
 
     if (tatechuyoko) {
       tokens = _wrapTokens(
@@ -415,7 +409,7 @@ class Warichu extends InlineDecoration {
         boundary: AstRangeBoundary.start,
         kind: AstInlineDecorationKind.warichu,
       ),
-      ..._AstDslBuilder.flatten(children, inWarichu: true),
+      ...KumihanAstDsl.flatten(children, inWarichu: true),
       const AstInlineDecoration(
         boundary: AstRangeBoundary.end,
         kind: AstInlineDecorationKind.warichu,
@@ -597,83 +591,6 @@ class BodyEnd implements KumihanAstDslNode {
   }
 }
 
-class _AstDslBuilder {
-  static AstData flatten(Iterable<Object> nodes, {required bool inWarichu}) {
-    final tokens = <AstToken>[];
-    for (final node in nodes) {
-      _appendNode(tokens, node, inWarichu: inWarichu);
-    }
-    return tokens;
-  }
-
-  static AstInlineContent inline(Iterable<Object> nodes) {
-    final tokens = flatten(nodes, inWarichu: false);
-    final inlineNodes = <AstInlineNode>[];
-    for (final token in tokens) {
-      if (token is! AstInlineNode) {
-        throw ArgumentError.value(
-          token,
-          'nodes',
-          'Inline content must resolve to AstInlineNode.',
-        );
-      }
-      inlineNodes.add(token as AstInlineNode);
-    }
-    return inlineNodes;
-  }
-
-  static void _appendNode(
-    List<AstToken> tokens,
-    Object node, {
-    required bool inWarichu,
-  }) {
-    switch (node) {
-      case String():
-        _appendString(tokens, node, inWarichu: inWarichu);
-      case KumihanAstDslNode():
-        tokens.addAll(node.toAst(inWarichu: inWarichu));
-      case AstNewLine():
-        tokens.add(inWarichu ? const AstWarichuNewLine() : node);
-      case Iterable():
-        for (final child in node) {
-          _appendNode(tokens, child, inWarichu: inWarichu);
-        }
-      case AstToken():
-        tokens.add(node);
-      default:
-        throw ArgumentError.value(
-          node,
-          'node',
-          'Unsupported AST DSL node type: ${node.runtimeType}',
-        );
-    }
-  }
-
-  static void _appendString(
-    List<AstToken> tokens,
-    String value, {
-    required bool inWarichu,
-  }) {
-    final normalized = value.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
-    var start = 0;
-
-    for (var index = 0; index < normalized.length; index++) {
-      if (normalized.codeUnitAt(index) != 0x0A) {
-        continue;
-      }
-      if (start < index) {
-        tokens.add(AstText(normalized.substring(start, index)));
-      }
-      tokens.add(inWarichu ? const AstWarichuNewLine() : const AstNewLine());
-      start = index + 1;
-    }
-
-    if (start < normalized.length) {
-      tokens.add(AstText(normalized.substring(start)));
-    }
-  }
-}
-
 AstData _wrapBoundary({
   required AstToken start,
   required KumihanAstDslChildren children,
@@ -684,14 +601,14 @@ AstData _wrapBoundary({
     return <AstToken>[
       start,
       const AstNewLine(),
-      ..._AstDslBuilder.flatten(children, inWarichu: inWarichu),
+      ...KumihanAstDsl.flatten(children, inWarichu: inWarichu),
       const AstNewLine(),
       end,
     ];
   }
   return _wrapTokens(
     start: start,
-    children: _AstDslBuilder.flatten(children, inWarichu: inWarichu),
+    children: KumihanAstDsl.flatten(children, inWarichu: inWarichu),
     end: end,
   );
 }
@@ -745,7 +662,7 @@ AstData _wrapAttachedText({
   required AstTextSide side,
 }) {
   return _wrapAttachedTextTokens(
-    children: _AstDslBuilder.flatten(children, inWarichu: false),
+    children: KumihanAstDsl.flatten(children, inWarichu: false),
     role: role,
     content: content,
     side: side,
@@ -765,7 +682,7 @@ AstData _wrapAttachedTextTokens({
       boundary: AstRangeBoundary.end,
       role: role,
       side: side,
-      content: _AstDslBuilder.inline(content),
+      content: KumihanAstDsl.inline(content),
     ),
   ];
 }

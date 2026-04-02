@@ -33,13 +33,13 @@ class _ReaderScreenState extends State<ReaderScreen> {
   );
 
   String? _fileName;
-  AstData? _document;
+  Document? _document;
   KumihanSnapshot _snapshot = const KumihanSnapshot(
     currentPage: 0,
     totalPages: 0,
   );
 
-  void _loadDocument({required String fileName, required AstData document}) {
+  void _loadDocument({required String fileName, required Document document}) {
     setState(() {
       _fileName = fileName;
       _document = document;
@@ -174,7 +174,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                 : DecoratedBox(
                     decoration: const BoxDecoration(color: Color(0xfffffdf1)),
                     child: KumihanCanvas(
-                      data: _document!,
+                      document: _document!,
                       controller: _controller,
                       layout: const KumihanLayoutData(fontSize: 18),
                       onSnapshotChanged: (snapshot) {

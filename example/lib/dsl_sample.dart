@@ -1,17 +1,17 @@
 import 'package:flutter/painting.dart';
 import 'package:kumihan/kumihan.dart';
 
-AstData buildDslSampleDocument() {
-  return ast([
+Document buildDslSampleDocument() {
+  return Document([
     const Heading(
       level: AstHeadingLevel.large,
-      children: <Object>[
-        Text(value: 'DSL見本', ruby: <Object>['でぃーえすえるみほん']),
+      children: [
+        Text(value: 'DSL見本', ruby: ['でぃーえすえるみほん']),
       ],
     ),
     const Br(),
     const Text(value: 'これは '),
-    const Text(value: '組版', ruby: <Object>['くみはん']),
+    const Text(value: '組版', ruby: ['くみはん']),
     const Text(value: ' の DSL サンプルです。'),
     const Br(),
     const Text(value: '虹色の文字列: '),
@@ -36,13 +36,13 @@ AstData buildDslSampleDocument() {
     const Br(),
     Indent.block(
       lineIndent: 2,
-      children: <Object>[
+      children: [
         Keigakomi(
           block: true,
-          children: <Object>[
+          children: [
             Text(value: 'ここはインデント付きの囲み段落です。'),
             Br(),
-            Text(value: '割り注', ruby: <Object>['わりちゅう']),
+            Text(value: '割り注', ruby: ['わりちゅう']),
             Text(value: ' も '),
             Warichu(text: '上段に注記\n下段に補足'),
             Text(value: ' の形で入れられます。'),

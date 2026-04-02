@@ -1,17 +1,18 @@
 import '../ast.dart';
+import '../document.dart';
 
 abstract interface class KumihanParser<T> {
-  AstData parse(T input);
+  Document parse(T input);
 }
 
 class AozoraParser implements KumihanParser<String> {
   const AozoraParser();
 
   @override
-  AstData parse(String input) {
-    return _AstInlineParser(
-      input.replaceAll(RegExp(r'(\r\n|\r)'), '\n'),
-    ).parse();
+  Document parse(String input) {
+    return Document.fromAst(
+      _AstInlineParser(input.replaceAll(RegExp(r'(\r\n|\r)'), '\n')).parse(),
+    );
   }
 }
 

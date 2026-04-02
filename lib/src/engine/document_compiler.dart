@@ -3,6 +3,7 @@ import 'generated/gaiji_table.dart';
 import 'layout_primitives.dart';
 import 'warichu.dart';
 import '../ast.dart';
+import '../document.dart';
 
 class AstCompiledDocument {
   const AstCompiledDocument({required this.entries});
@@ -258,8 +259,8 @@ class AstChapterIndex {
   final String? anchorName;
 }
 
-AstCompiledDocument compileAst(AstData data) {
-  return _AstDocumentCompiler(data).compile();
+AstCompiledDocument compileAst(Document document) {
+  return _AstDocumentCompiler(document.ast).compile();
 }
 
 class _AstDocumentCompiler {

@@ -5,11 +5,11 @@ import 'package:kumihan/kumihan.dart';
 void main() {
   group('AST DSL', () {
     test('builds attached text and styled spans from Dart wrappers', () {
-      final tokens = ast([
+      final tokens = Document([
         Ruby.text('青空文庫', 'あおぞらぶんこ'),
         const LineBreak(),
         const Bold(children: ['強調']),
-      ]);
+      ]).ast;
 
       expect(tokens[0], isA<AstAttachedText>());
       expect((tokens[0] as AstAttachedText).boundary, AstRangeBoundary.start);
@@ -107,11 +107,11 @@ void main() {
     });
 
     test('builds heading and page break with wrapper nodes', () {
-      final tokens = ast([
+      final tokens = Document([
         const Heading(level: AstHeadingLevel.large, children: ['第一章']),
         const LineBreak(),
         const PageBreak(AstPageBreakKind.kaipage),
-      ]);
+      ]).ast;
 
       final start = tokens[0] as AstHeading;
       expect(start.boundary, AstRangeBoundary.start);
@@ -123,11 +123,11 @@ void main() {
     });
 
     test('maps line breaks correctly inside and outside warichu', () {
-      final tokens = ast([
+      final tokens = Document([
         const Text(value: '一行目\n二行目'),
         const Br(),
         Warichu(text: '上段\n下段'),
-      ]);
+      ]).ast;
 
       expect((tokens[0] as AstText).text, '一行目');
       expect(tokens[1], isA<AstNewLine>());

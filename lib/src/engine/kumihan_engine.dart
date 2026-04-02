@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 
 import '../ast.dart';
+import '../document.dart';
 import '../kumihan_controller.dart';
 import '../kumihan_types.dart';
 import 'constants.dart';
@@ -246,8 +247,8 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
   }
 
   @override
-  Future<void> open(AstData data) async {
-    final compiled = compileAst(data);
+  Future<void> open(Document document) async {
+    final compiled = compileAst(document);
     _entries = compiled.entries;
     _currentPosition = PositionInfo(
       leftToRight: false,

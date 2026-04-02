@@ -1,12 +1,12 @@
 import 'package:flutter/foundation.dart';
 
-import 'ast.dart';
+import 'document.dart';
 import 'kumihan_types.dart';
 
 abstract interface class KumihanViewport {
   Future<void> nextPage([int? amount]);
   Future<void> nextStop();
-  Future<void> open(AstData data);
+  Future<void> open(Document document);
   Future<void> prevPage([int? amount]);
   Future<void> prevStop();
   Future<void> resize(double width, double height);
@@ -45,7 +45,7 @@ class KumihanController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> open(AstData data) async => _viewport?.open(data);
+  Future<void> open(Document document) async => _viewport?.open(document);
 
   Future<void> next([int? amount]) async => _viewport?.nextPage(amount);
 

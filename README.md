@@ -57,7 +57,7 @@ KumihanCanvas(
 DSL 経由で一部分だけ色を変えることもできる。
 
 ```dart
-final document = ast([
+final document = Document([
   '通常の本文と',
   TextColor(
     color: const Color(0xffd32f2f),

@@ -5,7 +5,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
-import 'ast.dart';
+import 'document.dart';
 import 'engine/kumihan_engine.dart';
 import 'kumihan_controller.dart';
 import 'kumihan_types.dart';
@@ -14,7 +14,7 @@ import 'parsers/aozora_parser.dart';
 class KumihanCanvas extends StatefulWidget {
   const KumihanCanvas({
     super.key,
-    required this.data,
+    required this.document,
     this.controller,
     this.imageLoader,
     this.initialPage = 0,
@@ -33,7 +33,7 @@ class KumihanCanvas extends StatefulWidget {
   }) {
     return KumihanCanvas(
       key: key,
-      data: const AozoraParser().parse(text),
+      document: const AozoraParser().parse(text),
       controller: controller,
       imageLoader: imageLoader,
       initialPage: initialPage,
@@ -42,7 +42,7 @@ class KumihanCanvas extends StatefulWidget {
     );
   }
 
-  final AstData data;
+  final Document document;
   final KumihanController? controller;
   final KumihanImageLoader? imageLoader;
   final int initialPage;
@@ -68,7 +68,7 @@ class _KumihanCanvasState extends State<KumihanCanvas> {
     super.initState();
     _engine = _createEngine();
     widget.controller?.attach(_engine);
-    unawaited(_engine.open(widget.data));
+    unawaited(_engine.open(widget.document));
   }
 
   @override
@@ -92,7 +92,7 @@ class _KumihanCanvasState extends State<KumihanCanvas> {
       if (_lastSize != Size.zero) {
         unawaited(_engine.resize(_lastSize.width, _lastSize.height));
       }
-      unawaited(_engine.open(widget.data));
+      unawaited(_engine.open(widget.document));
       return;
     }
 
@@ -101,9 +101,9 @@ class _KumihanCanvasState extends State<KumihanCanvas> {
       unawaited(_engine.updateLayout(widget.layout));
     }
 
-    if (!identical(oldWidget.data, widget.data)) {
+    if (!identical(oldWidget.document, widget.document)) {
       _clearSelection();
-      unawaited(_engine.open(widget.data));
+      unawaited(_engine.open(widget.document));
     }
   }
 

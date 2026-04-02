@@ -6,7 +6,7 @@ void main() {
     test('parses ruby shorthand into attached text boundaries', () {
       const parser = AozoraParser();
 
-      final tokens = parser.parse('青空文庫《あおぞらぶんこ》');
+      final tokens = parser.parse('青空文庫《あおぞらぶんこ》').ast;
 
       expect(tokens, hasLength(3));
       expect(tokens[0], isA<AstAttachedText>());
@@ -25,7 +25,7 @@ void main() {
     test('splits trailing ruby target like legacy engine', () {
       const parser = AozoraParser();
 
-      final tokens = parser.parse('これは漢字《かんじ》');
+      final tokens = parser.parse('これは漢字《かんじ》').ast;
 
       expect(tokens, hasLength(4));
       expect(tokens[0], isA<AstText>());
@@ -39,7 +39,7 @@ void main() {
     test('supports explicit ruby marker without leaving splitter text', () {
       const parser = AozoraParser();
 
-      final tokens = parser.parse('この度｜拠《よんどころ》なく');
+      final tokens = parser.parse('この度｜拠《よんどころ》なく').ast;
 
       expect(tokens, hasLength(5));
       expect(tokens[0], isA<AstText>());
@@ -55,7 +55,7 @@ void main() {
     test('keeps full explicit ruby range until opening bracket', () {
       const parser = AozoraParser();
 
-      final tokens = parser.parse('｜複雑な文《complex sentence》');
+      final tokens = parser.parse('｜複雑な文《complex sentence》').ast;
 
       expect(tokens, hasLength(3));
       expect(tokens[0], isA<AstAttachedText>());
@@ -69,13 +69,15 @@ void main() {
     test('parses supported block and line annotations', () {
       const parser = AozoraParser();
 
-      final tokens = parser.parse(
-        '［＃ここから２字下げ、折り返して３字下げ］\n'
-        '本文\n'
-        '［＃ここで字下げ終わり］\n'
-        '［＃地から２字上げ］署名\n'
-        '［＃改ページ］',
-      );
+      final tokens = parser
+          .parse(
+            '［＃ここから２字下げ、折り返して３字下げ］\n'
+            '本文\n'
+            '［＃ここで字下げ終わり］\n'
+            '［＃地から２字上げ］署名\n'
+            '［＃改ページ］',
+          )
+          .ast;
 
       expect(tokens[0], isA<AstIndent>());
       final indent = tokens[0] as AstIndent;
@@ -100,10 +102,12 @@ void main() {
     test('parses gaiji and unsupported annotations', () {
       const parser = AozoraParser();
 
-      final tokens = parser.parse(
-        '※［＃「てへん＋劣」、第3水準1-84-77］'
-        '［＃未対応の独自注記］',
-      );
+      final tokens = parser
+          .parse(
+            '※［＃「てへん＋劣」、第3水準1-84-77］'
+            '［＃未対応の独自注記］',
+          )
+          .ast;
 
       expect(tokens[0], isA<AstGaiji>());
       final gaiji = tokens[0] as AstGaiji;
@@ -120,10 +124,12 @@ void main() {
     test('parses document remarks and wraps single-target emphasis', () {
       const parser = AozoraParser();
 
-      final tokens = parser.parse(
-        '責［＃「責」に白丸傍点］\n'
-        '※窓見出しは、３行どりです。',
-      );
+      final tokens = parser
+          .parse(
+            '責［＃「責」に白丸傍点］\n'
+            '※窓見出しは、３行どりです。',
+          )
+          .ast;
 
       expect(tokens[0], isA<AstStyledText>());
       final start = tokens[0] as AstStyledText;
@@ -146,7 +152,7 @@ void main() {
     test('parses cancel line as supported styled text', () {
       const parser = AozoraParser();
 
-      final tokens = parser.parse('責［＃「責」に取消線］');
+      final tokens = parser.parse('責［＃「責」に取消線］').ast;
 
       expect(tokens[0], isA<AstStyledText>());
       final start = tokens[0] as AstStyledText;
