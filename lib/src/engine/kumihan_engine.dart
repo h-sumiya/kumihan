@@ -12,6 +12,7 @@ import 'constants.dart';
 import 'document_compiler.dart';
 import 'helpers.dart';
 import 'layout_primitives.dart';
+import 'warichu.dart';
 
 part 'kumihan_page_renderer.dart';
 
@@ -1500,17 +1501,21 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
 
   void _attachWarichu(LayoutTextBlock block, AstParagraphExtra extra) {
     final body = extra.warichuText ?? '';
+    final rows = splitWarichuText(body);
     final startIndex = extra.startIndex ?? 0;
     final endIndex = extra.endIndex ?? startIndex;
     final innerStart = startIndex + 1;
     final innerEnd = math.max(innerStart, endIndex - 1);
-    if (body.isEmpty || innerEnd <= innerStart) {
+    if ((rows.upper.isEmpty && rows.lower.isEmpty) || innerEnd <= innerStart) {
       return;
     }
 
-    var consumed = 0;
+    var upperConsumed = 0;
+    var lowerConsumed = 0;
     var line = block.getTextLineAtCharIndex(innerStart);
-    while (line != null && consumed < body.length) {
+    while (line != null &&
+        (upperConsumed < rows.upper.length ||
+            lowerConsumed < rows.lower.length)) {
       final lineStartOffset = block.atom[line.start].index;
       final lineEndOffset = _lineEndOffset(block, line);
       final segmentStart = math.max(innerStart, lineStartOffset);
@@ -1518,17 +1523,25 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
 
       if (segmentEnd > segmentStart) {
         final segmentUnits = segmentEnd - segmentStart;
-        final segmentChars = math.min(body.length - consumed, segmentUnits * 2);
-        final segmentText = body.substring(consumed, consumed + segmentChars);
-        consumed += segmentChars;
+        final upperEnd = math.min(
+          rows.upper.length,
+          upperConsumed + segmentUnits,
+        );
+        final lowerEnd = math.min(
+          rows.lower.length,
+          lowerConsumed + segmentUnits,
+        );
+        final upperText = rows.upper.substring(upperConsumed, upperEnd);
+        final lowerText = rows.lower.substring(lowerConsumed, lowerEnd);
+        upperConsumed = upperEnd;
+        lowerConsumed = lowerEnd;
 
-        final split = (segmentText.length + 1) ~/ 2;
         final upperLine = _buildWarichuLine(
-          segmentText.substring(0, split),
+          upperText,
           segmentUnits * _currentFontSize / 2,
         );
         final lowerLine = _buildWarichuLine(
-          segmentText.substring(split),
+          lowerText,
           segmentUnits * _currentFontSize / 2,
         );
 

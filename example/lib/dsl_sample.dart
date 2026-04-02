@@ -38,18 +38,13 @@ AstData buildDslSampleDocument() {
       lineIndent: 2,
       children: <Object>[
         Keigakomi(
+          block: true,
           children: <Object>[
             Text(value: 'ここはインデント付きの囲み段落です。'),
             Br(),
             Text(value: '割り注', ruby: <Object>['わりちゅう']),
             Text(value: ' も '),
-            Warichu(
-              children: <Object>[
-                Text(value: '上段に注記'),
-                WarichuBreak(),
-                Text(value: '下段に補足'),
-              ],
-            ),
+            Warichu(text: '上段に注記\n下段に補足'),
             Text(value: ' の形で入れられます。'),
           ],
         ),

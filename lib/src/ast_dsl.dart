@@ -680,11 +680,54 @@ AstData _wrapBoundary({
   required AstToken end,
   required bool inWarichu,
 }) {
+  if (_isBlockBoundary(start) && _isBlockBoundary(end)) {
+    return <AstToken>[
+      start,
+      const AstNewLine(),
+      ..._AstDslBuilder.flatten(children, inWarichu: inWarichu),
+      const AstNewLine(),
+      end,
+    ];
+  }
   return _wrapTokens(
     start: start,
     children: _AstDslBuilder.flatten(children, inWarichu: inWarichu),
     end: end,
   );
+}
+
+bool _isBlockBoundary(AstToken token) {
+  return switch (token) {
+    AstStyledText(
+      boundary: AstRangeBoundary.blockStart || AstRangeBoundary.blockEnd,
+    ) =>
+      true,
+    AstHeading(
+      boundary: AstRangeBoundary.blockStart || AstRangeBoundary.blockEnd,
+    ) =>
+      true,
+    AstCaption(
+      boundary: AstRangeBoundary.blockStart || AstRangeBoundary.blockEnd,
+    ) =>
+      true,
+    AstInlineDecoration(
+      boundary: AstRangeBoundary.blockStart || AstRangeBoundary.blockEnd,
+    ) =>
+      true,
+    AstIndent(
+      boundary: AstRangeBoundary.blockStart || AstRangeBoundary.blockEnd,
+    ) =>
+      true,
+    AstBottomAlign(
+      boundary: AstRangeBoundary.blockStart || AstRangeBoundary.blockEnd,
+    ) =>
+      true,
+    AstJizume(
+      boundary: AstRangeBoundary.blockStart || AstRangeBoundary.blockEnd,
+    ) =>
+      true,
+    _ => false,
+  };
 }
 
 AstData _wrapTokens({

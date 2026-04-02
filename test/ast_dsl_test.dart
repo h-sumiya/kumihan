@@ -166,6 +166,86 @@ void main() {
       expect(warichu.warichuText, parsedWarichu.warichuText);
     });
 
+    test('sizes warichu placeholder from visible rows', () {
+      final compiled = compileAst(ast([Warichu(text: '上段に注記\n下段')]));
+
+      final paragraph = compiled.entries.single as AstCompiledParagraphEntry;
+      final warichu = paragraph.extras.singleWhere(
+        (extra) => extra.kind == AstParagraphExtraKind.warichu,
+      );
+
+      expect(paragraph.text, startsWith('（'));
+      expect(paragraph.text, endsWith('）'));
+      expect(paragraph.text.length, 7);
+      expect(warichu.warichuText, '上段に注記［＃改行］下段');
+    });
+
+    test('compiles block keigakomi built from DSL', () {
+      final dslCompiled = compileAst(
+        ast([
+          const Indent.block(
+            lineIndent: 3,
+            children: <Object>[
+              Keigakomi(
+                block: true,
+                children: <Object>[
+                  Text(value: '昭和十五年五月二十九日京都義方会に於ける講演速記で同年八月若干追補した。'),
+                ],
+              ),
+            ],
+          ),
+        ]),
+      );
+      final parsedCompiled = compileAst(
+        const AozoraParser().parse(
+          '［＃ここから３字下げ］\n'
+          '［＃ここから罫囲み］\n'
+          '昭和十五年五月二十九日京都義方会に於ける講演速記で同年八月若干追補した。\n'
+          '［＃ここで罫囲み終わり］\n'
+          '［＃ここで字下げ終わり］',
+        ),
+      );
+
+      expect(
+        dslCompiled.entries.map((entry) => entry.runtimeType).toList(),
+        parsedCompiled.entries.map((entry) => entry.runtimeType).toList(),
+      );
+
+      final dslCommands = dslCompiled.entries
+          .whereType<AstCommandEntry>()
+          .toList();
+      final parsedCommands = parsedCompiled.entries
+          .whereType<AstCommandEntry>()
+          .toList();
+      expect(
+        dslCommands.map((entry) => entry.kind).toList(),
+        parsedCommands.map((entry) => entry.kind).toList(),
+      );
+
+      final dslParagraphs = dslCompiled.entries
+          .whereType<AstCompiledParagraphEntry>()
+          .toList();
+      final parsedParagraphs = parsedCompiled.entries
+          .whereType<AstCompiledParagraphEntry>()
+          .toList();
+      expect(dslParagraphs.length, parsedParagraphs.length);
+      for (var index = 0; index < dslParagraphs.length; index += 1) {
+        expect(dslParagraphs[index].text, parsedParagraphs[index].text);
+        expect(
+          dslParagraphs[index].extras
+              .map(
+                (extra) => (extra.kind, extra.frameKind, extra.ruledLineKind),
+              )
+              .toList(),
+          parsedParagraphs[index].extras
+              .map(
+                (extra) => (extra.kind, extra.frameKind, extra.ruledLineKind),
+              )
+              .toList(),
+        );
+      }
+    });
+
     test('builds text color spans from Dart wrappers', () {
       final compiled = compileAst(
         ast([

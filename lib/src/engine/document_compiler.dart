@@ -1,6 +1,7 @@
 import 'constants.dart';
 import 'generated/gaiji_table.dart';
 import 'layout_primitives.dart';
+import 'warichu.dart';
 import '../ast.dart';
 
 class AstCompiledDocument {
@@ -1184,7 +1185,7 @@ class _ParagraphBuilder {
       return;
     }
     final original = text.substring(startIndex, endIndex);
-    final placeholderLength = (original.length + 1) ~/ 2;
+    final placeholderLength = splitWarichuText(original).placeholderLength;
     final replacement = '（${'　' * placeholderLength}）';
     final delta = replacement.length - (endIndex - startIndex);
 
