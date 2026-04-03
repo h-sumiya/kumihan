@@ -1,17 +1,27 @@
 import '../ast.dart';
 import '../document.dart';
+import 'header_title.dart';
 
 abstract interface class KumihanParser<T> {
   Document parse(T input);
 }
 
 class AozoraParser implements KumihanParser<String> {
-  const AozoraParser();
+  const AozoraParser({this.author, this.headerTitle, this.title});
+
+  final String? author;
+  final String? headerTitle;
+  final String? title;
 
   @override
   Document parse(String input) {
     return Document.fromAst(
       _AstInlineParser(input.replaceAll(RegExp(r'(\r\n|\r)'), '\n')).parse(),
+      headerTitle: resolveDocumentHeaderTitle(
+        author: author,
+        headerTitle: headerTitle,
+        title: title,
+      ),
     );
   }
 }

@@ -4,9 +4,14 @@ import 'package:markdown/markdown.dart' as md;
 
 import '../ast.dart';
 import '../document.dart';
+import 'header_title.dart';
 
 class MarkdownParser {
-  const MarkdownParser();
+  const MarkdownParser({this.author, this.headerTitle, this.title});
+
+  final String? author;
+  final String? headerTitle;
+  final String? title;
 
   static final RegExp _blockquoteAttributionPrefixPattern = RegExp(
     r'^(?:'
@@ -25,7 +30,14 @@ class MarkdownParser {
         .replaceAll(RegExp(r'(\r\n|\r)'), '\n')
         .replaceFirst(RegExp(r'\n$'), '');
     if (normalized.isEmpty) {
-      return Document.fromAst(const <AstToken>[]);
+      return Document.fromAst(
+        const <AstToken>[],
+        headerTitle: resolveDocumentHeaderTitle(
+          author: author,
+          headerTitle: headerTitle,
+          title: title,
+        ),
+      );
     }
 
     final parser = md.Document(
@@ -37,7 +49,14 @@ class MarkdownParser {
     for (final node in parser.parse(normalized)) {
       _appendBlock(tokens, _parseBlock(node));
     }
-    return Document.fromAst(tokens);
+    return Document.fromAst(
+      tokens,
+      headerTitle: resolveDocumentHeaderTitle(
+        author: author,
+        headerTitle: headerTitle,
+        title: title,
+      ),
+    );
   }
 
   void _appendBlock(List<AstToken> output, List<AstToken> block) {

@@ -8,6 +8,7 @@ import 'package:flutter/painting.dart';
 import '../ast.dart';
 import '../document.dart';
 import '../kumihan_controller.dart';
+import '../kumihan_page_paint_context.dart';
 import '../kumihan_theme.dart';
 import '../kumihan_types.dart';
 import 'constants.dart';
@@ -134,7 +135,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
          shift1page: false,
        ) {
     fontColor = theme.textColor;
-    paperColor = const Color(paperColorValue);
+    paperColor = theme.paperColor;
     _updateSizes();
   }
 
@@ -198,6 +199,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
   bool _currentFontItalic = false;
   double _currentFontSize = 0;
   String _currentTextRotation = 'v';
+  String _headerTitle = '';
   bool _inCaption = false;
   bool _inYokogumi = false;
   double _firstTopMargin = 0;
@@ -228,6 +230,8 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
     totalPages: _contentPageCount,
   );
 
+  String get headerTitle => _headerTitle;
+
   List<KumihanSelectableGlyph> get selectableGlyphs =>
       List<KumihanSelectableGlyph>.unmodifiable(_selectableGlyphs);
 
@@ -257,6 +261,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
   Future<void> open(Document document) async {
     final compiled = compileAst(document);
     _entries = compiled.entries;
+    _headerTitle = document.headerTitle;
     _currentPosition = PositionInfo(
       leftToRight: false,
       length: 0,
@@ -290,6 +295,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
 
     theme = nextTheme;
     fontColor = theme.textColor;
+    paperColor = theme.paperColor;
 
     if (_hasLayoutContent) {
       await _relayout(true);
@@ -1879,16 +1885,41 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
     if (_width <= 0 || _height <= 0 || _pageWidth <= 0 || _pageHeight <= 0) {
       return;
     }
+    if (snapshot.totalPages <= 0) {
+      _drawPaperSurface(canvas, Rect.fromLTWH(0, 0, _width, _height));
+      return;
+    }
 
-    _clickable = <ClickableArea>[];
-    _selectableGlyphs = <KumihanSelectableGlyph>[];
-    _selectableGlyphOrder = 0;
+    resetPaintState();
     _drawPaperSurface(canvas, Rect.fromLTWH(0, 0, _width, _height));
 
     final pageNo = _currentPageNo < 0 ? 0 : _currentPageNo;
     if (pageNo <= _lastDocumentPage) {
-      _showOnePage(canvas, _documentToInternalPageNo(pageNo), true);
+      paintPage(
+        canvas,
+        pageNo,
+        PagePaintContext(contentRect: Rect.fromLTWH(0, 0, _width, _height)),
+      );
     }
+  }
+
+  void resetPaintState() {
+    _clickable = <ClickableArea>[];
+    _selectableGlyphs = <KumihanSelectableGlyph>[];
+    _selectableGlyphOrder = 0;
+  }
+
+  void paintPage(ui.Canvas canvas, int pageNo, PagePaintContext context) {
+    if (_width <= 0 || _height <= 0 || _pageWidth <= 0 || _pageHeight <= 0) {
+      return;
+    }
+    if (snapshot.totalPages <= 0 ||
+        pageNo < 0 ||
+        pageNo >= snapshot.totalPages) {
+      return;
+    }
+
+    _paintDocumentPage(canvas, _documentToInternalPageNo(pageNo), context);
   }
 
   void _drawPaperSurface(ui.Canvas canvas, Rect rect) {

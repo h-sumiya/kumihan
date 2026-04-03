@@ -121,7 +121,7 @@ class KumihanScrollEngine implements LayoutEnvironment {
     this.imageLoader,
   }) {
     fontColor = theme.textColor;
-    paperColor = const Color(paperColorValue);
+    paperColor = theme.paperColor;
     _updateSizes();
   }
 
@@ -261,6 +261,7 @@ class KumihanScrollEngine implements LayoutEnvironment {
 
     theme = nextTheme;
     fontColor = theme.textColor;
+    paperColor = theme.paperColor;
 
     if (_hasLayoutContent) {
       await _relayout();

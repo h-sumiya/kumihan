@@ -12,10 +12,11 @@ class Document {
   Document([Iterable<Object> nodes = const <Object>[]])
     : this.fromAst(KumihanAstDsl.flatten(nodes, inWarichu: false));
 
-  Document.fromAst(Iterable<AstToken> ast, {this.value})
+  Document.fromAst(Iterable<AstToken> ast, {this.headerTitle = '', this.value})
     : ast = List<AstToken>.unmodifiable(ast);
 
   final AstData ast;
+  final String headerTitle;
   final Object? value;
 }
 

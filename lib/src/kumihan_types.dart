@@ -3,41 +3,70 @@ import 'package:flutter/painting.dart';
 
 const double defaultKumihanFontSize = 18;
 const EdgeInsets? defaultKumihanPagePadding = null;
+const bool defaultKumihanShowTitle = true;
+const bool defaultKumihanShowPageNumber = true;
 const Object _unsetPagePadding = Object();
+
+enum KumihanSinglePageNumberPosition { left, center, right }
+
+const KumihanSinglePageNumberPosition defaultKumihanSinglePageNumberPosition =
+    KumihanSinglePageNumberPosition.center;
 
 @immutable
 class KumihanLayoutData {
   const KumihanLayoutData({
     this.fontSize = defaultKumihanFontSize,
     this.pagePadding = defaultKumihanPagePadding,
+    this.showTitle = defaultKumihanShowTitle,
+    this.showPageNumber = defaultKumihanShowPageNumber,
+    this.singlePageNumberPosition = defaultKumihanSinglePageNumberPosition,
   }) : assert(fontSize > 0);
 
   final double fontSize;
   final EdgeInsets? pagePadding;
+  final bool showTitle;
+  final bool showPageNumber;
+  final KumihanSinglePageNumberPosition singlePageNumberPosition;
 
   KumihanLayoutData copyWith({
     double? fontSize,
     Object? pagePadding = _unsetPagePadding,
+    bool? showTitle,
+    bool? showPageNumber,
+    KumihanSinglePageNumberPosition? singlePageNumberPosition,
   }) => KumihanLayoutData(
     fontSize: fontSize ?? this.fontSize,
     pagePadding: identical(pagePadding, _unsetPagePadding)
         ? this.pagePadding
         : pagePadding as EdgeInsets?,
+    showTitle: showTitle ?? this.showTitle,
+    showPageNumber: showPageNumber ?? this.showPageNumber,
+    singlePageNumberPosition:
+        singlePageNumberPosition ?? this.singlePageNumberPosition,
   );
 
   @override
   bool operator ==(Object other) =>
       other is KumihanLayoutData &&
       other.fontSize == fontSize &&
-      other.pagePadding == pagePadding;
+      other.pagePadding == pagePadding &&
+      other.showTitle == showTitle &&
+      other.showPageNumber == showPageNumber &&
+      other.singlePageNumberPosition == singlePageNumberPosition;
 
   @override
-  int get hashCode => Object.hash(fontSize, pagePadding);
+  int get hashCode => Object.hash(
+    fontSize,
+    pagePadding,
+    showTitle,
+    showPageNumber,
+    singlePageNumberPosition,
+  );
 }
 
 enum KumihanWritingMode { vertical }
 
-enum KumihanSpreadMode { single }
+enum KumihanSpreadMode { single, doublePage }
 
 class KumihanPagedSnapshot {
   const KumihanPagedSnapshot({

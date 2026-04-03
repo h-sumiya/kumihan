@@ -19,6 +19,19 @@ void main() {
     expect(left, isNot(right));
   });
 
+  test('KumihanThemeData equality includes paperColor and backPageOpacity', () {
+    const left = KumihanThemeData(
+      paperColor: Color(0xfffff0dd),
+      backPageOpacity: 0.04,
+    );
+    const right = KumihanThemeData(
+      paperColor: Color(0xfff5f5f5),
+      backPageOpacity: 0.12,
+    );
+
+    expect(left, isNot(right));
+  });
+
   test('KumihanLayoutData equality includes pagePadding', () {
     const left = KumihanLayoutData(
       pagePadding: EdgeInsets.symmetric(horizontal: 16),
@@ -28,5 +41,14 @@ void main() {
     );
 
     expect(left, isNot(right));
+  });
+
+  test('AozoraParser resolves headerTitle from title and author', () {
+    final document = const AozoraParser(
+      title: '題名',
+      author: '著者',
+    ).parse('本文です。');
+
+    expect(document.headerTitle, '題名 / 著者');
   });
 }

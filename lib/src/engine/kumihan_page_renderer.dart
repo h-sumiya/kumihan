@@ -1,20 +1,35 @@
 part of 'kumihan_engine.dart';
 
 extension on KumihanEngine {
-  void _showOnePage(
+  void _paintDocumentPage(
     ui.Canvas canvas,
     int pageNo,
-    bool leftSide, {
-    bool backPage = false,
-  }) {
+    PagePaintContext context,
+  ) {
     final vertical = _currentState.startsWith('v');
     final pageStartLine = pageNo < _pages.length ? _pages[pageNo].line : 0;
     var cursor = vertical ? _pageWidth : 0.0;
     final endLine = pageNo + 1 < _pages.length
         ? _pages[pageNo + 1].line
         : _lines.length;
+    final rect = context.contentRect;
+    final origin = rect.topLeft;
 
     canvas.save();
+    canvas.translate(rect.left, rect.top);
+
+    if (context.backPage) {
+      canvas.translate(rect.width, 0);
+      canvas.scale(-1, 1);
+      final backPageOpacity = clampDouble(theme.backPageOpacity, 0, 1);
+      canvas.saveLayer(
+        Rect.fromLTWH(0, 0, rect.width, rect.height),
+        Paint()
+          ..color =
+              (theme.isDark ? const Color(0xff000000) : const Color(0xffffffff))
+                  .withValues(alpha: backPageOpacity),
+      );
+    }
 
     if (_pages[pageNo].centering) {
       var used = -_lineSpace;
@@ -34,21 +49,24 @@ extension on KumihanEngine {
         double y;
 
         if (vertical) {
-          x = leftSide
-              ? cursor - line.width + _pageMarginSide
-              : _width - _pageMarginSide - _pageWidth + cursor - line.width;
+          x = cursor - line.width + _pageMarginSide;
           y = _pageMarginTop;
-          line.draw(canvas, x, y, backPage: backPage);
+          line.draw(canvas, x, y, backPage: context.backPage);
         } else {
           x = cursor + _pageMarginTop;
-          y = leftSide
-              ? _pageMarginSide
-              : _width - _pageMarginSide - _pageWidth;
-          line.drawYoko(canvas, y, x + line.width / 2, backPage: backPage);
+          y = _pageMarginSide;
+          line.drawYoko(
+            canvas,
+            y,
+            x + line.width / 2,
+            backPage: context.backPage,
+          );
         }
 
-        line.x = x;
-        _recordSelectableGlyphs(line, x, y, vertical);
+        line.x = x + origin.dx;
+        if (context.recordInteractiveRegions && !context.backPage) {
+          _recordSelectableGlyphs(line, x, y, vertical, origin);
+        }
 
         for (final attachment in line.attachments) {
           _drawLineAttachment(
@@ -60,7 +78,9 @@ extension on KumihanEngine {
             x,
             y,
             vertical,
-            backPage: backPage,
+            origin: origin,
+            backPage: context.backPage,
+            recordInteractiveRegions: context.recordInteractiveRegions,
           );
         }
       }
@@ -70,6 +90,9 @@ extension on KumihanEngine {
           : cursor + group.width + _lineSpace;
     }
 
+    if (context.backPage) {
+      canvas.restore();
+    }
     canvas.restore();
   }
 
@@ -78,6 +101,7 @@ extension on KumihanEngine {
     double x,
     double y,
     bool vertical,
+    Offset origin,
   ) {
     if (line.start >= line.end || line.start >= line.block.atom.length) {
       return;
@@ -101,14 +125,14 @@ extension on KumihanEngine {
       for (var index = 0; index < glyphs.length; index += 1) {
         final rect = vertical
             ? Rect.fromLTWH(
-                x,
-                y + line.y + atomOffset + glyphExtent * index,
+                origin.dx + x,
+                origin.dy + y + line.y + atomOffset + glyphExtent * index,
                 line.width,
                 glyphExtent,
               )
             : Rect.fromLTWH(
-                y + line.y + atomOffset + glyphExtent * index,
-                x,
+                origin.dx + y + line.y + atomOffset + glyphExtent * index,
+                origin.dy + x,
                 glyphExtent,
                 line.width,
               );
@@ -153,7 +177,9 @@ extension on KumihanEngine {
     double x,
     double y,
     bool vertical, {
+    required Offset origin,
     required bool backPage,
+    required bool recordInteractiveRegions,
   }) {
     switch (attachment) {
       case InlineDecorationAttachment():
@@ -181,23 +207,23 @@ extension on KumihanEngine {
           attachment.lowerLine?.drawYoko(canvas, y, lowerCenter);
         }
       case LinkMarker():
-        if (!backPage) {
+        if (!backPage && recordInteractiveRegions) {
           final top = line.getAtomY(attachment.startAtom);
           final bottom = line.getAtomY(attachment.endAtom);
           _clickable.add(
             vertical
                 ? ClickableArea(
                     type: 'リンク',
-                    x: x,
-                    y: y + top + line.y,
+                    x: origin.dx + x,
+                    y: origin.dy + y + top + line.y,
                     width: line.width,
                     height: bottom - top,
                     data: attachment.linkTarget,
                   )
                 : ClickableArea(
                     type: 'リンク',
-                    x: y + top + line.y,
-                    y: x,
+                    x: origin.dx + y + top + line.y,
+                    y: origin.dy + x,
                     width: bottom - top,
                     height: line.width,
                     data: attachment.linkTarget,

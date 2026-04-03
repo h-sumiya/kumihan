@@ -3,9 +3,14 @@ import 'package:html/parser.dart' as html_parser;
 
 import '../ast.dart';
 import '../document.dart';
+import 'header_title.dart';
 
 class HtmlParser {
-  const HtmlParser();
+  const HtmlParser({this.author, this.headerTitle, this.title});
+
+  final String? author;
+  final String? headerTitle;
+  final String? title;
 
   static final RegExp _blockquoteAttributionPrefixPattern = RegExp(
     r'^(?:'
@@ -24,7 +29,14 @@ class HtmlParser {
         .replaceAll(RegExp(r'(\r\n|\r)'), '\n')
         .replaceFirst(RegExp(r'\n$'), '');
     if (normalized.isEmpty) {
-      return Document.fromAst(const <AstToken>[]);
+      return Document.fromAst(
+        const <AstToken>[],
+        headerTitle: resolveDocumentHeaderTitle(
+          author: author,
+          headerTitle: headerTitle,
+          title: title,
+        ),
+      );
     }
 
     final fragment = html_parser.parseFragment(normalized, container: 'body');
@@ -32,7 +44,14 @@ class HtmlParser {
     for (final node in fragment.nodes) {
       _appendBlock(tokens, _parseBlock(node));
     }
-    return Document.fromAst(tokens);
+    return Document.fromAst(
+      tokens,
+      headerTitle: resolveDocumentHeaderTitle(
+        author: author,
+        headerTitle: headerTitle,
+        title: title,
+      ),
+    );
   }
 
   void _appendBlock(List<AstToken> output, List<AstToken> block) {

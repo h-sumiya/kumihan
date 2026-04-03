@@ -140,6 +140,60 @@ void main() {
 
     expect(engine.theme, theme);
     expect(engine.fontColor, const Color(0xff112233));
+    expect(engine.paperColor, defaultKumihanPaperColor);
+  });
+
+  test('paintPage offsets selectable glyphs into the supplied rect', () async {
+    final engine = KumihanEngine(
+      baseUri: null,
+      initialPage: 0,
+      onInvalidate: () {},
+      onSnapshot: (_) {},
+    );
+
+    await engine.resize(240, 360);
+    await engine.open(Document(<Object>['本文です。']));
+
+    final offsetRect = const Rect.fromLTWH(40, 56, 240, 360);
+    final recorder = PictureRecorder();
+    final canvas = Canvas(recorder);
+    engine.resetPaintState();
+    engine.paintPage(canvas, 0, PagePaintContext(contentRect: offsetRect));
+    recorder.endRecording();
+
+    expect(engine.selectableGlyphs, isNotEmpty);
+    final bounds = engine.selectableGlyphs
+        .map((item) => item.rect)
+        .reduce((value, element) => value.expandToInclude(element));
+    expect(bounds.left, greaterThanOrEqualTo(offsetRect.left));
+    expect(bounds.top, greaterThanOrEqualTo(offsetRect.top));
+  });
+
+  test('paintPage can skip interactive region recording', () async {
+    final engine = KumihanEngine(
+      baseUri: null,
+      initialPage: 0,
+      onInvalidate: () {},
+      onSnapshot: (_) {},
+    );
+
+    await engine.resize(240, 360);
+    await engine.open(Document(<Object>['本文です。']));
+
+    final recorder = PictureRecorder();
+    final canvas = Canvas(recorder);
+    engine.resetPaintState();
+    engine.paintPage(
+      canvas,
+      0,
+      const PagePaintContext(
+        contentRect: Rect.fromLTWH(0, 0, 240, 360),
+        recordInteractiveRegions: false,
+      ),
+    );
+    recorder.endRecording();
+
+    expect(engine.selectableGlyphs, isEmpty);
   });
 
   test(
@@ -180,4 +234,36 @@ void main() {
       expect(bounds.bottom, lessThanOrEqualTo(600 - 20 + 0.001));
     },
   );
+
+  testWidgets('book canvas advances by spreads in double-page mode', (
+    tester,
+  ) async {
+    final controller = KumihanPagedController();
+
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: SizedBox(
+          width: 800,
+          height: 600,
+          child: KumihanBookCanvas(
+            document: const AozoraParser().parse(
+              '一頁目です。\n［＃改ページ］\n二頁目です。\n［＃改ページ］\n三頁目です。\n［＃改ページ］\n四頁目です。',
+            ),
+            controller: controller,
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(controller.snapshot.currentPage, 0);
+    expect(controller.snapshot.totalPages, greaterThanOrEqualTo(4));
+
+    await controller.next();
+    await tester.pumpAndSettle();
+
+    expect(controller.snapshot.currentPage, 2);
+  });
 }

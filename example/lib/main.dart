@@ -10,7 +10,7 @@ void main() {
   runApp(const KumihanExampleApp());
 }
 
-enum ReaderViewMode { paged, scroll }
+enum ReaderViewMode { book, paged, scroll }
 
 class KumihanExampleApp extends StatelessWidget {
   const KumihanExampleApp({super.key});
@@ -51,10 +51,21 @@ class _ReaderScreenState extends State<ReaderScreen> {
     visibleRange: Rect.zero,
   );
 
+  Document _documentWithHeaderTitle(Document document, String fileName) {
+    if (document.headerTitle == fileName) {
+      return document;
+    }
+    return Document.fromAst(
+      document.ast,
+      headerTitle: fileName,
+      value: document.value,
+    );
+  }
+
   void _loadDocument({required String fileName, required Document document}) {
     setState(() {
       _fileName = fileName;
-      _document = document;
+      _document = _documentWithHeaderTitle(document, fileName);
       _pagedSnapshot = const KumihanPagedSnapshot(
         currentPage: 0,
         totalPages: 0,
@@ -162,13 +173,18 @@ class _ReaderScreenState extends State<ReaderScreen> {
     final pageInfo = _pagedSnapshot.totalPages > 0
         ? '${_pagedSnapshot.currentPage + 1} / ${_pagedSnapshot.totalPages}'
         : '-';
+    final modeLabel = switch (_viewMode) {
+      ReaderViewMode.book => 'Book',
+      ReaderViewMode.paged => 'Page',
+      ReaderViewMode.scroll => 'Scroll',
+    };
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Row(
         children: <Widget>[
           Text(
-            'Page $pageInfo',
+            '$modeLabel $pageInfo',
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(width: 12),
@@ -202,8 +218,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final title = _fileName ?? 'kumihan example';
     return Scaffold(
-      appBar: AppBar(title: const Text('kumihan example')),
+      appBar: AppBar(title: Text(title)),
       body: Column(
         children: <Widget>[
           Padding(
@@ -222,6 +239,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
                 const SizedBox(width: 12),
                 SegmentedButton<ReaderViewMode>(
                   segments: const <ButtonSegment<ReaderViewMode>>[
+                    ButtonSegment(
+                      value: ReaderViewMode.book,
+                      label: Text('Book'),
+                    ),
                     ButtonSegment(
                       value: ReaderViewMode.paged,
                       label: Text('Paged'),
@@ -255,35 +276,48 @@ class _ReaderScreenState extends State<ReaderScreen> {
                   )
                 : DecoratedBox(
                     decoration: const BoxDecoration(color: Color(0xfffffdf1)),
-                    child: _viewMode == ReaderViewMode.paged
-                        ? KumihanPagedCanvas(
-                            document: _document!,
-                            controller: _pagedController,
-                            layout: const KumihanLayoutData(
-                              fontSize: 18,
-                              pagePadding: EdgeInsets.all(16),
-                            ),
-                            onSnapshotChanged: (snapshot) {
-                              setState(() {
-                                _pagedSnapshot = snapshot;
-                                _pageController.text =
-                                    '${snapshot.currentPage + 1}';
-                              });
-                            },
-                          )
-                        : KumihanScrollCanvas(
-                            document: _document!,
-                            controller: _scrollController,
-                            layout: const KumihanLayoutData(
-                              fontSize: 18,
-                              pagePadding: EdgeInsets.all(16),
-                            ),
-                            onSnapshotChanged: (snapshot) {
-                              setState(() {
-                                _scrollSnapshot = snapshot;
-                              });
-                            },
-                          ),
+                    child: switch (_viewMode) {
+                      ReaderViewMode.book => KumihanBookCanvas(
+                        document: _document!,
+                        controller: _pagedController,
+                        layout: const KumihanLayoutData(fontSize: 18),
+                        onSnapshotChanged: (snapshot) {
+                          setState(() {
+                            _pagedSnapshot = snapshot;
+                            _pageController.text =
+                                '${snapshot.currentPage + 1}';
+                          });
+                        },
+                      ),
+                      ReaderViewMode.paged => KumihanPagedCanvas(
+                        document: _document!,
+                        controller: _pagedController,
+                        layout: const KumihanLayoutData(
+                          fontSize: 18,
+                          pagePadding: EdgeInsets.all(16),
+                        ),
+                        onSnapshotChanged: (snapshot) {
+                          setState(() {
+                            _pagedSnapshot = snapshot;
+                            _pageController.text =
+                                '${snapshot.currentPage + 1}';
+                          });
+                        },
+                      ),
+                      ReaderViewMode.scroll => KumihanScrollCanvas(
+                        document: _document!,
+                        controller: _scrollController,
+                        layout: const KumihanLayoutData(
+                          fontSize: 18,
+                          pagePadding: EdgeInsets.all(16),
+                        ),
+                        onSnapshotChanged: (snapshot) {
+                          setState(() {
+                            _scrollSnapshot = snapshot;
+                          });
+                        },
+                      ),
+                    },
                   ),
           ),
         ],
