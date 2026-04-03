@@ -28,6 +28,36 @@ void main() {
     expect(controller.snapshot.currentPage, 0);
   });
 
+  testWidgets('scroll canvas exposes continuous offset and scrollbar', (
+    tester,
+  ) async {
+    final controller = KumihanScrollController();
+
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: SizedBox(
+          width: 400,
+          height: 600,
+          child: KumihanScrollCanvas.aozora(
+            text: '最初の本文です。\n［＃改ページ］\n次の本文です。',
+            controller: controller,
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(find.byType(RawScrollbar), findsOneWidget);
+    expect(controller.snapshot.contentWidth, greaterThan(400));
+    expect(controller.snapshot.maxScrollOffset, greaterThan(0));
+    expect(
+      controller.snapshot.scrollOffset,
+      closeTo(controller.snapshot.maxScrollOffset, 1),
+    );
+  });
+
   test('selectable text contains only body text without ruby', () async {
     final engine = KumihanEngine(
       baseUri: null,

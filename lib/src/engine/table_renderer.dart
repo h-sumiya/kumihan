@@ -119,7 +119,9 @@ Future<RenderedTableBlock> _renderFallbackBlock({
   return RenderedTableBlock(height: height, picture: picture, width: width);
 }
 
-List<List<AstCompiledTableCell>> _normalizeRows(List<List<AstCompiledTableCell>> rows) {
+List<List<AstCompiledTableCell>> _normalizeRows(
+  List<List<AstCompiledTableCell>> rows,
+) {
   if (rows.isEmpty) {
     return const <List<AstCompiledTableCell>>[];
   }
@@ -139,7 +141,10 @@ List<List<AstCompiledTableCell>> _normalizeRows(List<List<AstCompiledTableCell>>
         (row) => <AstCompiledTableCell>[
           ...row,
           for (var index = row.length; index < columnCount; index += 1)
-            const AstCompiledTableCell(text: '', alignment: AstTableAlignment.start),
+            const AstCompiledTableCell(
+              text: '',
+              alignment: AstTableAlignment.start,
+            ),
         ],
       )
       .toList(growable: false);
@@ -165,7 +170,9 @@ TextStyle _bodyStyle({
   return TextStyle(
     color: color,
     fontFamily: fontFamilies.firstOrNull,
-    fontFamilyFallback: fontFamilies.length > 1 ? fontFamilies.sublist(1) : null,
+    fontFamilyFallback: fontFamilies.length > 1
+        ? fontFamilies.sublist(1)
+        : null,
     package: bundledFontPackage,
     fontSize: fontSize,
     height: 1.28,
@@ -225,7 +232,10 @@ _RenderedTablePlan _buildGridPlan({
   final horizontalPadding = math.max(fontSize * 0.5, 10);
   final verticalPadding = math.max(fontSize * 0.34, 6);
   final maxTableWidth = math.max(width, 1);
-  final availableCellWidth = math.max(maxTableWidth - border * (columnCount + 1), 1);
+  final availableCellWidth = math.max(
+    maxTableWidth - border * (columnCount + 1),
+    1,
+  );
   final naturalWidths = List<double>.filled(columnCount, minimumColumnWidth);
   var naturalWidthSum = 0.0;
 
@@ -244,7 +254,9 @@ _RenderedTablePlan _buildGridPlan({
     var columnWidth = minimumColumnWidth;
     for (var rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
       final cell = rows[rowIndex][column];
-      final style = rowIndex < headerRowCount ? headerMeasureStyle : bodyMeasureStyle;
+      final style = rowIndex < headerRowCount
+          ? headerMeasureStyle
+          : bodyMeasureStyle;
       final painter = _createPainter(
         cell.text.isEmpty ? ' ' : cell.text,
         style,
@@ -287,7 +299,9 @@ _RenderedTablePlan _buildGridPlan({
     }
   }
 
-  final tableWidth = border * (columnCount + 1) + widths.fold<double>(0, (sum, item) => sum + item);
+  final tableWidth =
+      border * (columnCount + 1) +
+      widths.fold<double>(0, (sum, item) => sum + item);
 
   final rowHeights = <double>[];
   final painters = <List<TextPainter>>[];
@@ -296,7 +310,9 @@ _RenderedTablePlan _buildGridPlan({
     var rowHeight = 0.0;
     for (var column = 0; column < columnCount; column += 1) {
       final cell = rows[rowIndex][column];
-      final style = rowIndex < headerRowCount ? headerMeasureStyle : bodyMeasureStyle;
+      final style = rowIndex < headerRowCount
+          ? headerMeasureStyle
+          : bodyMeasureStyle;
       final painter = _createPainter(
         cell.text.isEmpty ? ' ' : cell.text,
         style,
@@ -313,7 +329,8 @@ _RenderedTablePlan _buildGridPlan({
     rowHeights.add(rowHeight);
   }
 
-  final totalHeight = border + rowHeights.fold<double>(0, (sum, item) => sum + item + border);
+  final totalHeight =
+      border + rowHeights.fold<double>(0, (sum, item) => sum + item + border);
   return _RenderedTablePlan(
     height: totalHeight,
     paint: (canvas) {
@@ -324,7 +341,10 @@ _RenderedTablePlan _buildGridPlan({
       final headerFill = Paint()
         ..color = fontColor.withValues(alpha: 0.05)
         ..style = PaintingStyle.fill;
-      canvas.drawRect(Rect.fromLTWH(0, 0, tableWidth, totalHeight), borderPaint);
+      canvas.drawRect(
+        Rect.fromLTWH(0, 0, tableWidth, totalHeight),
+        borderPaint,
+      );
 
       var y = border;
       for (var rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
@@ -345,7 +365,8 @@ _RenderedTablePlan _buildGridPlan({
           final cellY = y + (rowHeight - painter.height) / 2;
           final alignment = rows[rowIndex][column].alignment;
           final offsetX = switch (alignment) {
-            AstTableAlignment.center => cellX + (innerWidth - painter.width) / 2,
+            AstTableAlignment.center =>
+              cellX + (innerWidth - painter.width) / 2,
             AstTableAlignment.end => cellX + innerWidth - painter.width,
             AstTableAlignment.start => cellX,
           };
@@ -353,7 +374,11 @@ _RenderedTablePlan _buildGridPlan({
 
           x += cellWidth;
           if (column < columnCount - 1) {
-            canvas.drawLine(Offset(x, y), Offset(x, y + rowHeight), borderPaint);
+            canvas.drawLine(
+              Offset(x, y),
+              Offset(x, y + rowHeight),
+              borderPaint,
+            );
             x += border;
           }
         }
@@ -395,13 +420,21 @@ _RenderedTablePlan _buildStackedPlan({
 
   final columnCount = rows.first.length;
   final headerLabels = headerRowCount > 0
-      ? rows.first.map((cell) => cell.text.isEmpty ? '列' : cell.text).toList(growable: false)
+      ? rows.first
+            .map((cell) => cell.text.isEmpty ? '列' : cell.text)
+            .toList(growable: false)
       : List<String>.generate(columnCount, (index) => '列${index + 1}');
-  final dataRows = headerRowCount < rows.length ? rows.sublist(headerRowCount) : rows;
+  final dataRows = headerRowCount < rows.length
+      ? rows.sublist(headerRowCount)
+      : rows;
   final cards = dataRows.isEmpty ? rows : dataRows;
   var naturalContentWidth = 0.0;
   for (final label in headerLabels) {
-    final labelPainter = _createPainter(label, labelStyle, maxWidth: double.infinity);
+    final labelPainter = _createPainter(
+      label,
+      labelStyle,
+      maxWidth: double.infinity,
+    );
     naturalContentWidth = math.max(naturalContentWidth, labelPainter.width);
   }
   for (final row in cards) {
@@ -414,10 +447,15 @@ _RenderedTablePlan _buildStackedPlan({
       naturalContentWidth = math.max(naturalContentWidth, valuePainter.width);
     }
   }
-  final cardWidth = math.min(
-    maxCardWidth,
-    math.max(naturalContentWidth + outerPadding * 2 + border * 2, fontSize * 8),
-  ).toDouble();
+  final cardWidth = math
+      .min(
+        maxCardWidth,
+        math.max(
+          naturalContentWidth + outerPadding * 2 + border * 2,
+          fontSize * 8,
+        ),
+      )
+      .toDouble();
   final cardLayouts = <_StackedCardLayout>[];
   var totalHeight = 0.0;
 
@@ -437,7 +475,12 @@ _RenderedTablePlan _buildStackedPlan({
         maxWidth: contentWidth.toDouble(),
         textAlign: _textAlignForCell(row[column].alignment),
       );
-      final pairHeight = innerPadding + labelPainter.height + pairGap + valuePainter.height + innerPadding;
+      final pairHeight =
+          innerPadding +
+          labelPainter.height +
+          pairGap +
+          valuePainter.height +
+          innerPadding;
       pairLayouts.add(
         _StackedPairLayout(
           alignment: row[column].alignment,
@@ -469,32 +512,52 @@ _RenderedTablePlan _buildStackedPlan({
 
       var y = 0.0;
       for (final card in cardLayouts) {
-        canvas.drawRect(Rect.fromLTWH(0, y, cardWidth, card.height), borderPaint);
+        canvas.drawRect(
+          Rect.fromLTWH(0, y, cardWidth, card.height),
+          borderPaint,
+        );
         var pairY = y + border;
         for (var index = 0; index < card.pairs.length; index += 1) {
           final pair = card.pairs[index];
           final sectionTop = pairY;
           canvas.drawRect(
-            Rect.fromLTWH(border, sectionTop, cardWidth - border * 2, pair.height),
+            Rect.fromLTWH(
+              border,
+              sectionTop,
+              cardWidth - border * 2,
+              pair.height,
+            ),
             labelFill,
           );
           final labelX = outerPadding;
           final labelY = sectionTop + innerPadding;
-          pair.labelPainter.paint(canvas, Offset(labelX.toDouble(), labelY.toDouble()));
+          pair.labelPainter.paint(
+            canvas,
+            Offset(labelX.toDouble(), labelY.toDouble()),
+          );
 
           final contentWidth = math.max(cardWidth - outerPadding * 2, 1.0);
           final valueX = switch (pair.alignment) {
-            AstTableAlignment.center => outerPadding + (contentWidth - pair.valuePainter.width) / 2,
-            AstTableAlignment.end => outerPadding + contentWidth - pair.valuePainter.width,
+            AstTableAlignment.center =>
+              outerPadding + (contentWidth - pair.valuePainter.width) / 2,
+            AstTableAlignment.end =>
+              outerPadding + contentWidth - pair.valuePainter.width,
             AstTableAlignment.start => outerPadding,
           };
           pair.valuePainter.paint(
             canvas,
-            Offset(valueX.toDouble(), (labelY + pair.labelPainter.height + pairGap).toDouble()),
+            Offset(
+              valueX.toDouble(),
+              (labelY + pair.labelPainter.height + pairGap).toDouble(),
+            ),
           );
 
           pairY += pair.height;
-          canvas.drawLine(Offset(0, pairY), Offset(cardWidth, pairY), borderPaint);
+          canvas.drawLine(
+            Offset(0, pairY),
+            Offset(cardWidth, pairY),
+            borderPaint,
+          );
           pairY += border;
           if (index == card.pairs.length - 1) {
             pairY -= border;
