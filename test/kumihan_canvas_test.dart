@@ -121,29 +121,83 @@ void main() {
     expect(bounds.bottom, lessThanOrEqualTo(600 - 20 + 0.001));
   });
 
-  test('paged canvas keeps snapped width overflow on the left side', () async {
-    final engine = KumihanEngine(
-      baseUri: null,
-      initialPage: 0,
-      onInvalidate: () {},
-      onSnapshot: (_) {},
+  test(
+    'paged canvas keeps snapped width overflow on the left side for full pages by default',
+    () async {
+      final engine = KumihanEngine(
+        baseUri: null,
+        initialPage: 0,
+        onInvalidate: () {},
+        onSnapshot: (_) {},
+      );
+
+      await engine.resize(420, 600);
+      await engine.open(
+        Document(<Object>[List<String>.filled(400, '本文です。').join()]),
+      );
+
+      final recorder = PictureRecorder();
+      final canvas = Canvas(recorder);
+      engine.paint(canvas);
+      recorder.endRecording();
+
+      expect(engine.snapshot.totalPages, greaterThan(1));
+      expect(engine.selectableGlyphs, isNotEmpty);
+      final bounds = _glyphBounds(engine.selectableGlyphs);
+      final rightGap = 420 - bounds.right;
+      expect(bounds.left, greaterThan(rightGap + 5));
+    },
+  );
+
+  test('paged canvas can align full pages left or center', () async {
+    final document = Document(<Object>[
+      List<String>.filled(400, '本文です。').join(),
+    ]);
+    const size = Size(420, 600);
+
+    final rightBounds = await _pagedBounds(size: size, document: document);
+    final centerBounds = await _pagedBounds(
+      size: size,
+      document: document,
+      layout: const KumihanLayoutData(
+        fullPageAlignment: KumihanFullPageAlignment.center,
+      ),
+    );
+    final leftBounds = await _pagedBounds(
+      size: size,
+      document: document,
+      layout: const KumihanLayoutData(
+        fullPageAlignment: KumihanFullPageAlignment.left,
+      ),
     );
 
-    await engine.resize(420, 600);
-    await engine.open(Document(<Object>['本文です。']));
-
-    final recorder = PictureRecorder();
-    final canvas = Canvas(recorder);
-    engine.paint(canvas);
-    recorder.endRecording();
-
-    expect(engine.selectableGlyphs, isNotEmpty);
-    final bounds = engine.selectableGlyphs
-        .map((item) => item.rect)
-        .reduce((value, element) => value.expandToInclude(element));
-    final rightGap = 420 - bounds.right;
-    expect(bounds.left, greaterThan(rightGap + 5));
+    expect(leftBounds.left, lessThan(centerBounds.left));
+    expect(centerBounds.left, lessThan(rightBounds.left));
+    expect(
+      rightBounds.left - centerBounds.left,
+      closeTo((rightBounds.left - leftBounds.left) / 2, 2.0),
+    );
   });
+
+  test(
+    'paged canvas keeps short pages right aligned even when full-page alignment changes',
+    () async {
+      const size = Size(420, 600);
+      final document = Document(<Object>['本文です。']);
+
+      final defaultBounds = await _pagedBounds(size: size, document: document);
+      final leftBounds = await _pagedBounds(
+        size: size,
+        document: document,
+        layout: const KumihanLayoutData(
+          fullPageAlignment: KumihanFullPageAlignment.left,
+        ),
+      );
+
+      expect(leftBounds.left, closeTo(defaultBounds.left, 0.001));
+      expect(leftBounds.right, closeTo(defaultBounds.right, 0.001));
+    },
+  );
 
   test('theme update changes engine text color', () async {
     final engine = KumihanEngine(
@@ -294,42 +348,74 @@ void main() {
   });
 
   test(
-    'book renderer keeps snapped spread overflow on the left side',
+    'book renderer places the single right page toward the gutter by default',
     () async {
-      final engine = KumihanEngine(
-        baseUri: null,
-        initialPage: 0,
-        onInvalidate: () {},
-        onSnapshot: (_) {},
-      );
-      const layout = KumihanBookLayoutData();
-      const theme = KumihanThemeData();
       const canvasSize = Size(420, 600);
-      final renderer = BookSpreadRenderer(
-        engine: engine,
-        layout: layout,
-        theme: theme,
+      final document = Document(<Object>[
+        List<String>.filled(400, '本文です。').join(),
+      ]);
+
+      final defaultBounds = await _bookBounds(
+        size: canvasSize,
+        document: document,
         spreadMode: KumihanSpreadMode.single,
       );
-      final pageSize = renderer.resolvePageSize(canvasSize);
+      final rightBounds = await _bookBounds(
+        size: canvasSize,
+        document: document,
+        spreadMode: KumihanSpreadMode.single,
+        layout: const KumihanBookLayoutData(
+          rightPageFullPageAlignment: KumihanFullPageAlignment.right,
+        ),
+      );
 
-      await engine.resize(pageSize.width, pageSize.height);
-      await engine.open(Document(<Object>['本文です。']));
-
-      final recorder = PictureRecorder();
-      final canvas = Canvas(recorder);
-      engine.resetPaintState();
-      renderer.paint(canvas, canvasSize, currentPage: 0, totalPages: 1);
-      recorder.endRecording();
-
-      expect(engine.selectableGlyphs, isNotEmpty);
-      final bounds = engine.selectableGlyphs
-          .map((item) => item.rect)
-          .reduce((value, element) => value.expandToInclude(element));
-      final rightGap = canvasSize.width - bounds.right;
-      expect(bounds.left, greaterThan(rightGap + 5));
+      expect(defaultBounds.left, lessThan(rightBounds.left));
     },
   );
+
+  test('book renderer applies right-page alignment independently', () async {
+    const size = Size(840, 600);
+    final document = Document(<Object>[
+      '右頁です。',
+      const PageBreak(AstPageBreakKind.kaipage),
+      '左頁です。',
+    ]);
+    final defaultGlyphs = await _bookGlyphs(
+      size: size,
+      document: document,
+      spreadMode: KumihanSpreadMode.doublePage,
+    );
+    final rightOnlyGlyphs = await _bookGlyphs(
+      size: size,
+      document: document,
+      layout: const KumihanBookLayoutData(
+        rightPageFullPageAlignment: KumihanFullPageAlignment.right,
+      ),
+      spreadMode: KumihanSpreadMode.doublePage,
+    );
+    final bothOverrideGlyphs = await _bookGlyphs(
+      size: size,
+      document: document,
+      layout: const KumihanBookLayoutData(
+        rightPageFullPageAlignment: KumihanFullPageAlignment.right,
+        leftPageFullPageAlignment: KumihanFullPageAlignment.left,
+      ),
+      spreadMode: KumihanSpreadMode.doublePage,
+    );
+
+    final defaultRightBounds = _glyphBounds(
+      defaultGlyphs.where((item) => item.text == '右').toList(),
+    );
+    final rightOnlyRightBounds = _glyphBounds(
+      rightOnlyGlyphs.where((item) => item.text == '右').toList(),
+    );
+    final bothRightBounds = _glyphBounds(
+      bothOverrideGlyphs.where((item) => item.text == '右').toList(),
+    );
+
+    expect(defaultRightBounds.left, lessThan(rightOnlyRightBounds.left));
+    expect(bothRightBounds.left, closeTo(rightOnlyRightBounds.left, 0.001));
+  });
 
   test('book renderer resolves double-page width from center gap', () {
     final engine = KumihanEngine(
@@ -541,6 +627,30 @@ Future<Offset> _firstPagedGlyphCenter({
   return _firstGlyphCenter(engine.selectableGlyphs);
 }
 
+Future<Rect> _pagedBounds({
+  required Size size,
+  required Document document,
+  KumihanLayoutData layout = const KumihanLayoutData(),
+}) async {
+  final engine = KumihanEngine(
+    baseUri: null,
+    initialPage: 0,
+    layout: layout,
+    onInvalidate: () {},
+    onSnapshot: (_) {},
+  );
+
+  await engine.resize(size.width, size.height);
+  await engine.open(document);
+
+  final recorder = PictureRecorder();
+  final canvas = Canvas(recorder);
+  engine.paint(canvas);
+  recorder.endRecording();
+
+  return _glyphBounds(engine.selectableGlyphs);
+}
+
 Future<Offset> _firstScrollGlyphCenter({
   required Size size,
   required Document document,
@@ -566,13 +676,13 @@ Future<Offset> _firstBookGlyphCenter({
   required Size size,
   required Document document,
 }) async {
+  const layout = KumihanBookLayoutData();
   final engine = KumihanEngine(
     baseUri: null,
     initialPage: 0,
     onInvalidate: () {},
     onSnapshot: (_) {},
   );
-  const layout = KumihanBookLayoutData();
   const theme = KumihanThemeData();
   final renderer = BookSpreadRenderer(
     engine: engine,
@@ -599,11 +709,74 @@ Future<Offset> _firstBookGlyphCenter({
   return _firstGlyphCenter(engine.selectableGlyphs);
 }
 
+Future<Rect> _bookBounds({
+  required Size size,
+  required Document document,
+  KumihanBookLayoutData layout = const KumihanBookLayoutData(),
+  KumihanSpreadMode spreadMode = KumihanSpreadMode.doublePage,
+}) async {
+  return _glyphBounds(
+    await _bookGlyphs(
+      size: size,
+      document: document,
+      layout: layout,
+      spreadMode: spreadMode,
+    ),
+  );
+}
+
+Future<List<KumihanSelectableGlyph>> _bookGlyphs({
+  required Size size,
+  required Document document,
+  KumihanBookLayoutData layout = const KumihanBookLayoutData(),
+  KumihanSpreadMode spreadMode = KumihanSpreadMode.doublePage,
+}) async {
+  final engine = KumihanEngine(
+    baseUri: null,
+    initialPage: 0,
+    onInvalidate: () {},
+    onSnapshot: (_) {},
+  );
+  const theme = KumihanThemeData();
+  final renderer = BookSpreadRenderer(
+    engine: engine,
+    layout: layout,
+    theme: theme,
+    spreadMode: spreadMode,
+  );
+  final pageSize = renderer.resolvePageSize(size);
+
+  await engine.resize(pageSize.width, pageSize.height);
+  await engine.open(document);
+
+  final recorder = PictureRecorder();
+  final canvas = Canvas(recorder);
+  engine.resetPaintState();
+  renderer.paint(
+    canvas,
+    size,
+    currentPage: 0,
+    totalPages: engine.snapshot.totalPages,
+  );
+  recorder.endRecording();
+
+  return List<KumihanSelectableGlyph>.of(engine.selectableGlyphs);
+}
+
 Offset _firstGlyphCenter(List<KumihanSelectableGlyph> glyphs) {
   if (glyphs.isEmpty) {
     throw StateError('No selectable glyphs were recorded.');
   }
   return glyphs.first.rect.center;
+}
+
+Rect _glyphBounds(List<KumihanSelectableGlyph> glyphs) {
+  if (glyphs.isEmpty) {
+    throw StateError('No selectable glyphs were recorded.');
+  }
+  return glyphs
+      .map((item) => item.rect)
+      .reduce((value, element) => value.expandToInclude(element));
 }
 
 double _snapBookPageExtent(double rawExtent, double fontSize) {

@@ -33,19 +33,18 @@ class BookSpreadRenderer {
     final pageGap = spreadMode == KumihanSpreadMode.doublePage
         ? layout.pageGap
         : 0.0;
-    final double pageWidthBase = switch (spreadMode) {
-      KumihanSpreadMode.doublePage => math.max(
-        math.min(
-          size.width / 2 - outerPadding.left - pageGap,
-          size.width / 2 - outerPadding.right - pageGap,
-        ),
-        fontSize,
-      ),
-      KumihanSpreadMode.single => math.max(
-        size.width - outerPadding.left - outerPadding.right,
-        fontSize,
-      ),
-    };
+    final leftSlotWidth = spreadMode == KumihanSpreadMode.doublePage
+        ? math.max(size.width / 2 - outerPadding.left - pageGap, fontSize)
+        : 0.0;
+    final rightSlotWidth = spreadMode == KumihanSpreadMode.doublePage
+        ? math.max(size.width / 2 - outerPadding.right - pageGap, fontSize)
+        : math.max(
+            size.width - outerPadding.left - outerPadding.right,
+            fontSize,
+          );
+    final pageWidthBase = spreadMode == KumihanSpreadMode.doublePage
+        ? math.max(math.min(leftSlotWidth, rightSlotWidth), fontSize)
+        : rightSlotWidth;
 
     var pageWidth = math.max(pageWidthBase, fontSize);
     pageWidth = math.max(pageWidth, fontSize);
@@ -77,11 +76,21 @@ class BookSpreadRenderer {
     );
     final centerX = size.width / 2;
     final leftX = spreadMode == KumihanSpreadMode.doublePage
-        ? centerX - pageGap - pageWidth
-        : size.width - outerPadding.right - pageWidth;
-    final rightX = spreadMode == KumihanSpreadMode.doublePage
+        ? outerPadding.left +
+              _inlineOffset(
+                leftSlotWidth - pageWidth,
+                layout.leftPageFullPageAlignment,
+              )
+        : null;
+    final rightBaseX = spreadMode == KumihanSpreadMode.doublePage
         ? centerX + pageGap
-        : size.width - outerPadding.right - pageWidth;
+        : outerPadding.left;
+    final rightX =
+        rightBaseX +
+        _inlineOffset(
+          rightSlotWidth - pageWidth,
+          layout.rightPageFullPageAlignment,
+        );
 
     final rightRect = Rect.fromLTWH(
       rightX,
@@ -90,7 +99,7 @@ class BookSpreadRenderer {
       pageHeight,
     );
     final leftRect = spreadMode == KumihanSpreadMode.doublePage
-        ? Rect.fromLTWH(leftX, pageMarginTop, pageWidth, pageHeight)
+        ? Rect.fromLTWH(leftX!, pageMarginTop, pageWidth, pageHeight)
         : null;
 
     return _BookSpreadMetrics(
@@ -103,6 +112,18 @@ class BookSpreadRenderer {
       leftRect: leftRect,
       size: size,
     );
+  }
+
+  double _inlineOffset(
+    double inlineOverflow,
+    KumihanFullPageAlignment alignment,
+  ) {
+    final overflow = math.max(inlineOverflow, 0.0);
+    return switch (alignment) {
+      KumihanFullPageAlignment.left => 0.0,
+      KumihanFullPageAlignment.center => overflow / 2,
+      KumihanFullPageAlignment.right => overflow,
+    };
   }
 
   void paint(

@@ -55,7 +55,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
     fontSize: 18,
     outerPadding: EdgeInsets.fromLTRB(8, 8, 8, 8),
     contentPadding: EdgeInsets.fromLTRB(36, 0, 36, 0),
-    pageGap: 40,
+    pageGap: 20,
   );
 
   Document _documentWithHeaderTitle(Document document, String fileName) {

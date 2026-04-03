@@ -8,6 +8,7 @@ extension on KumihanEngine {
   ) {
     final vertical = _currentState.startsWith('v');
     final pageStartLine = pageNo < _pages.length ? _pages[pageNo].line : 0;
+    final pageMarginSide = _pageMarginSideFor(pageNo);
     var cursor = vertical ? _pageWidth : 0.0;
     final endLine = pageNo + 1 < _pages.length
         ? _pages[pageNo + 1].line
@@ -49,12 +50,12 @@ extension on KumihanEngine {
         double y;
 
         if (vertical) {
-          x = cursor - line.width + _pageMarginSide;
+          x = cursor - line.width + pageMarginSide;
           y = _pageMarginTop;
           line.draw(canvas, x, y, backPage: context.backPage);
         } else {
           x = cursor + _pageMarginTop;
-          y = _pageMarginSide;
+          y = pageMarginSide;
           line.drawYoko(
             canvas,
             y,

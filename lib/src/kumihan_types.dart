@@ -11,8 +11,16 @@ const Object _unsetBookContentPadding = Object();
 
 enum KumihanSinglePageNumberPosition { left, center, right }
 
+enum KumihanFullPageAlignment { left, center, right }
+
 const KumihanSinglePageNumberPosition defaultKumihanSinglePageNumberPosition =
     KumihanSinglePageNumberPosition.center;
+const KumihanFullPageAlignment defaultKumihanFullPageAlignment =
+    KumihanFullPageAlignment.right;
+const KumihanFullPageAlignment defaultKumihanBookRightPageFullPageAlignment =
+    KumihanFullPageAlignment.left;
+const KumihanFullPageAlignment defaultKumihanBookLeftPageFullPageAlignment =
+    KumihanFullPageAlignment.right;
 
 @immutable
 class KumihanLayoutData {
@@ -22,6 +30,7 @@ class KumihanLayoutData {
     this.showTitle = defaultKumihanShowTitle,
     this.showPageNumber = defaultKumihanShowPageNumber,
     this.singlePageNumberPosition = defaultKumihanSinglePageNumberPosition,
+    this.fullPageAlignment = defaultKumihanFullPageAlignment,
   }) : assert(fontSize > 0);
 
   final double fontSize;
@@ -29,6 +38,7 @@ class KumihanLayoutData {
   final bool showTitle;
   final bool showPageNumber;
   final KumihanSinglePageNumberPosition singlePageNumberPosition;
+  final KumihanFullPageAlignment fullPageAlignment;
 
   KumihanLayoutData copyWith({
     double? fontSize,
@@ -36,6 +46,7 @@ class KumihanLayoutData {
     bool? showTitle,
     bool? showPageNumber,
     KumihanSinglePageNumberPosition? singlePageNumberPosition,
+    KumihanFullPageAlignment? fullPageAlignment,
   }) => KumihanLayoutData(
     fontSize: fontSize ?? this.fontSize,
     pagePadding: identical(pagePadding, _unsetPagePadding)
@@ -45,6 +56,7 @@ class KumihanLayoutData {
     showPageNumber: showPageNumber ?? this.showPageNumber,
     singlePageNumberPosition:
         singlePageNumberPosition ?? this.singlePageNumberPosition,
+    fullPageAlignment: fullPageAlignment ?? this.fullPageAlignment,
   );
 
   @override
@@ -54,7 +66,8 @@ class KumihanLayoutData {
       other.pagePadding == pagePadding &&
       other.showTitle == showTitle &&
       other.showPageNumber == showPageNumber &&
-      other.singlePageNumberPosition == singlePageNumberPosition;
+      other.singlePageNumberPosition == singlePageNumberPosition &&
+      other.fullPageAlignment == fullPageAlignment;
 
   @override
   int get hashCode => Object.hash(
@@ -63,6 +76,7 @@ class KumihanLayoutData {
     showTitle,
     showPageNumber,
     singlePageNumberPosition,
+    fullPageAlignment,
   );
 }
 
@@ -80,6 +94,10 @@ class KumihanBookLayoutData {
     this.showTitle = defaultKumihanShowTitle,
     this.showPageNumber = defaultKumihanShowPageNumber,
     this.singlePageNumberPosition = defaultKumihanSinglePageNumberPosition,
+    this.rightPageFullPageAlignment =
+        defaultKumihanBookRightPageFullPageAlignment,
+    this.leftPageFullPageAlignment =
+        defaultKumihanBookLeftPageFullPageAlignment,
   }) : assert(fontSize > 0),
        assert(pageGap >= 0);
 
@@ -90,6 +108,8 @@ class KumihanBookLayoutData {
   final bool showTitle;
   final bool showPageNumber;
   final KumihanSinglePageNumberPosition singlePageNumberPosition;
+  final KumihanFullPageAlignment rightPageFullPageAlignment;
+  final KumihanFullPageAlignment leftPageFullPageAlignment;
 
   KumihanBookLayoutData copyWith({
     double? fontSize,
@@ -99,6 +119,8 @@ class KumihanBookLayoutData {
     bool? showTitle,
     bool? showPageNumber,
     KumihanSinglePageNumberPosition? singlePageNumberPosition,
+    KumihanFullPageAlignment? rightPageFullPageAlignment,
+    KumihanFullPageAlignment? leftPageFullPageAlignment,
   }) => KumihanBookLayoutData(
     fontSize: fontSize ?? this.fontSize,
     outerPadding: identical(outerPadding, _unsetBookOuterPadding)
@@ -112,6 +134,10 @@ class KumihanBookLayoutData {
     showPageNumber: showPageNumber ?? this.showPageNumber,
     singlePageNumberPosition:
         singlePageNumberPosition ?? this.singlePageNumberPosition,
+    rightPageFullPageAlignment:
+        rightPageFullPageAlignment ?? this.rightPageFullPageAlignment,
+    leftPageFullPageAlignment:
+        leftPageFullPageAlignment ?? this.leftPageFullPageAlignment,
   );
 
   @override
@@ -123,7 +149,9 @@ class KumihanBookLayoutData {
       other.pageGap == pageGap &&
       other.showTitle == showTitle &&
       other.showPageNumber == showPageNumber &&
-      other.singlePageNumberPosition == singlePageNumberPosition;
+      other.singlePageNumberPosition == singlePageNumberPosition &&
+      other.rightPageFullPageAlignment == rightPageFullPageAlignment &&
+      other.leftPageFullPageAlignment == leftPageFullPageAlignment;
 
   @override
   int get hashCode => Object.hash(
@@ -134,6 +162,8 @@ class KumihanBookLayoutData {
     showTitle,
     showPageNumber,
     singlePageNumberPosition,
+    rightPageFullPageAlignment,
+    leftPageFullPageAlignment,
   );
 }
 

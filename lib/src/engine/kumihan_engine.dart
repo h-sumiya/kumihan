@@ -64,10 +64,15 @@ class ChapterEntry {
 }
 
 class PageInfo {
-  PageInfo({this.line = 0, this.centering = false});
+  PageInfo({
+    this.line = 0,
+    this.centering = false,
+    this.usesFullPageAlignment = false,
+  });
 
   final int line;
   final bool centering;
+  final bool usesFullPageAlignment;
 }
 
 class ClickableArea {
@@ -187,7 +192,8 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
   double _height = 1;
   double _fontSize = 18;
   double _lineSpace = 0;
-  double _pageMarginSide = 0;
+  double _pageLeadingInset = 0;
+  double _pageInlineOverflow = 0;
   double _pageMarginTop = 0;
   double _pageWidth = 0;
   double _pageHeight = 0;
@@ -381,6 +387,31 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
 
   int _step() => 1;
 
+  double _pageMarginSideFor(int pageNo) {
+    final page = _pages[pageNo];
+    final alignment = page.usesFullPageAlignment
+        ? layout.fullPageAlignment
+        : KumihanFullPageAlignment.right;
+    final inlineOffset = switch (alignment) {
+      KumihanFullPageAlignment.left => 0.0,
+      KumihanFullPageAlignment.center => _pageInlineOverflow / 2,
+      KumihanFullPageAlignment.right => _pageInlineOverflow,
+    };
+    return _pageLeadingInset + inlineOffset;
+  }
+
+  void _markLastPageAsFull() {
+    if (_pages.isEmpty) {
+      return;
+    }
+    final last = _pages.last;
+    _pages[_pages.length - 1] = PageInfo(
+      line: last.line,
+      centering: last.centering,
+      usesFullPageAlignment: true,
+    );
+  }
+
   Future<void> _relayout(bool preservePosition) async {
     final token = ++_layoutToken;
     final position = preservePosition && _blocks.isNotEmpty
@@ -511,8 +542,8 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
         availableWidth -
         (availableWidth + _lineSpace) % (_fontSize + _lineSpace);
     _pageWidth = snappedPageWidth;
-    _pageMarginSide =
-        leadingInset + math.max(availableWidth - snappedPageWidth, 0);
+    _pageLeadingInset = leadingInset;
+    _pageInlineOverflow = math.max(availableWidth - snappedPageWidth, 0);
     _pageHeight = _height - (topInset + bottomInset) * verticalFactor;
   }
 
@@ -973,6 +1004,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
     }
 
     if (_currentPageWidth > pageInlineSize) {
+      _markLastPageAsFull();
       _pages.add(PageInfo(line: _lines.length - 1));
       _currentPageWidth = line.width;
     }

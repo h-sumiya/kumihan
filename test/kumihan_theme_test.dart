@@ -43,6 +43,17 @@ void main() {
     expect(left, isNot(right));
   });
 
+  test('KumihanLayoutData equality includes fullPageAlignment', () {
+    const left = KumihanLayoutData(
+      fullPageAlignment: KumihanFullPageAlignment.left,
+    );
+    const right = KumihanLayoutData(
+      fullPageAlignment: KumihanFullPageAlignment.center,
+    );
+
+    expect(left, isNot(right));
+  });
+
   test('KumihanBookLayoutData keeps outer/content padding and gap', () {
     const layout = KumihanBookLayoutData(
       outerPadding: EdgeInsets.fromLTRB(8, 10, 12, 14),
@@ -57,6 +68,25 @@ void main() {
     expect(updated.pageGap, 18);
     expect(updated.showTitle, isFalse);
   });
+
+  test(
+    'KumihanBookLayoutData copyWith keeps left and right full-page alignment',
+    () {
+      const layout = KumihanBookLayoutData(
+        rightPageFullPageAlignment: KumihanFullPageAlignment.center,
+        leftPageFullPageAlignment: KumihanFullPageAlignment.left,
+      );
+
+      final updated = layout.copyWith(showPageNumber: false);
+
+      expect(
+        updated.rightPageFullPageAlignment,
+        KumihanFullPageAlignment.center,
+      );
+      expect(updated.leftPageFullPageAlignment, KumihanFullPageAlignment.left);
+      expect(updated.showPageNumber, isFalse);
+    },
+  );
 
   test('AozoraParser resolves headerTitle from title and author', () {
     final document = const AozoraParser(
