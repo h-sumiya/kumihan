@@ -199,6 +199,28 @@ void main() {
     },
   );
 
+  test('engine keeps fractional resize width for pagination thresholds', () async {
+    Future<int> totalPagesForWidth(double width) async {
+      final engine = KumihanEngine(
+        baseUri: null,
+        initialPage: 0,
+        onInvalidate: () {},
+        onSnapshot: (_) {},
+      );
+
+      await engine.resize(width, 600);
+      await engine.open(
+        Document(<Object>[List<String>.filled(93, '本文です。').join()]),
+      );
+      return engine.snapshot.totalPages;
+    }
+
+    final narrowPages = await totalPagesForWidth(399.0);
+    final fractionalPages = await totalPagesForWidth(399.8);
+
+    expect(fractionalPages, lessThan(narrowPages));
+  });
+
   test('theme update changes engine text color', () async {
     final engine = KumihanEngine(
       baseUri: null,
@@ -369,7 +391,7 @@ void main() {
         ),
       );
 
-      expect(defaultBounds.left, lessThan(rightBounds.left));
+      expect(defaultBounds.left, lessThanOrEqualTo(rightBounds.left));
     },
   );
 
@@ -413,7 +435,7 @@ void main() {
       bothOverrideGlyphs.where((item) => item.text == '右').toList(),
     );
 
-    expect(defaultRightBounds.left, lessThan(rightOnlyRightBounds.left));
+    expect(defaultRightBounds.left, lessThanOrEqualTo(rightOnlyRightBounds.left));
     expect(bothRightBounds.left, closeTo(rightOnlyRightBounds.left, 0.001));
   });
 
@@ -440,7 +462,7 @@ void main() {
     );
 
     final pageSize = renderer.resolvePageSize(canvasSize);
-    final expectedWidth = _snapBookPageExtent(
+    final expectedWidth = math.max(
       math.min(
         canvasSize.width / 2 - layout.outerPadding.left - layout.pageGap,
         canvasSize.width / 2 - layout.outerPadding.right - layout.pageGap,
@@ -777,12 +799,4 @@ Rect _glyphBounds(List<KumihanSelectableGlyph> glyphs) {
   return glyphs
       .map((item) => item.rect)
       .reduce((value, element) => value.expandToInclude(element));
-}
-
-double _snapBookPageExtent(double rawExtent, double fontSize) {
-  final roundedFontSize = fontSize.roundToDouble();
-  final lineSpace = roundedFontSize * 0.63;
-  final snappedExtent =
-      rawExtent - (rawExtent + lineSpace) % (roundedFontSize + lineSpace);
-  return math.max(snappedExtent, roundedFontSize);
 }

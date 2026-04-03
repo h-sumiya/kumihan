@@ -313,8 +313,8 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
 
   @override
   Future<void> resize(double width, double height) async {
-    _width = math.max(1, width.floorToDouble());
-    _height = math.max(1, height.floorToDouble());
+    _width = math.max(1, width);
+    _height = math.max(1, height);
     _updateSizes();
 
     if (_hasLayoutContent) {
@@ -538,12 +538,9 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
     final leadingInset = leftInset * horizontalFactor;
     _pageMarginTop = topInset * verticalFactor;
     final availableWidth = _width - (leftInset + rightInset) * horizontalFactor;
-    final snappedPageWidth =
-        availableWidth -
-        (availableWidth + _lineSpace) % (_fontSize + _lineSpace);
-    _pageWidth = snappedPageWidth;
+    _pageWidth = availableWidth;
     _pageLeadingInset = leadingInset;
-    _pageInlineOverflow = math.max(availableWidth - snappedPageWidth, 0);
+    _pageInlineOverflow = 0;
     _pageHeight = _height - (topInset + bottomInset) * verticalFactor;
   }
 

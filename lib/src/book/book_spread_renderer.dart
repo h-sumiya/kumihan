@@ -26,7 +26,6 @@ class BookSpreadRenderer {
 
   _BookSpreadMetrics _resolve(Size size) {
     final fontSize = layout.fontSize.roundToDouble();
-    final lineSpace = fontSize * 0.63;
     final outerPadding = layout.outerPadding;
     final contentPadding = layout.contentPadding;
     final minPageHeight = fontSize * 6;
@@ -46,10 +45,7 @@ class BookSpreadRenderer {
         ? math.max(math.min(leftSlotWidth, rightSlotWidth), fontSize)
         : rightSlotWidth;
 
-    var pageWidth = math.max(pageWidthBase, fontSize);
-    pageWidth = math.max(pageWidth, fontSize);
-    pageWidth -= (pageWidth + lineSpace) % (fontSize + lineSpace);
-    pageWidth = math.max(pageWidth, fontSize);
+    final pageWidth = math.max(pageWidthBase, fontSize);
 
     final headerReservedExtent =
         layout.showTitle && engine.headerTitle.isNotEmpty
@@ -205,6 +201,7 @@ class BookSpreadRenderer {
           PagePaintContext(contentRect: metrics.leftRect!),
         );
       }
+      _paintDebugRects(canvas, metrics);
       return;
     }
 
@@ -215,6 +212,33 @@ class BookSpreadRenderer {
         PagePaintContext(contentRect: metrics.rightRect),
       );
     }
+    _paintDebugRects(canvas, metrics);
+  }
+
+  void _paintDebugRects(ui.Canvas canvas, _BookSpreadMetrics metrics) {
+    final rightFill = Paint()
+      ..color = const Color(0xffff0000).withValues(alpha: 0.08);
+    final rightStroke = Paint()
+      ..color = const Color(0xffff0000).withValues(alpha: 0.9)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2;
+
+    canvas.drawRect(metrics.rightRect, rightFill);
+    canvas.drawRect(metrics.rightRect, rightStroke);
+
+    if (metrics.leftRect == null) {
+      return;
+    }
+
+    final leftFill = Paint()
+      ..color = const Color(0xff00aa00).withValues(alpha: 0.08);
+    final leftStroke = Paint()
+      ..color = const Color(0xff00aa00).withValues(alpha: 0.9)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2;
+
+    canvas.drawRect(metrics.leftRect!, leftFill);
+    canvas.drawRect(metrics.leftRect!, leftStroke);
   }
 
   void _paintHeader(ui.Canvas canvas, _BookSpreadMetrics metrics) {
