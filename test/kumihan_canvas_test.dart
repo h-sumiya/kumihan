@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kumihan/kumihan.dart';
+import 'package:kumihan/src/book/book_spread_renderer.dart';
 
 void main() {
   testWidgets('aozora text can be opened and paginated', (tester) async {
@@ -117,6 +118,30 @@ void main() {
     expect(bounds.top, greaterThanOrEqualTo(32));
     expect(bounds.right, lessThanOrEqualTo(400 - 16 + 0.001));
     expect(bounds.bottom, lessThanOrEqualTo(600 - 20 + 0.001));
+  });
+
+  test('paged canvas keeps snapped width overflow on the left side', () async {
+    final engine = KumihanEngine(
+      baseUri: null,
+      initialPage: 0,
+      onInvalidate: () {},
+      onSnapshot: (_) {},
+    );
+
+    await engine.resize(420, 600);
+    await engine.open(Document(<Object>['本文です。']));
+
+    final recorder = PictureRecorder();
+    final canvas = Canvas(recorder);
+    engine.paint(canvas);
+    recorder.endRecording();
+
+    expect(engine.selectableGlyphs, isNotEmpty);
+    final bounds = engine.selectableGlyphs
+        .map((item) => item.rect)
+        .reduce((value, element) => value.expandToInclude(element));
+    final rightGap = 420 - bounds.right;
+    expect(bounds.left, greaterThan(rightGap + 5));
   });
 
   test('theme update changes engine text color', () async {
@@ -266,4 +291,42 @@ void main() {
 
     expect(controller.snapshot.currentPage, 2);
   });
+
+  test(
+    'book renderer keeps snapped spread overflow on the left side',
+    () async {
+      final engine = KumihanEngine(
+        baseUri: null,
+        initialPage: 0,
+        onInvalidate: () {},
+        onSnapshot: (_) {},
+      );
+      const layout = KumihanBookLayoutData();
+      const theme = KumihanThemeData();
+      const canvasSize = Size(420, 600);
+      final renderer = BookSpreadRenderer(
+        engine: engine,
+        layout: layout,
+        theme: theme,
+        spreadMode: KumihanSpreadMode.single,
+      );
+      final pageSize = renderer.resolvePageSize(canvasSize);
+
+      await engine.resize(pageSize.width, pageSize.height);
+      await engine.open(Document(<Object>['本文です。']));
+
+      final recorder = PictureRecorder();
+      final canvas = Canvas(recorder);
+      engine.resetPaintState();
+      renderer.paint(canvas, canvasSize, currentPage: 0, totalPages: 1);
+      recorder.endRecording();
+
+      expect(engine.selectableGlyphs, isNotEmpty);
+      final bounds = engine.selectableGlyphs
+          .map((item) => item.rect)
+          .reduce((value, element) => value.expandToInclude(element));
+      final rightGap = canvasSize.width - bounds.right;
+      expect(bounds.left, greaterThan(rightGap + 5));
+    },
+  );
 }

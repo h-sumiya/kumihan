@@ -71,7 +71,7 @@ class BookSpreadRenderer {
         ? pageWidth * 2 + pageGap
         : pageWidth;
     final extraInlineSpace = math.max(availableWidth - pairWidth, 0.0);
-    final leadingInset = outerPadding.left + extraInlineSpace / 2;
+    final leadingInset = outerPadding.left + extraInlineSpace;
     final leftX = leadingInset;
     final rightX = spreadMode == KumihanSpreadMode.doublePage
         ? leadingInset + pageWidth + pageGap

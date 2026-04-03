@@ -504,10 +504,15 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
         topInset + bottomInset > maxVerticalInset && topInset + bottomInset > 0
         ? maxVerticalInset / (topInset + bottomInset)
         : 1.0;
-    _pageMarginSide = leftInset * horizontalFactor;
+    final leadingInset = leftInset * horizontalFactor;
     _pageMarginTop = topInset * verticalFactor;
-    _pageWidth = _width - (leftInset + rightInset) * horizontalFactor;
-    _pageWidth -= (_pageWidth + _lineSpace) % (_fontSize + _lineSpace);
+    final availableWidth = _width - (leftInset + rightInset) * horizontalFactor;
+    final snappedPageWidth =
+        availableWidth -
+        (availableWidth + _lineSpace) % (_fontSize + _lineSpace);
+    _pageWidth = snappedPageWidth;
+    _pageMarginSide =
+        leadingInset + math.max(availableWidth - snappedPageWidth, 0);
     _pageHeight = _height - (topInset + bottomInset) * verticalFactor;
   }
 
