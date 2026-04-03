@@ -10,6 +10,7 @@ import 'engine/kumihan_engine.dart';
 import 'kumihan_controller.dart';
 import 'kumihan_types.dart';
 import 'parsers/aozora_parser.dart';
+import 'parsers/html_parser.dart';
 import 'parsers/markdown_parser.dart';
 
 class KumihanCanvas extends StatefulWidget {
@@ -55,6 +56,26 @@ class KumihanCanvas extends StatefulWidget {
     return KumihanCanvas(
       key: key,
       document: const MarkdownParser().parse(text),
+      controller: controller,
+      imageLoader: imageLoader,
+      initialPage: initialPage,
+      layout: layout,
+      onSnapshotChanged: onSnapshotChanged,
+    );
+  }
+
+  factory KumihanCanvas.html({
+    Key? key,
+    required String text,
+    KumihanController? controller,
+    KumihanImageLoader? imageLoader,
+    int initialPage = 0,
+    KumihanLayoutData layout = const KumihanLayoutData(),
+    ValueChanged<KumihanSnapshot>? onSnapshotChanged,
+  }) {
+    return KumihanCanvas(
+      key: key,
+      document: const HtmlParser().parse(text),
       controller: controller,
       imageLoader: imageLoader,
       initialPage: initialPage,
