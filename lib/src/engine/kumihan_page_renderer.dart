@@ -8,8 +8,11 @@ extension on KumihanEngine {
   ) {
     final vertical = _currentState.startsWith('v');
     final pageStartLine = pageNo < _pages.length ? _pages[pageNo].line : 0;
-    final pageMarginSide = _pageMarginSideFor(pageNo);
-    var cursor = vertical ? _pageWidth : 0.0;
+    final pageMarginSide = _pageMarginSideFor(
+      pageNo,
+      inlineAlignment: context.inlineAlignment,
+    );
+    var cursor = vertical ? _pagePaintWidth : 0.0;
     final endLine = pageNo + 1 < _pages.length
         ? _pages[pageNo + 1].line
         : _lines.length;
@@ -38,7 +41,7 @@ extension on KumihanEngine {
         used += _lines[lineIndex].width + _lineSpace;
       }
       cursor = vertical
-          ? _pageWidth - (_pageWidth - used) / 2
+          ? _pagePaintWidth - (_pagePaintWidth - used) / 2
           : (_pageHeight - used) / 2;
     }
 

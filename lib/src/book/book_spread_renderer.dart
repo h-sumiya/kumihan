@@ -152,6 +152,7 @@ class BookSpreadRenderer {
             contentRect: metrics.rightRect,
             backPage: true,
             recordInteractiveRegions: false,
+            inlineAlignment: layout.rightPageFullPageAlignment,
           ),
         );
       }
@@ -163,6 +164,7 @@ class BookSpreadRenderer {
             contentRect: metrics.leftRect!,
             backPage: true,
             recordInteractiveRegions: false,
+            inlineAlignment: layout.leftPageFullPageAlignment,
           ),
         );
       }
@@ -174,6 +176,7 @@ class BookSpreadRenderer {
           contentRect: metrics.rightRect,
           backPage: true,
           recordInteractiveRegions: false,
+          inlineAlignment: layout.rightPageFullPageAlignment,
         ),
       );
     }
@@ -191,17 +194,22 @@ class BookSpreadRenderer {
         engine.paintPage(
           canvas,
           currentPage,
-          PagePaintContext(contentRect: metrics.rightRect),
+          PagePaintContext(
+            contentRect: metrics.rightRect,
+            inlineAlignment: layout.rightPageFullPageAlignment,
+          ),
         );
       }
       if (currentPage + 1 <= lastPage && metrics.leftRect != null) {
         engine.paintPage(
           canvas,
           currentPage + 1,
-          PagePaintContext(contentRect: metrics.leftRect!),
+          PagePaintContext(
+            contentRect: metrics.leftRect!,
+            inlineAlignment: layout.leftPageFullPageAlignment,
+          ),
         );
       }
-      _paintDebugRects(canvas, metrics);
       return;
     }
 
@@ -209,36 +217,12 @@ class BookSpreadRenderer {
       engine.paintPage(
         canvas,
         currentPage,
-        PagePaintContext(contentRect: metrics.rightRect),
+        PagePaintContext(
+          contentRect: metrics.rightRect,
+          inlineAlignment: layout.rightPageFullPageAlignment,
+        ),
       );
     }
-    _paintDebugRects(canvas, metrics);
-  }
-
-  void _paintDebugRects(ui.Canvas canvas, _BookSpreadMetrics metrics) {
-    final rightFill = Paint()
-      ..color = const Color(0xffff0000).withValues(alpha: 0.08);
-    final rightStroke = Paint()
-      ..color = const Color(0xffff0000).withValues(alpha: 0.9)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2;
-
-    canvas.drawRect(metrics.rightRect, rightFill);
-    canvas.drawRect(metrics.rightRect, rightStroke);
-
-    if (metrics.leftRect == null) {
-      return;
-    }
-
-    final leftFill = Paint()
-      ..color = const Color(0xff00aa00).withValues(alpha: 0.08);
-    final leftStroke = Paint()
-      ..color = const Color(0xff00aa00).withValues(alpha: 0.9)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2;
-
-    canvas.drawRect(metrics.leftRect!, leftFill);
-    canvas.drawRect(metrics.leftRect!, leftStroke);
   }
 
   void _paintHeader(ui.Canvas canvas, _BookSpreadMetrics metrics) {

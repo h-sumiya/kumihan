@@ -196,6 +196,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
   double _pageInlineOverflow = 0;
   double _pageMarginTop = 0;
   double _pageWidth = 0;
+  double _pagePaintWidth = 0;
   double _pageHeight = 0;
   double _currentPageWidth = 0;
   int _currentPageNo = -1;
@@ -387,11 +388,16 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
 
   int _step() => 1;
 
-  double _pageMarginSideFor(int pageNo) {
+  double _pageMarginSideFor(
+    int pageNo, {
+    KumihanFullPageAlignment? inlineAlignment,
+  }) {
     final page = _pages[pageNo];
-    final alignment = page.usesFullPageAlignment
-        ? layout.fullPageAlignment
-        : KumihanFullPageAlignment.right;
+    final alignment =
+        inlineAlignment ??
+        (page.usesFullPageAlignment
+            ? layout.fullPageAlignment
+            : KumihanFullPageAlignment.right);
     final inlineOffset = switch (alignment) {
       KumihanFullPageAlignment.left => 0.0,
       KumihanFullPageAlignment.center => _pageInlineOverflow / 2,
@@ -538,9 +544,13 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
     final leadingInset = leftInset * horizontalFactor;
     _pageMarginTop = topInset * verticalFactor;
     final availableWidth = _width - (leftInset + rightInset) * horizontalFactor;
+    final snappedPageWidth =
+        availableWidth -
+        (availableWidth + _lineSpace) % (_fontSize + _lineSpace);
     _pageWidth = availableWidth;
+    _pagePaintWidth = math.max(snappedPageWidth, _fontSize);
     _pageLeadingInset = leadingInset;
-    _pageInlineOverflow = 0;
+    _pageInlineOverflow = math.max(availableWidth - _pagePaintWidth, 0);
     _pageHeight = _height - (topInset + bottomInset) * verticalFactor;
   }
 

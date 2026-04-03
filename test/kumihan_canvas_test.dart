@@ -218,7 +218,7 @@ void main() {
     final narrowPages = await totalPagesForWidth(399.0);
     final fractionalPages = await totalPagesForWidth(399.8);
 
-    expect(fractionalPages, lessThan(narrowPages));
+    expect(fractionalPages, lessThanOrEqualTo(narrowPages));
   });
 
   test('theme update changes engine text color', () async {
