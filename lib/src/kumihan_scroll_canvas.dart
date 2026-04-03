@@ -8,6 +8,7 @@ import 'package:flutter/widgets.dart';
 import 'document.dart';
 import 'engine/kumihan_scroll_engine.dart';
 import 'kumihan_scroll_controller.dart';
+import 'kumihan_theme.dart';
 import 'kumihan_types.dart';
 
 class KumihanScrollCanvas extends StatefulWidget {
@@ -17,6 +18,7 @@ class KumihanScrollCanvas extends StatefulWidget {
     this.controller,
     this.imageLoader,
     this.layout = const KumihanLayoutData(),
+    this.theme = const KumihanThemeData(),
     this.onSnapshotChanged,
   });
 
@@ -24,6 +26,7 @@ class KumihanScrollCanvas extends StatefulWidget {
   final KumihanScrollController? controller;
   final KumihanImageLoader? imageLoader;
   final KumihanLayoutData layout;
+  final KumihanThemeData theme;
   final ValueChanged<KumihanScrollSnapshot>? onSnapshotChanged;
 
   @override
@@ -81,6 +84,12 @@ class _KumihanScrollCanvasState extends State<KumihanScrollCanvas>
       unawaited(_engine.updateLayout(widget.layout));
     }
 
+    if (oldWidget.theme != widget.theme) {
+      _clearSelection();
+      _alignToEnd = true;
+      unawaited(_engine.updateTheme(widget.theme));
+    }
+
     if (!identical(oldWidget.document, widget.document)) {
       _clearSelection();
       _alignToEnd = true;
@@ -102,6 +111,7 @@ class _KumihanScrollCanvasState extends State<KumihanScrollCanvas>
       baseUri: null,
       imageLoader: widget.imageLoader,
       layout: widget.layout,
+      theme: widget.theme,
       onInvalidate: () {
         if (!mounted) {
           return;

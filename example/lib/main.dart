@@ -259,7 +259,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
                         ? KumihanPagedCanvas(
                             document: _document!,
                             controller: _pagedController,
-                            layout: const KumihanLayoutData(fontSize: 18),
+                            layout: const KumihanLayoutData(
+                              fontSize: 18,
+                              pagePadding: EdgeInsets.all(16),
+                            ),
                             onSnapshotChanged: (snapshot) {
                               setState(() {
                                 _pagedSnapshot = snapshot;
@@ -271,7 +274,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
                         : KumihanScrollCanvas(
                             document: _document!,
                             controller: _scrollController,
-                            layout: const KumihanLayoutData(fontSize: 18),
+                            layout: const KumihanLayoutData(
+                              fontSize: 18,
+                              pagePadding: EdgeInsets.all(16),
+                            ),
                             onSnapshotChanged: (snapshot) {
                               setState(() {
                                 _scrollSnapshot = snapshot;

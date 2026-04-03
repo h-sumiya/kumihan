@@ -7,6 +7,7 @@ import 'package:flutter/painting.dart';
 
 import '../ast.dart';
 import '../document.dart';
+import '../kumihan_theme.dart';
 import '../kumihan_types.dart';
 import 'constants.dart';
 import 'document_compiler.dart';
@@ -114,11 +115,12 @@ class KumihanScrollEngine implements LayoutEnvironment {
   KumihanScrollEngine({
     required this.baseUri,
     this.layout = const KumihanLayoutData(),
+    this.theme = const KumihanThemeData(),
     required this.onInvalidate,
     required this.onSnapshot,
     this.imageLoader,
   }) {
-    fontColor = const Color(0xff444444);
+    fontColor = theme.textColor;
     paperColor = const Color(paperColorValue);
     _updateSizes();
   }
@@ -128,6 +130,7 @@ class KumihanScrollEngine implements LayoutEnvironment {
   final ValueChanged<KumihanScrollSnapshot> onSnapshot;
   final KumihanImageLoader? imageLoader;
   KumihanLayoutData layout;
+  KumihanThemeData theme;
   final RendererSettings _settings = const RendererSettings();
 
   @override
@@ -165,7 +168,9 @@ class KumihanScrollEngine implements LayoutEnvironment {
   double _fontSize = 18;
   double _lineSpace = 0;
   double _pageMarginSide = 0;
+  double _pageMarginTrailing = 0;
   double _pageMarginTop = 0;
+  double _pageMarginBottom = 0;
   double _pageWidth = 0;
   double _pageHeight = 0;
   double _contentWidth = 1;
@@ -244,6 +249,22 @@ class KumihanScrollEngine implements LayoutEnvironment {
       await _relayout();
     } else {
       _updateSizes();
+      _notifySnapshot();
+      onInvalidate();
+    }
+  }
+
+  Future<void> updateTheme(KumihanThemeData nextTheme) async {
+    if (nextTheme == theme) {
+      return;
+    }
+
+    theme = nextTheme;
+    fontColor = theme.textColor;
+
+    if (_hasLayoutContent) {
+      await _relayout();
+    } else {
       _notifySnapshot();
       onInvalidate();
     }
@@ -370,11 +391,31 @@ class KumihanScrollEngine implements LayoutEnvironment {
   void _updateSizes() {
     _fontSize = layout.fontSize.roundToDouble();
     _lineSpace = _fontSize * (_settings.widenLineSpace ? 0.8 : 0.63);
-    _pageMarginSide = 0;
-    _pageMarginTop = 0;
-    _pageWidth = _width;
+    final customPadding = layout.pagePadding;
+    final leftInset = customPadding?.left ?? 0;
+    final rightInset = customPadding?.right ?? 0;
+    final topInset = customPadding?.top ?? 0;
+    final bottomInset = customPadding?.bottom ?? 0;
+    final minPageWidth = _fontSize * 6;
+    final minPageHeight = _fontSize * 6;
+    final maxHorizontalInset = math.max(_width - minPageWidth, 0.0);
+    final horizontalFactor =
+        leftInset + rightInset > maxHorizontalInset &&
+            leftInset + rightInset > 0
+        ? maxHorizontalInset / (leftInset + rightInset)
+        : 1.0;
+    final maxVerticalInset = math.max(_height - minPageHeight, 0.0);
+    final verticalFactor =
+        topInset + bottomInset > maxVerticalInset && topInset + bottomInset > 0
+        ? maxVerticalInset / (topInset + bottomInset)
+        : 1.0;
+    _pageMarginSide = leftInset * horizontalFactor;
+    _pageMarginTrailing = rightInset * horizontalFactor;
+    _pageMarginTop = topInset * verticalFactor;
+    _pageMarginBottom = bottomInset * verticalFactor;
+    _pageWidth = _width - _pageMarginSide - _pageMarginTrailing;
     _pageWidth -= (_pageWidth + _lineSpace) % (_fontSize + _lineSpace);
-    _pageHeight = _height;
+    _pageHeight = _height - _pageMarginTop - _pageMarginBottom;
   }
 
   void _layoutDocument() {
@@ -973,6 +1014,12 @@ class KumihanScrollEngine implements LayoutEnvironment {
             block.getAtomHeight(endAtom);
 
         if (extra.kind == AstParagraphExtraKind.link) {
+          final linkColor = (extra.linkTarget?.startsWith('#') ?? false)
+              ? theme.internalLinkColor
+              : theme.linkColor;
+          for (var index = startAtom; index <= endAtom; index += 1) {
+            block.atom[index].color = linkColor;
+          }
           final linkEnd = block.getAtomIndexAt(extra.endIndex ?? 0);
           LayoutTextLine? currentLine = startLine;
           var currentStart = startAtom;
@@ -1274,7 +1321,7 @@ class KumihanScrollEngine implements LayoutEnvironment {
         }
       case AstStyleKind.caption:
         for (var index = start; index < end; index += 1) {
-          atoms[index].color = fontColor;
+          atoms[index].color = theme.captionColor;
         }
       case AstStyleKind.yokogumi:
         for (var index = start; index < end; index += 1) {
@@ -1631,10 +1678,19 @@ class KumihanScrollEngine implements LayoutEnvironment {
       }
     }
 
-    _contentWidth = math.max(_width, usedWidth);
+    final contentLeadingInset = _currentState.startsWith('v')
+        ? _pageMarginSide
+        : _pageMarginTop;
+    final contentTrailingInset = _currentState.startsWith('v')
+        ? _pageMarginTrailing
+        : _pageMarginBottom;
+    _contentWidth = math.max(
+      _width,
+      usedWidth + contentLeadingInset + contentTrailingInset,
+    );
     _maxScrollOffset = math.max(_contentWidth - _width, 0);
 
-    var cursor = _contentWidth;
+    var cursor = _contentWidth - contentLeadingInset - contentTrailingInset;
     for (final group in _lines) {
       cursor -= group.gapBefore;
       group.xStart = cursor - group.width;

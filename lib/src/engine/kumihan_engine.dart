@@ -8,6 +8,7 @@ import 'package:flutter/painting.dart';
 import '../ast.dart';
 import '../document.dart';
 import '../kumihan_controller.dart';
+import '../kumihan_theme.dart';
 import '../kumihan_types.dart';
 import 'constants.dart';
 import 'document_compiler.dart';
@@ -120,6 +121,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
     required this.baseUri,
     required int initialPage,
     this.layout = const KumihanLayoutData(),
+    this.theme = const KumihanThemeData(),
     required this.onInvalidate,
     required this.onSnapshot,
     this.imageLoader,
@@ -131,7 +133,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
          paragraphNo: 0,
          shift1page: false,
        ) {
-    fontColor = const Color(0xff444444);
+    fontColor = theme.textColor;
     paperColor = const Color(paperColorValue);
     _updateSizes();
   }
@@ -142,6 +144,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
   final KumihanImageLoader? imageLoader;
   final int _initialPage;
   KumihanLayoutData layout;
+  KumihanThemeData theme;
   final RendererSettings _settings = const RendererSettings();
 
   @override
@@ -275,6 +278,22 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
       await _relayout(true);
     } else {
       _updateSizes();
+      onSnapshot(snapshot);
+      onInvalidate();
+    }
+  }
+
+  Future<void> updateTheme(KumihanThemeData nextTheme) async {
+    if (nextTheme == theme) {
+      return;
+    }
+
+    theme = nextTheme;
+    fontColor = theme.textColor;
+
+    if (_hasLayoutContent) {
+      await _relayout(true);
+    } else {
       onSnapshot(snapshot);
       onInvalidate();
     }
@@ -461,11 +480,29 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
   void _updateSizes() {
     _fontSize = layout.fontSize.roundToDouble();
     _lineSpace = _fontSize * (_settings.widenLineSpace ? 0.8 : 0.63);
-    _pageMarginSide = 0;
-    _pageMarginTop = 0;
-    _pageWidth = _width;
+    final customPadding = layout.pagePadding;
+    final leftInset = customPadding?.left ?? 0;
+    final rightInset = customPadding?.right ?? 0;
+    final topInset = customPadding?.top ?? 0;
+    final bottomInset = customPadding?.bottom ?? 0;
+    final minPageWidth = _fontSize * 6;
+    final minPageHeight = _fontSize * 6;
+    final maxHorizontalInset = math.max(_width - minPageWidth, 0.0);
+    final horizontalFactor =
+        leftInset + rightInset > maxHorizontalInset &&
+            leftInset + rightInset > 0
+        ? maxHorizontalInset / (leftInset + rightInset)
+        : 1.0;
+    final maxVerticalInset = math.max(_height - minPageHeight, 0.0);
+    final verticalFactor =
+        topInset + bottomInset > maxVerticalInset && topInset + bottomInset > 0
+        ? maxVerticalInset / (topInset + bottomInset)
+        : 1.0;
+    _pageMarginSide = leftInset * horizontalFactor;
+    _pageMarginTop = topInset * verticalFactor;
+    _pageWidth = _width - (leftInset + rightInset) * horizontalFactor;
     _pageWidth -= (_pageWidth + _lineSpace) % (_fontSize + _lineSpace);
-    _pageHeight = _height;
+    _pageHeight = _height - (topInset + bottomInset) * verticalFactor;
   }
 
   void _layoutDocument() {
@@ -1131,6 +1168,12 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
             block.getAtomHeight(endAtom);
 
         if (extra.kind == AstParagraphExtraKind.link) {
+          final linkColor = (extra.linkTarget?.startsWith('#') ?? false)
+              ? theme.internalLinkColor
+              : theme.linkColor;
+          for (var index = startAtom; index <= endAtom; index += 1) {
+            block.atom[index].color = linkColor;
+          }
           final linkEnd = block.getAtomIndexAt(extra.endIndex ?? 0);
           LayoutTextLine? currentLine = startLine;
           var currentStart = startAtom;
@@ -1432,7 +1475,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
         }
       case AstStyleKind.caption:
         for (var index = start; index < end; index += 1) {
-          atoms[index].color = fontColor;
+          atoms[index].color = theme.captionColor;
         }
       case AstStyleKind.yokogumi:
         for (var index = start; index < end; index += 1) {

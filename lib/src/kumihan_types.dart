@@ -1,25 +1,38 @@
-import 'dart:ui';
-
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart';
 
 const double defaultKumihanFontSize = 18;
+const EdgeInsets? defaultKumihanPagePadding = null;
+const Object _unsetPagePadding = Object();
 
 @immutable
 class KumihanLayoutData {
-  const KumihanLayoutData({this.fontSize = defaultKumihanFontSize})
-    : assert(fontSize > 0);
+  const KumihanLayoutData({
+    this.fontSize = defaultKumihanFontSize,
+    this.pagePadding = defaultKumihanPagePadding,
+  }) : assert(fontSize > 0);
 
   final double fontSize;
+  final EdgeInsets? pagePadding;
 
-  KumihanLayoutData copyWith({double? fontSize}) =>
-      KumihanLayoutData(fontSize: fontSize ?? this.fontSize);
+  KumihanLayoutData copyWith({
+    double? fontSize,
+    Object? pagePadding = _unsetPagePadding,
+  }) => KumihanLayoutData(
+    fontSize: fontSize ?? this.fontSize,
+    pagePadding: identical(pagePadding, _unsetPagePadding)
+        ? this.pagePadding
+        : pagePadding as EdgeInsets?,
+  );
 
   @override
   bool operator ==(Object other) =>
-      other is KumihanLayoutData && other.fontSize == fontSize;
+      other is KumihanLayoutData &&
+      other.fontSize == fontSize &&
+      other.pagePadding == pagePadding;
 
   @override
-  int get hashCode => fontSize.hashCode;
+  int get hashCode => Object.hash(fontSize, pagePadding);
 }
 
 enum KumihanWritingMode { vertical }

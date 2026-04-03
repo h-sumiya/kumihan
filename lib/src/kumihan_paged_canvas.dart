@@ -8,6 +8,7 @@ import 'package:flutter/widgets.dart';
 import 'document.dart';
 import 'engine/kumihan_engine.dart';
 import 'kumihan_paged_controller.dart';
+import 'kumihan_theme.dart';
 import 'kumihan_types.dart';
 
 class KumihanPagedCanvas extends StatefulWidget {
@@ -18,6 +19,7 @@ class KumihanPagedCanvas extends StatefulWidget {
     this.imageLoader,
     this.initialPage = 0,
     this.layout = const KumihanLayoutData(),
+    this.theme = const KumihanThemeData(),
     this.onSnapshotChanged,
   });
 
@@ -26,6 +28,7 @@ class KumihanPagedCanvas extends StatefulWidget {
   final KumihanImageLoader? imageLoader;
   final int initialPage;
   final KumihanLayoutData layout;
+  final KumihanThemeData theme;
   final ValueChanged<KumihanPagedSnapshot>? onSnapshotChanged;
 
   @override
@@ -80,6 +83,11 @@ class _KumihanPagedCanvasState extends State<KumihanPagedCanvas> {
       unawaited(_engine.updateLayout(widget.layout));
     }
 
+    if (oldWidget.theme != widget.theme) {
+      _clearSelection();
+      unawaited(_engine.updateTheme(widget.theme));
+    }
+
     if (!identical(oldWidget.document, widget.document)) {
       _clearSelection();
       unawaited(_engine.open(widget.document));
@@ -98,6 +106,7 @@ class _KumihanPagedCanvasState extends State<KumihanPagedCanvas> {
       imageLoader: widget.imageLoader,
       initialPage: widget.initialPage,
       layout: widget.layout,
+      theme: widget.theme,
       onInvalidate: () {
         if (!mounted) {
           return;

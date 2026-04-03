@@ -42,9 +42,7 @@ void main() {
           width: 400,
           height: 600,
           child: KumihanScrollCanvas(
-            document: const AozoraParser().parse(
-              '最初の本文です。\n［＃改ページ］\n次の本文です。',
-            ),
+            document: const AozoraParser().parse('最初の本文です。\n［＃改ページ］\n次の本文です。'),
             controller: controller,
           ),
         ),
@@ -91,4 +89,95 @@ void main() {
       isFalse,
     );
   });
+
+  test('page padding shifts content rect for painting', () async {
+    final engine = KumihanEngine(
+      baseUri: null,
+      initialPage: 0,
+      layout: const KumihanLayoutData(
+        pagePadding: EdgeInsets.only(left: 24, top: 32, right: 16, bottom: 20),
+      ),
+      onInvalidate: () {},
+      onSnapshot: (_) {},
+    );
+
+    await engine.resize(400, 600);
+    await engine.open(Document(<Object>['本文です。']));
+
+    final recorder = PictureRecorder();
+    final canvas = Canvas(recorder);
+    engine.paint(canvas);
+    recorder.endRecording();
+
+    expect(engine.selectableGlyphs, isNotEmpty);
+    final bounds = engine.selectableGlyphs
+        .map((item) => item.rect)
+        .reduce((value, element) => value.expandToInclude(element));
+    expect(bounds.left, greaterThanOrEqualTo(24));
+    expect(bounds.top, greaterThanOrEqualTo(32));
+    expect(bounds.right, lessThanOrEqualTo(400 - 16 + 0.001));
+    expect(bounds.bottom, lessThanOrEqualTo(600 - 20 + 0.001));
+  });
+
+  test('theme update changes engine text color', () async {
+    final engine = KumihanEngine(
+      baseUri: null,
+      initialPage: 0,
+      onInvalidate: () {},
+      onSnapshot: (_) {},
+    );
+
+    expect(engine.fontColor, defaultKumihanTextColor);
+
+    const theme = KumihanThemeData(
+      textColor: Color(0xff112233),
+      captionColor: Color(0xff445566),
+      rubyColor: Color(0xff778899),
+      linkColor: Color(0xff2244aa),
+      internalLinkColor: Color(0xff228844),
+    );
+    await engine.updateTheme(theme);
+
+    expect(engine.theme, theme);
+    expect(engine.fontColor, const Color(0xff112233));
+  });
+
+  test(
+    'scroll engine keeps first vertical line inside padded canvas',
+    () async {
+      final engine = KumihanScrollEngine(
+        baseUri: null,
+        layout: const KumihanLayoutData(
+          pagePadding: EdgeInsets.only(
+            left: 24,
+            top: 32,
+            right: 16,
+            bottom: 20,
+          ),
+        ),
+        onInvalidate: () {},
+        onSnapshot: (_) {},
+      );
+
+      await engine.resize(400, 600);
+      await engine.open(Document(<Object>['先頭の行です。次の行です。']));
+
+      final recorder = PictureRecorder();
+      final canvas = Canvas(recorder);
+      engine.paint(canvas);
+      recorder.endRecording();
+
+      expect(engine.selectableGlyphs, isNotEmpty);
+      final bounds = engine.selectableGlyphs
+          .map((item) => item.rect)
+          .reduce((value, element) => value.expandToInclude(element));
+      expect(bounds.left, greaterThanOrEqualTo(24));
+      expect(bounds.top, greaterThanOrEqualTo(32));
+      expect(
+        bounds.right,
+        lessThanOrEqualTo(engine.snapshot.contentWidth - 16),
+      );
+      expect(bounds.bottom, lessThanOrEqualTo(600 - 20 + 0.001));
+    },
+  );
 }

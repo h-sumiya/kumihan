@@ -11,6 +11,7 @@ export 'src/kumihan_paged_canvas.dart';
 export 'src/kumihan_paged_controller.dart';
 export 'src/kumihan_scroll_canvas.dart';
 export 'src/kumihan_scroll_controller.dart';
+export 'src/kumihan_theme.dart';
 export 'src/kumihan_types.dart';
 export 'src/parsers/aozora_parser.dart';
 export 'src/parsers/html_parser.dart';

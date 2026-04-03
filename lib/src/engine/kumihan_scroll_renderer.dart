@@ -281,12 +281,12 @@ extension on KumihanScrollEngine {
             ? item.draw(canvas, x - 0.45 * line.width, y)
             : item.drawYoko(canvas, y, x + 0.95 * line.width + item.width / 2);
       case LayoutInlineDecorationKind.leftRuby:
-        item.color = fontColor;
+        item.color = theme.rubyColor;
         vertical
             ? item.draw(canvas, x - item.width, y)
             : item.drawYoko(canvas, y, x + line.width + item.width / 2);
       case LayoutInlineDecorationKind.rightRuby:
-        item.color = fontColor;
+        item.color = theme.rubyColor;
         vertical
             ? item.draw(canvas, x + line.width, y)
             : item.drawYoko(canvas, y, x - item.width / 2);
