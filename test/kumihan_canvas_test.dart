@@ -14,7 +14,7 @@ void main() {
         child: SizedBox(
           width: 400,
           height: 600,
-          child: KumihanCanvas.aozora(
+          child: KumihanPagedCanvas.aozora(
             text: '［＃１字下げ］表示サンプルです。\n［＃改ページ］\n次のページです。',
             controller: controller,
           ),
