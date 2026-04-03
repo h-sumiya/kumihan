@@ -91,6 +91,7 @@ class _KumihanScrollCanvasState extends State<KumihanScrollCanvas>
     implements KumihanScrollViewport {
   late KumihanScrollEngine _engine;
   late ScrollController _scrollController;
+  final GlobalKey _selectionSurfaceKey = GlobalKey();
   Size _lastSize = Size.zero;
   KumihanSelectableGlyph? _selectionAnchor;
   KumihanSelectableGlyph? _selectionFocus;
@@ -353,7 +354,9 @@ class _KumihanScrollCanvasState extends State<KumihanScrollCanvas>
   }
 
   Offset _globalToLocal(Offset globalPosition) {
-    final renderObject = context.findRenderObject();
+    final renderObject =
+        _selectionSurfaceKey.currentContext?.findRenderObject() ??
+        context.findRenderObject();
     if (renderObject is RenderBox) {
       return renderObject.globalToLocal(globalPosition);
     }
@@ -538,6 +541,7 @@ class _KumihanScrollCanvasState extends State<KumihanScrollCanvas>
               width: contentSize.width,
               height: contentSize.height,
               child: GestureDetector(
+                key: _selectionSurfaceKey,
                 behavior: HitTestBehavior.opaque,
                 onLongPressStart: (details) {
                   _startSelection(details.localPosition);
