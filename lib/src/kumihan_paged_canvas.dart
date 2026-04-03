@@ -20,6 +20,7 @@ class KumihanPagedCanvas extends StatefulWidget {
     this.initialPage = 0,
     this.layout = const KumihanLayoutData(),
     this.theme = const KumihanThemeData(),
+    this.selectable = true,
     this.onSnapshotChanged,
   });
 
@@ -29,6 +30,7 @@ class KumihanPagedCanvas extends StatefulWidget {
   final int initialPage;
   final KumihanLayoutData layout;
   final KumihanThemeData theme;
+  final bool selectable;
   final ValueChanged<KumihanPagedSnapshot>? onSnapshotChanged;
 
   @override
@@ -91,6 +93,10 @@ class _KumihanPagedCanvasState extends State<KumihanPagedCanvas> {
     if (!identical(oldWidget.document, widget.document)) {
       _clearSelection();
       unawaited(_engine.open(widget.document));
+    }
+
+    if (oldWidget.selectable && !widget.selectable) {
+      _clearSelection(notify: false);
     }
   }
 
@@ -417,6 +423,13 @@ class _KumihanPagedCanvasState extends State<KumihanPagedCanvas> {
           constraints.maxHeight.isFinite ? constraints.maxHeight : 1,
         );
         _scheduleResize(size);
+        final paint = CustomPaint(
+          painter: _KumihanPainter(_engine),
+          size: size,
+        );
+        if (!widget.selectable) {
+          return paint;
+        }
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
           onLongPressStart: (details) {
@@ -442,10 +455,7 @@ class _KumihanPagedCanvasState extends State<KumihanPagedCanvas> {
           },
           child: Stack(
             fit: StackFit.expand,
-            children: <Widget>[
-              CustomPaint(painter: _KumihanPainter(_engine), size: size),
-              _buildSelectionOverlay(size),
-            ],
+            children: <Widget>[paint, _buildSelectionOverlay(size)],
           ),
         );
       },

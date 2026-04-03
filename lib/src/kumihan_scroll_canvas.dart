@@ -19,6 +19,7 @@ class KumihanScrollCanvas extends StatefulWidget {
     this.imageLoader,
     this.layout = const KumihanLayoutData(),
     this.theme = const KumihanThemeData(),
+    this.selectable = true,
     this.onSnapshotChanged,
   });
 
@@ -27,6 +28,7 @@ class KumihanScrollCanvas extends StatefulWidget {
   final KumihanImageLoader? imageLoader;
   final KumihanLayoutData layout;
   final KumihanThemeData theme;
+  final bool selectable;
   final ValueChanged<KumihanScrollSnapshot>? onSnapshotChanged;
 
   @override
@@ -94,6 +96,10 @@ class _KumihanScrollCanvasState extends State<KumihanScrollCanvas>
       _clearSelection();
       _alignToEnd = true;
       unawaited(_engine.open(widget.document));
+    }
+
+    if (oldWidget.selectable && !widget.selectable) {
+      _clearSelection(notify: false);
     }
   }
 
@@ -493,41 +499,49 @@ class _KumihanScrollCanvasState extends State<KumihanScrollCanvas>
             child: SizedBox(
               width: contentSize.width,
               height: contentSize.height,
-              child: GestureDetector(
-                key: _selectionSurfaceKey,
-                behavior: HitTestBehavior.opaque,
-                onLongPressStart: (details) {
-                  _startSelection(details.localPosition);
-                },
-                onLongPressMoveUpdate: (details) {
-                  _updateSelection(
-                    _globalToLocal(details.globalPosition),
-                    allowNearest: true,
-                  );
-                },
-                onLongPressEnd: (details) {
-                  _finishSelection(_globalToLocal(details.globalPosition));
-                },
-                onTapUp: (details) {
-                  if (!_selectionMode) {
-                    return;
-                  }
-                  final hit = _findSelectableGlyph(details.localPosition);
-                  if (hit == null || !_isSelectedGlyph(hit)) {
-                    _clearSelection();
-                  }
-                },
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: <Widget>[
-                    CustomPaint(
+              child: widget.selectable
+                  ? GestureDetector(
+                      key: _selectionSurfaceKey,
+                      behavior: HitTestBehavior.opaque,
+                      onLongPressStart: (details) {
+                        _startSelection(details.localPosition);
+                      },
+                      onLongPressMoveUpdate: (details) {
+                        _updateSelection(
+                          _globalToLocal(details.globalPosition),
+                          allowNearest: true,
+                        );
+                      },
+                      onLongPressEnd: (details) {
+                        _finishSelection(
+                          _globalToLocal(details.globalPosition),
+                        );
+                      },
+                      onTapUp: (details) {
+                        if (!_selectionMode) {
+                          return;
+                        }
+                        final hit = _findSelectableGlyph(details.localPosition);
+                        if (hit == null || !_isSelectedGlyph(hit)) {
+                          _clearSelection();
+                        }
+                      },
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: <Widget>[
+                          CustomPaint(
+                            painter: _KumihanScrollPainter(_engine),
+                            size: contentSize,
+                          ),
+                          _buildSelectionOverlay(contentSize),
+                        ],
+                      ),
+                    )
+                  : CustomPaint(
+                      key: _selectionSurfaceKey,
                       painter: _KumihanScrollPainter(_engine),
                       size: contentSize,
                     ),
-                    _buildSelectionOverlay(contentSize),
-                  ],
-                ),
-              ),
             ),
           ),
         );

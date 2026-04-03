@@ -329,4 +329,205 @@ void main() {
       expect(bounds.left, greaterThan(rightGap + 5));
     },
   );
+
+  testWidgets('book canvas supports text selection', (tester) async {
+    final document = Document(<Object>['本文です。']);
+    const size = Size(800, 600);
+    final point = await _firstBookGlyphCenter(size: size, document: document);
+
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: SizedBox(
+          width: size.width,
+          height: size.height,
+          child: KumihanBookCanvas(document: document),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+    await _longPressCanvas(
+      tester,
+      find.byType(KumihanBookCanvas),
+      localPosition: point,
+    );
+
+    expect(find.text('コピー'), findsOneWidget);
+    expect(find.text('閉じる'), findsOneWidget);
+  });
+
+  testWidgets('book canvas can disable text selection', (tester) async {
+    final document = Document(<Object>['本文です。']);
+    const size = Size(800, 600);
+    final point = await _firstBookGlyphCenter(size: size, document: document);
+
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: SizedBox(
+          width: size.width,
+          height: size.height,
+          child: KumihanBookCanvas(document: document, selectable: false),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+    await _longPressCanvas(
+      tester,
+      find.byType(KumihanBookCanvas),
+      localPosition: point,
+    );
+
+    expect(find.text('コピー'), findsNothing);
+  });
+
+  testWidgets('paged canvas can disable text selection', (tester) async {
+    final document = Document(<Object>['本文です。']);
+    const size = Size(400, 600);
+    final point = await _firstPagedGlyphCenter(size: size, document: document);
+
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: SizedBox(
+          width: size.width,
+          height: size.height,
+          child: KumihanPagedCanvas(document: document, selectable: false),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+    await _longPressCanvas(
+      tester,
+      find.byType(KumihanPagedCanvas),
+      localPosition: point,
+    );
+
+    expect(find.text('コピー'), findsNothing);
+  });
+
+  testWidgets('scroll canvas can disable text selection', (tester) async {
+    final document = Document(<Object>['本文です。']);
+    const size = Size(400, 600);
+    final point = await _firstScrollGlyphCenter(size: size, document: document);
+
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: SizedBox(
+          width: size.width,
+          height: size.height,
+          child: KumihanScrollCanvas(document: document, selectable: false),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+    await _longPressCanvas(
+      tester,
+      find.byType(KumihanScrollCanvas),
+      localPosition: point,
+    );
+
+    expect(find.text('コピー'), findsNothing);
+  });
+}
+
+Future<void> _longPressCanvas(
+  WidgetTester tester,
+  Finder finder, {
+  required Offset localPosition,
+}) async {
+  await tester.longPressAt(tester.getTopLeft(finder) + localPosition);
+  await tester.pumpAndSettle();
+}
+
+Future<Offset> _firstPagedGlyphCenter({
+  required Size size,
+  required Document document,
+}) async {
+  final engine = KumihanEngine(
+    baseUri: null,
+    initialPage: 0,
+    onInvalidate: () {},
+    onSnapshot: (_) {},
+  );
+
+  await engine.resize(size.width, size.height);
+  await engine.open(document);
+
+  final recorder = PictureRecorder();
+  final canvas = Canvas(recorder);
+  engine.paint(canvas);
+  recorder.endRecording();
+
+  return _firstGlyphCenter(engine.selectableGlyphs);
+}
+
+Future<Offset> _firstScrollGlyphCenter({
+  required Size size,
+  required Document document,
+}) async {
+  final engine = KumihanScrollEngine(
+    baseUri: null,
+    onInvalidate: () {},
+    onSnapshot: (_) {},
+  );
+
+  await engine.resize(size.width, size.height);
+  await engine.open(document);
+
+  final recorder = PictureRecorder();
+  final canvas = Canvas(recorder);
+  engine.paint(canvas);
+  recorder.endRecording();
+
+  return _firstGlyphCenter(engine.selectableGlyphs);
+}
+
+Future<Offset> _firstBookGlyphCenter({
+  required Size size,
+  required Document document,
+}) async {
+  final engine = KumihanEngine(
+    baseUri: null,
+    initialPage: 0,
+    onInvalidate: () {},
+    onSnapshot: (_) {},
+  );
+  const layout = KumihanBookLayoutData();
+  const theme = KumihanThemeData();
+  final renderer = BookSpreadRenderer(
+    engine: engine,
+    layout: layout,
+    theme: theme,
+    spreadMode: KumihanSpreadMode.doublePage,
+  );
+  final pageSize = renderer.resolvePageSize(size);
+
+  await engine.resize(pageSize.width, pageSize.height);
+  await engine.open(document);
+
+  final recorder = PictureRecorder();
+  final canvas = Canvas(recorder);
+  engine.resetPaintState();
+  renderer.paint(
+    canvas,
+    size,
+    currentPage: 0,
+    totalPages: engine.snapshot.totalPages,
+  );
+  recorder.endRecording();
+
+  return _firstGlyphCenter(engine.selectableGlyphs);
+}
+
+Offset _firstGlyphCenter(List<KumihanSelectableGlyph> glyphs) {
+  if (glyphs.isEmpty) {
+    throw StateError('No selectable glyphs were recorded.');
+  }
+  return glyphs.first.rect.center;
 }

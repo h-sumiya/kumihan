@@ -38,6 +38,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
   String? _fileName;
   Document? _document;
   ReaderViewMode _viewMode = ReaderViewMode.paged;
+  bool _selectable = true;
   KumihanPagedSnapshot _pagedSnapshot = const KumihanPagedSnapshot(
     currentPage: 0,
     totalPages: 0,
@@ -266,6 +267,21 @@ class _ReaderScreenState extends State<ReaderScreen> {
                   },
                 ),
                 const SizedBox(width: 12),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    const Text('文字選択'),
+                    Switch(
+                      value: _selectable,
+                      onChanged: (value) {
+                        setState(() {
+                          _selectable = value;
+                        });
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(width: 12),
                 Expanded(child: Text(_fileName ?? '未選択')),
               ],
             ),
@@ -287,6 +303,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                         document: _document!,
                         controller: _pagedController,
                         layout: _bookLayout,
+                        selectable: _selectable,
                         onSnapshotChanged: (snapshot) {
                           setState(() {
                             _pagedSnapshot = snapshot;
@@ -302,6 +319,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                           fontSize: 18,
                           pagePadding: EdgeInsets.all(16),
                         ),
+                        selectable: _selectable,
                         onSnapshotChanged: (snapshot) {
                           setState(() {
                             _pagedSnapshot = snapshot;
@@ -317,6 +335,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                           fontSize: 18,
                           pagePadding: EdgeInsets.all(16),
                         ),
+                        selectable: _selectable,
                         onSnapshotChanged: (snapshot) {
                           setState(() {
                             _scrollSnapshot = snapshot;
