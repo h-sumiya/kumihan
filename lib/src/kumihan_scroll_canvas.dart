@@ -9,9 +9,6 @@ import 'document.dart';
 import 'engine/kumihan_scroll_engine.dart';
 import 'kumihan_scroll_controller.dart';
 import 'kumihan_types.dart';
-import 'parsers/aozora_parser.dart';
-import 'parsers/html_parser.dart';
-import 'parsers/markdown_parser.dart';
 
 class KumihanScrollCanvas extends StatefulWidget {
   const KumihanScrollCanvas({
@@ -22,60 +19,6 @@ class KumihanScrollCanvas extends StatefulWidget {
     this.layout = const KumihanLayoutData(),
     this.onSnapshotChanged,
   });
-
-  factory KumihanScrollCanvas.aozora({
-    Key? key,
-    required String text,
-    KumihanScrollController? controller,
-    KumihanImageLoader? imageLoader,
-    KumihanLayoutData layout = const KumihanLayoutData(),
-    ValueChanged<KumihanScrollSnapshot>? onSnapshotChanged,
-  }) {
-    return KumihanScrollCanvas(
-      key: key,
-      document: const AozoraParser().parse(text),
-      controller: controller,
-      imageLoader: imageLoader,
-      layout: layout,
-      onSnapshotChanged: onSnapshotChanged,
-    );
-  }
-
-  factory KumihanScrollCanvas.markdown({
-    Key? key,
-    required String text,
-    KumihanScrollController? controller,
-    KumihanImageLoader? imageLoader,
-    KumihanLayoutData layout = const KumihanLayoutData(),
-    ValueChanged<KumihanScrollSnapshot>? onSnapshotChanged,
-  }) {
-    return KumihanScrollCanvas(
-      key: key,
-      document: const MarkdownParser().parse(text),
-      controller: controller,
-      imageLoader: imageLoader,
-      layout: layout,
-      onSnapshotChanged: onSnapshotChanged,
-    );
-  }
-
-  factory KumihanScrollCanvas.html({
-    Key? key,
-    required String text,
-    KumihanScrollController? controller,
-    KumihanImageLoader? imageLoader,
-    KumihanLayoutData layout = const KumihanLayoutData(),
-    ValueChanged<KumihanScrollSnapshot>? onSnapshotChanged,
-  }) {
-    return KumihanScrollCanvas(
-      key: key,
-      document: const HtmlParser().parse(text),
-      controller: controller,
-      imageLoader: imageLoader,
-      layout: layout,
-      onSnapshotChanged: onSnapshotChanged,
-    );
-  }
 
   final Document document;
   final KumihanScrollController? controller;

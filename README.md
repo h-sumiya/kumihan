@@ -22,7 +22,7 @@
 ---
 
 日本語組版ウィジェット。縦書き・横書き・見開き表示に対応。
-青空文庫形式・Markdown・HTML をパースしてそのまま描画できる。
+青空文庫形式・Markdown・HTML はそれぞれパーサーで `Document` に変換してから描画する。
 
 ## v1 Development Note
 
@@ -44,13 +44,12 @@
 import 'package:kumihan/kumihan.dart';
 
 final controller = KumihanController();
-final document = AozoraParser().parse(aozoraText);
+final document = const AozoraParser().parse(aozoraText);
 
-KumihanCanvas(
+KumihanPagedCanvas(
   controller: controller,
   document: document,
-  layout: KumihanLayoutData(fontSize: 18),
-  theme: KumihanThemeData.light(),
+  layout: const KumihanLayoutData(fontSize: 18),
 )
 ```
 

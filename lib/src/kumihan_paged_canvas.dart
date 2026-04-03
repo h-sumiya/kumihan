@@ -9,9 +9,6 @@ import 'document.dart';
 import 'engine/kumihan_engine.dart';
 import 'kumihan_paged_controller.dart';
 import 'kumihan_types.dart';
-import 'parsers/aozora_parser.dart';
-import 'parsers/html_parser.dart';
-import 'parsers/markdown_parser.dart';
 
 class KumihanPagedCanvas extends StatefulWidget {
   const KumihanPagedCanvas({
@@ -23,66 +20,6 @@ class KumihanPagedCanvas extends StatefulWidget {
     this.layout = const KumihanLayoutData(),
     this.onSnapshotChanged,
   });
-
-  factory KumihanPagedCanvas.aozora({
-    Key? key,
-    required String text,
-    KumihanPagedController? controller,
-    KumihanImageLoader? imageLoader,
-    int initialPage = 0,
-    KumihanLayoutData layout = const KumihanLayoutData(),
-    ValueChanged<KumihanPagedSnapshot>? onSnapshotChanged,
-  }) {
-    return KumihanPagedCanvas(
-      key: key,
-      document: const AozoraParser().parse(text),
-      controller: controller,
-      imageLoader: imageLoader,
-      initialPage: initialPage,
-      layout: layout,
-      onSnapshotChanged: onSnapshotChanged,
-    );
-  }
-
-  factory KumihanPagedCanvas.markdown({
-    Key? key,
-    required String text,
-    KumihanPagedController? controller,
-    KumihanImageLoader? imageLoader,
-    int initialPage = 0,
-    KumihanLayoutData layout = const KumihanLayoutData(),
-    ValueChanged<KumihanPagedSnapshot>? onSnapshotChanged,
-  }) {
-    return KumihanPagedCanvas(
-      key: key,
-      document: const MarkdownParser().parse(text),
-      controller: controller,
-      imageLoader: imageLoader,
-      initialPage: initialPage,
-      layout: layout,
-      onSnapshotChanged: onSnapshotChanged,
-    );
-  }
-
-  factory KumihanPagedCanvas.html({
-    Key? key,
-    required String text,
-    KumihanPagedController? controller,
-    KumihanImageLoader? imageLoader,
-    int initialPage = 0,
-    KumihanLayoutData layout = const KumihanLayoutData(),
-    ValueChanged<KumihanPagedSnapshot>? onSnapshotChanged,
-  }) {
-    return KumihanPagedCanvas(
-      key: key,
-      document: const HtmlParser().parse(text),
-      controller: controller,
-      imageLoader: imageLoader,
-      initialPage: initialPage,
-      layout: layout,
-      onSnapshotChanged: onSnapshotChanged,
-    );
-  }
 
   final Document document;
   final KumihanPagedController? controller;

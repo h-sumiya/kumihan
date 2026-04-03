@@ -14,8 +14,10 @@ void main() {
         child: SizedBox(
           width: 400,
           height: 600,
-          child: KumihanPagedCanvas.aozora(
-            text: '［＃１字下げ］表示サンプルです。\n［＃改ページ］\n次のページです。',
+          child: KumihanPagedCanvas(
+            document: const AozoraParser().parse(
+              '［＃１字下げ］表示サンプルです。\n［＃改ページ］\n次のページです。',
+            ),
             controller: controller,
           ),
         ),
@@ -39,8 +41,10 @@ void main() {
         child: SizedBox(
           width: 400,
           height: 600,
-          child: KumihanScrollCanvas.aozora(
-            text: '最初の本文です。\n［＃改ページ］\n次の本文です。',
+          child: KumihanScrollCanvas(
+            document: const AozoraParser().parse(
+              '最初の本文です。\n［＃改ページ］\n次の本文です。',
+            ),
             controller: controller,
           ),
         ),
