@@ -545,6 +545,11 @@ class LayoutTextLine {
             }
             canvas.translate(x, translatedY);
             canvas.rotate(0.5 * 3.1415926535897932);
+            if (text == rotatedProlongedSoundMark) {
+              // After the 90-degree rotation, the prolonged sound mark needs
+              // an additional horizontal mirror to preserve its stroke shape.
+              canvas.scale(1, -1);
+            }
             painter.paint(
               canvas,
               const Offset(0, 0) - Offset(0, painter.height / 2),
