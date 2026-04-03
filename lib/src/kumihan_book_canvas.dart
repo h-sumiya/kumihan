@@ -163,10 +163,7 @@ class _KumihanBookCanvasState extends State<KumihanBookCanvas>
   }
 
   KumihanLayoutData _engineLayout(KumihanBookLayoutData layout) {
-    return KumihanLayoutData(
-      fontSize: layout.fontSize,
-      pagePadding: layout.contentPadding,
-    );
+    return KumihanLayoutData(fontSize: layout.fontSize);
   }
 
   int get _step => widget.spreadMode == KumihanSpreadMode.doublePage ? 2 : 1;

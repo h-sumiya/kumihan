@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/widgets.dart';
@@ -330,6 +331,79 @@ void main() {
     },
   );
 
+  test('book renderer resolves double-page width from center gap', () {
+    final engine = KumihanEngine(
+      baseUri: null,
+      initialPage: 0,
+      onInvalidate: () {},
+      onSnapshot: (_) {},
+    );
+    const layout = KumihanBookLayoutData(
+      fontSize: 18,
+      outerPadding: EdgeInsets.fromLTRB(12, 0, 30, 0),
+      pageGap: 14,
+      showTitle: false,
+      showPageNumber: false,
+    );
+    const canvasSize = Size(500, 600);
+    final renderer = BookSpreadRenderer(
+      engine: engine,
+      layout: layout,
+      theme: const KumihanThemeData(),
+      spreadMode: KumihanSpreadMode.doublePage,
+    );
+
+    final pageSize = renderer.resolvePageSize(canvasSize);
+    final expectedWidth = _snapBookPageExtent(
+      math.min(
+        canvasSize.width / 2 - layout.outerPadding.left - layout.pageGap,
+        canvasSize.width / 2 - layout.outerPadding.right - layout.pageGap,
+      ),
+      layout.fontSize,
+    );
+
+    expect(pageSize.width, closeTo(expectedWidth, 0.001));
+  });
+
+  test('book renderer reserves vertical content padding outside body area', () {
+    final engine = KumihanEngine(
+      baseUri: null,
+      initialPage: 0,
+      onInvalidate: () {},
+      onSnapshot: (_) {},
+    );
+    const baseLayout = KumihanBookLayoutData(
+      fontSize: 18,
+      showTitle: false,
+      showPageNumber: true,
+    );
+    const paddedLayout = KumihanBookLayoutData(
+      fontSize: 18,
+      contentPadding: EdgeInsets.only(bottom: 24),
+      showTitle: false,
+      showPageNumber: true,
+    );
+    const canvasSize = Size(420, 600);
+
+    final baseRenderer = BookSpreadRenderer(
+      engine: engine,
+      layout: baseLayout,
+      theme: const KumihanThemeData(),
+      spreadMode: KumihanSpreadMode.doublePage,
+    );
+    final paddedRenderer = BookSpreadRenderer(
+      engine: engine,
+      layout: paddedLayout,
+      theme: const KumihanThemeData(),
+      spreadMode: KumihanSpreadMode.doublePage,
+    );
+
+    final basePageSize = baseRenderer.resolvePageSize(canvasSize);
+    final paddedPageSize = paddedRenderer.resolvePageSize(canvasSize);
+
+    expect(paddedPageSize.height, closeTo(basePageSize.height - 24, 0.001));
+  });
+
   testWidgets('book canvas supports text selection', (tester) async {
     final document = Document(<Object>['本文です。']);
     const size = Size(800, 600);
@@ -530,4 +604,12 @@ Offset _firstGlyphCenter(List<KumihanSelectableGlyph> glyphs) {
     throw StateError('No selectable glyphs were recorded.');
   }
   return glyphs.first.rect.center;
+}
+
+double _snapBookPageExtent(double rawExtent, double fontSize) {
+  final roundedFontSize = fontSize.roundToDouble();
+  final lineSpace = roundedFontSize * 0.63;
+  final snappedExtent =
+      rawExtent - (rawExtent + lineSpace) % (roundedFontSize + lineSpace);
+  return math.max(snappedExtent, roundedFontSize);
 }
