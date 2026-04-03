@@ -50,6 +50,12 @@ class _ReaderScreenState extends State<ReaderScreen> {
     contentWidth: 0,
     visibleRange: Rect.zero,
   );
+  static const KumihanBookLayoutData _bookLayout = KumihanBookLayoutData(
+    fontSize: 18,
+    outerPadding: EdgeInsets.fromLTRB(8, 8, 8, 8),
+    contentPadding: EdgeInsets.fromLTRB(12, 0, 12, 0),
+    pageGap: 12,
+  );
 
   Document _documentWithHeaderTitle(Document document, String fileName) {
     if (document.headerTitle == fileName) {
@@ -280,7 +286,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                       ReaderViewMode.book => KumihanBookCanvas(
                         document: _document!,
                         controller: _pagedController,
-                        layout: const KumihanLayoutData(fontSize: 18),
+                        layout: _bookLayout,
                         onSnapshotChanged: (snapshot) {
                           setState(() {
                             _pagedSnapshot = snapshot;

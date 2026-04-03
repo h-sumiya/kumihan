@@ -18,7 +18,7 @@ class BookSpreadRenderer {
   });
 
   final KumihanEngine engine;
-  final KumihanLayoutData layout;
+  final KumihanBookLayoutData layout;
   final KumihanThemeData theme;
   final KumihanSpreadMode spreadMode;
 
@@ -27,49 +27,24 @@ class BookSpreadRenderer {
   _BookSpreadMetrics _resolve(Size size) {
     final fontSize = layout.fontSize.roundToDouble();
     final lineSpace = fontSize * 0.63;
-    final customPadding = layout.pagePadding;
-    final useCustomPadding = customPadding != null;
-    final minPageWidth = fontSize * 6;
+    final outerPadding = layout.outerPadding;
     final minPageHeight = fontSize * 6;
+    final pageGap = spreadMode == KumihanSpreadMode.doublePage
+        ? layout.pageGap
+        : 0.0;
+    final availableWidth = math.max(
+      size.width - outerPadding.left - outerPadding.right - pageGap,
+      fontSize,
+    );
     final double pageWidthBase = switch (spreadMode) {
-      KumihanSpreadMode.doublePage => size.width / 2,
-      KumihanSpreadMode.single => size.width,
+      KumihanSpreadMode.doublePage => availableWidth / 2,
+      KumihanSpreadMode.single => availableWidth,
     };
 
-    late double pageMarginSide;
-    late double pageMarginCenter;
-    late double pageWidth;
-
-    if (useCustomPadding) {
-      final desiredSide = customPadding.left;
-      final desiredCenter = customPadding.right;
-      final maxMarginTotal = math.max(pageWidthBase - minPageWidth, 0.0);
-      final marginTotal = desiredSide + desiredCenter;
-      final marginFactor = marginTotal > maxMarginTotal && marginTotal > 0
-          ? maxMarginTotal / marginTotal
-          : 1.0;
-      pageMarginSide = desiredSide * marginFactor;
-      pageMarginCenter = desiredCenter * marginFactor;
-      pageWidth = pageWidthBase - pageMarginSide - pageMarginCenter;
-    } else {
-      if (spreadMode == KumihanSpreadMode.doublePage) {
-        final desiredSide = math.max(size.width * 0.045, fontSize);
-        final maxSide = math.max((size.width / 2 - minPageWidth) / 2.1, 0.0);
-        pageMarginSide = math.min(desiredSide, maxSide);
-      } else {
-        final desiredSide = math.max(size.width * 0.08, fontSize);
-        final maxSide = math.max((size.width - minPageWidth) / 2.1, 0.0);
-        pageMarginSide = math.min(desiredSide, maxSide);
-      }
-      pageMarginCenter = 1.1 * pageMarginSide;
-      pageWidth = pageWidthBase - pageMarginSide - pageMarginCenter;
-    }
-
+    var pageWidth = math.max(pageWidthBase, fontSize);
     pageWidth = math.max(pageWidth, fontSize);
     pageWidth -= (pageWidth + lineSpace) % (fontSize + lineSpace);
-    if (!useCustomPadding && spreadMode == KumihanSpreadMode.single) {
-      pageMarginSide = (size.width - pageWidth) / 2;
-    }
+    pageWidth = math.max(pageWidth, fontSize);
 
     final headerReservedExtent =
         layout.showTitle && engine.headerTitle.isNotEmpty
@@ -78,12 +53,8 @@ class BookSpreadRenderer {
     final pageNumberReservedExtent = layout.showPageNumber
         ? math.max(2.07 * fontSize, 44)
         : 0.0;
-    final desiredTop = useCustomPadding
-        ? customPadding.top + headerReservedExtent
-        : math.max(size.height * 0.07, headerReservedExtent);
-    final desiredBottom = useCustomPadding
-        ? customPadding.bottom + pageNumberReservedExtent
-        : math.max(size.height * 0.07, pageNumberReservedExtent);
+    final desiredTop = outerPadding.top + headerReservedExtent;
+    final desiredBottom = outerPadding.bottom + pageNumberReservedExtent;
     final maxMarginTotal = math.max(size.height - minPageHeight, 0.0);
     final verticalMarginTotal = desiredTop + desiredBottom;
     final verticalFactor =
@@ -96,26 +67,31 @@ class BookSpreadRenderer {
       size.height - pageMarginTop - pageMarginBottom,
       fontSize,
     );
+    final pairWidth = spreadMode == KumihanSpreadMode.doublePage
+        ? pageWidth * 2 + pageGap
+        : pageWidth;
+    final extraInlineSpace = math.max(availableWidth - pairWidth, 0.0);
+    final leadingInset = outerPadding.left + extraInlineSpace / 2;
+    final leftX = leadingInset;
+    final rightX = spreadMode == KumihanSpreadMode.doublePage
+        ? leadingInset + pageWidth + pageGap
+        : leadingInset;
 
     final rightRect = Rect.fromLTWH(
-      spreadMode == KumihanSpreadMode.doublePage
-          ? size.width - pageMarginSide - pageWidth
-          : pageMarginSide,
+      rightX,
       pageMarginTop,
       pageWidth,
       pageHeight,
     );
     final leftRect = spreadMode == KumihanSpreadMode.doublePage
-        ? Rect.fromLTWH(pageMarginSide, pageMarginTop, pageWidth, pageHeight)
+        ? Rect.fromLTWH(leftX, pageMarginTop, pageWidth, pageHeight)
         : null;
 
     return _BookSpreadMetrics(
       fontSize: fontSize,
       pageMarginBottom: pageMarginBottom,
-      pageMarginCenter: pageMarginCenter,
-      pageMarginSide: pageMarginSide,
+      outerPadding: outerPadding,
       pageMarginTop: pageMarginTop,
-      pageWidth: pageWidth,
       rightRect: rightRect,
       leftRect: leftRect,
       size: size,
@@ -220,11 +196,11 @@ class BookSpreadRenderer {
     }
 
     final x = spreadMode == KumihanSpreadMode.single
-        ? metrics.pageMarginSide
-        : metrics.pageMarginSide + metrics.fontSize;
+        ? metrics.rightRect.left
+        : metrics.leftRect!.left + metrics.fontSize;
     final width = spreadMode == KumihanSpreadMode.single
-        ? metrics.size.width - metrics.pageMarginSide - metrics.fontSize
-        : metrics.pageWidth - metrics.fontSize;
+        ? metrics.rightRect.width
+        : metrics.leftRect!.width - metrics.fontSize;
     final y = metrics.pageMarginTop - 1.85 * metrics.fontSize;
 
     canvas.save();
@@ -264,7 +240,7 @@ class BookSpreadRenderer {
           canvas,
           metrics,
           pageIndex: currentPage,
-          x: metrics.size.width - metrics.pageMarginSide - metrics.fontSize,
+          x: metrics.rightRect.right - metrics.fontSize,
           alignRight: true,
           totalPages: totalPages,
         );
@@ -274,7 +250,7 @@ class BookSpreadRenderer {
           canvas,
           metrics,
           pageIndex: currentPage + 1,
-          x: metrics.pageMarginSide + metrics.fontSize,
+          x: metrics.leftRect!.left + metrics.fontSize,
           alignRight: false,
           totalPages: totalPages,
         );
@@ -286,14 +262,11 @@ class BookSpreadRenderer {
     final painter = _pageNumberPainter(label, metrics.fontSize);
     final x = switch (layout.singlePageNumberPosition) {
       KumihanSinglePageNumberPosition.left =>
-        metrics.pageMarginSide + metrics.fontSize,
+        metrics.rightRect.left + metrics.fontSize,
       KumihanSinglePageNumberPosition.center =>
         metrics.size.width / 2 - painter.width / 2,
       KumihanSinglePageNumberPosition.right =>
-        metrics.size.width -
-            metrics.pageMarginCenter -
-            metrics.fontSize -
-            painter.width,
+        metrics.rightRect.right - metrics.fontSize - painter.width,
     };
     painter.paint(
       canvas,
@@ -354,10 +327,8 @@ class _BookSpreadMetrics {
   const _BookSpreadMetrics({
     required this.fontSize,
     required this.pageMarginBottom,
-    required this.pageMarginCenter,
-    required this.pageMarginSide,
+    required this.outerPadding,
     required this.pageMarginTop,
-    required this.pageWidth,
     required this.rightRect,
     required this.leftRect,
     required this.size,
@@ -365,10 +336,8 @@ class _BookSpreadMetrics {
 
   final double fontSize;
   final double pageMarginBottom;
-  final double pageMarginCenter;
-  final double pageMarginSide;
+  final EdgeInsets outerPadding;
   final double pageMarginTop;
-  final double pageWidth;
   final Rect rightRect;
   final Rect? leftRect;
   final Size size;

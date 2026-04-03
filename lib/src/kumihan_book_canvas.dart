@@ -19,7 +19,7 @@ class KumihanBookCanvas extends StatefulWidget {
     this.imageLoader,
     this.initialPage = 0,
     this.spreadMode = KumihanSpreadMode.doublePage,
-    this.layout = const KumihanLayoutData(),
+    this.layout = const KumihanBookLayoutData(),
     this.theme = const KumihanThemeData(),
     this.onSnapshotChanged,
   });
@@ -29,7 +29,7 @@ class KumihanBookCanvas extends StatefulWidget {
   final KumihanImageLoader? imageLoader;
   final int initialPage;
   final KumihanSpreadMode spreadMode;
-  final KumihanLayoutData layout;
+  final KumihanBookLayoutData layout;
   final KumihanThemeData theme;
   final ValueChanged<KumihanPagedSnapshot>? onSnapshotChanged;
 
@@ -139,8 +139,11 @@ class _KumihanBookCanvasState extends State<KumihanBookCanvas>
     );
   }
 
-  KumihanLayoutData _engineLayout(KumihanLayoutData layout) {
-    return layout.copyWith(pagePadding: EdgeInsets.zero);
+  KumihanLayoutData _engineLayout(KumihanBookLayoutData layout) {
+    return KumihanLayoutData(
+      fontSize: layout.fontSize,
+      pagePadding: layout.contentPadding,
+    );
   }
 
   int get _step => widget.spreadMode == KumihanSpreadMode.doublePage ? 2 : 1;
@@ -279,7 +282,7 @@ class _KumihanBookPainter extends CustomPainter {
 
   final int currentPage;
   final KumihanEngine engine;
-  final KumihanLayoutData layout;
+  final KumihanBookLayoutData layout;
   final KumihanSpreadMode spreadMode;
   final KumihanThemeData theme;
   final int totalPages;

@@ -6,6 +6,8 @@ const EdgeInsets? defaultKumihanPagePadding = null;
 const bool defaultKumihanShowTitle = true;
 const bool defaultKumihanShowPageNumber = true;
 const Object _unsetPagePadding = Object();
+const Object _unsetBookOuterPadding = Object();
+const Object _unsetBookContentPadding = Object();
 
 enum KumihanSinglePageNumberPosition { left, center, right }
 
@@ -67,6 +69,73 @@ class KumihanLayoutData {
 enum KumihanWritingMode { vertical }
 
 enum KumihanSpreadMode { single, doublePage }
+
+@immutable
+class KumihanBookLayoutData {
+  const KumihanBookLayoutData({
+    this.fontSize = defaultKumihanFontSize,
+    this.outerPadding = EdgeInsets.zero,
+    this.contentPadding = EdgeInsets.zero,
+    this.pageGap = 0,
+    this.showTitle = defaultKumihanShowTitle,
+    this.showPageNumber = defaultKumihanShowPageNumber,
+    this.singlePageNumberPosition = defaultKumihanSinglePageNumberPosition,
+  }) : assert(fontSize > 0),
+       assert(pageGap >= 0);
+
+  final double fontSize;
+  final EdgeInsets outerPadding;
+  final EdgeInsets contentPadding;
+  final double pageGap;
+  final bool showTitle;
+  final bool showPageNumber;
+  final KumihanSinglePageNumberPosition singlePageNumberPosition;
+
+  KumihanBookLayoutData copyWith({
+    double? fontSize,
+    Object? outerPadding = _unsetBookOuterPadding,
+    Object? contentPadding = _unsetBookContentPadding,
+    double? pageGap,
+    bool? showTitle,
+    bool? showPageNumber,
+    KumihanSinglePageNumberPosition? singlePageNumberPosition,
+  }) => KumihanBookLayoutData(
+    fontSize: fontSize ?? this.fontSize,
+    outerPadding: identical(outerPadding, _unsetBookOuterPadding)
+        ? this.outerPadding
+        : outerPadding as EdgeInsets,
+    contentPadding: identical(contentPadding, _unsetBookContentPadding)
+        ? this.contentPadding
+        : contentPadding as EdgeInsets,
+    pageGap: pageGap ?? this.pageGap,
+    showTitle: showTitle ?? this.showTitle,
+    showPageNumber: showPageNumber ?? this.showPageNumber,
+    singlePageNumberPosition:
+        singlePageNumberPosition ?? this.singlePageNumberPosition,
+  );
+
+  @override
+  bool operator ==(Object other) =>
+      other is KumihanBookLayoutData &&
+      other.fontSize == fontSize &&
+      other.outerPadding == outerPadding &&
+      other.contentPadding == contentPadding &&
+      other.pageGap == pageGap &&
+      other.showTitle == showTitle &&
+      other.showPageNumber == showPageNumber &&
+      other.singlePageNumberPosition == singlePageNumberPosition;
+
+  @override
+  int get hashCode => Object.hash(
+    fontSize,
+    outerPadding,
+    contentPadding,
+    pageGap,
+    showTitle,
+    showPageNumber,
+    singlePageNumberPosition,
+  );
+}
 
 class KumihanPagedSnapshot {
   const KumihanPagedSnapshot({

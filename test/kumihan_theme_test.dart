@@ -43,6 +43,21 @@ void main() {
     expect(left, isNot(right));
   });
 
+  test('KumihanBookLayoutData keeps outer/content padding and gap', () {
+    const layout = KumihanBookLayoutData(
+      outerPadding: EdgeInsets.fromLTRB(8, 10, 12, 14),
+      contentPadding: EdgeInsets.symmetric(horizontal: 16),
+      pageGap: 18,
+    );
+
+    final updated = layout.copyWith(showTitle: false);
+
+    expect(updated.outerPadding, const EdgeInsets.fromLTRB(8, 10, 12, 14));
+    expect(updated.contentPadding, const EdgeInsets.symmetric(horizontal: 16));
+    expect(updated.pageGap, 18);
+    expect(updated.showTitle, isFalse);
+  });
+
   test('AozoraParser resolves headerTitle from title and author', () {
     final document = const AozoraParser(
       title: '題名',
