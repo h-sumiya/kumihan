@@ -52,5 +52,15 @@ Document buildDslSampleDocument() {
     ),
     const Br(),
     const Text(value: 'サンプルは example 内でべた書きしています。'),
+    const Br(),
+    const BottomAlign.block(
+      children: [
+        Text(
+          value: 'h-sumiya',
+          color: Color.fromARGB(255, 195, 16, 16),
+          bold: true,
+        ),
+      ],
+    ),
   ]);
 }
