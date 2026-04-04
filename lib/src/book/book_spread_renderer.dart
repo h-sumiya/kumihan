@@ -145,96 +145,108 @@ class BookSpreadRenderer {
 
     if (spreadMode == KumihanSpreadMode.doublePage) {
       if (currentPage > 0) {
-        engine.paintPage(
+        _paintPageSurface(
           canvas,
-          currentPage - 1,
-          PagePaintContext(
-            contentRect: metrics.rightRect,
-            backPage: true,
-            recordInteractiveRegions: false,
-            inlineAlignment: layout.rightPageFullPageAlignment,
-          ),
+          metrics,
+          destinationRect: metrics.rightRect,
+          pageIndex: currentPage - 1,
+          totalPages: totalPages,
+          sourceSlot: _slotForPage(currentPage - 1),
+          backPage: true,
         );
       }
       if (currentPage < lastPage - 1 && metrics.leftRect != null) {
-        engine.paintPage(
+        _paintPageSurface(
           canvas,
-          currentPage + 2,
-          PagePaintContext(
-            contentRect: metrics.leftRect!,
-            backPage: true,
-            recordInteractiveRegions: false,
-            inlineAlignment: layout.leftPageFullPageAlignment,
-          ),
+          metrics,
+          destinationRect: metrics.leftRect!,
+          pageIndex: currentPage + 2,
+          totalPages: totalPages,
+          sourceSlot: _slotForPage(currentPage + 2),
+          backPage: true,
         );
       }
     } else if (currentPage < lastPage) {
-      engine.paintPage(
+      _paintPageSurface(
         canvas,
-        currentPage + 1,
-        PagePaintContext(
-          contentRect: metrics.rightRect,
-          backPage: true,
-          recordInteractiveRegions: false,
-          inlineAlignment: layout.rightPageFullPageAlignment,
-        ),
+        metrics,
+        destinationRect: metrics.rightRect,
+        pageIndex: currentPage + 1,
+        totalPages: totalPages,
+        sourceSlot: _BookPageSlot.single,
+        backPage: true,
       );
     }
 
-    _paintHeader(canvas, metrics);
-    _paintPageNumbers(
-      canvas,
-      metrics,
-      currentPage: currentPage,
-      totalPages: totalPages,
-    );
-
     if (spreadMode == KumihanSpreadMode.doublePage) {
       if (currentPage <= lastPage) {
-        engine.paintPage(
+        _paintPageSurface(
           canvas,
-          currentPage,
-          PagePaintContext(
-            contentRect: metrics.rightRect,
-            inlineAlignment: layout.rightPageFullPageAlignment,
-          ),
+          metrics,
+          destinationRect: metrics.rightRect,
+          pageIndex: currentPage,
+          totalPages: totalPages,
+          sourceSlot: _slotForPage(currentPage),
+          backPage: false,
         );
       }
       if (currentPage + 1 <= lastPage && metrics.leftRect != null) {
-        engine.paintPage(
+        _paintPageSurface(
           canvas,
-          currentPage + 1,
-          PagePaintContext(
-            contentRect: metrics.leftRect!,
-            inlineAlignment: layout.leftPageFullPageAlignment,
-          ),
+          metrics,
+          destinationRect: metrics.leftRect!,
+          pageIndex: currentPage + 1,
+          totalPages: totalPages,
+          sourceSlot: _slotForPage(currentPage + 1),
+          backPage: false,
         );
       }
       return;
     }
 
     if (currentPage <= lastPage) {
-      engine.paintPage(
+      _paintPageSurface(
         canvas,
-        currentPage,
-        PagePaintContext(
-          contentRect: metrics.rightRect,
-          inlineAlignment: layout.rightPageFullPageAlignment,
-        ),
+        metrics,
+        destinationRect: metrics.rightRect,
+        pageIndex: currentPage,
+        totalPages: totalPages,
+        sourceSlot: _BookPageSlot.single,
+        backPage: false,
       );
     }
   }
 
-  void _paintHeader(ui.Canvas canvas, _BookSpreadMetrics metrics) {
-    final headerTitle = engine.headerTitle;
-    if (!layout.showTitle || headerTitle.isEmpty) {
-      return;
+  _BookPageSlot _slotForPage(int pageIndex) {
+    if (spreadMode == KumihanSpreadMode.single) {
+      return _BookPageSlot.single;
     }
+    return pageIndex.isEven ? _BookPageSlot.right : _BookPageSlot.left;
+  }
 
-    final x = spreadMode == KumihanSpreadMode.single
+  KumihanFullPageAlignment _alignmentForSlot(_BookPageSlot slot) {
+    return switch (slot) {
+      _BookPageSlot.single || _BookPageSlot.right =>
+        layout.rightPageFullPageAlignment,
+      _BookPageSlot.left => layout.leftPageFullPageAlignment,
+    };
+  }
+
+  Rect _sourceRectForSlot(_BookSpreadMetrics metrics, _BookPageSlot slot) {
+    return switch (slot) {
+      _BookPageSlot.single || _BookPageSlot.right => metrics.rightRect,
+      _BookPageSlot.left => metrics.leftRect!,
+    };
+  }
+
+  double _headerGlobalX(_BookSpreadMetrics metrics) {
+    return spreadMode == KumihanSpreadMode.single
         ? metrics.rightRect.left + metrics.contentPadding.left
         : metrics.outerPadding.left + metrics.contentPadding.left;
-    final width = math.max(
+  }
+
+  double _headerGlobalWidth(_BookSpreadMetrics metrics) {
+    return math.max(
       spreadMode == KumihanSpreadMode.single
           ? metrics.rightRect.width - metrics.contentPadding.horizontal
           : metrics.size.width -
@@ -242,10 +254,115 @@ class BookSpreadRenderer {
                 metrics.contentPadding.horizontal,
       1.0,
     );
-    final y = metrics.pageMarginTop - 1.85 * metrics.fontSize;
+  }
+
+  double _headerY(_BookSpreadMetrics metrics) {
+    return metrics.pageMarginTop - 1.85 * metrics.fontSize;
+  }
+
+  Paint _backPageLayerPaint() {
+    return Paint()
+      ..color =
+          (theme.isDark ? const Color(0xff000000) : const Color(0xffffffff))
+              .withValues(alpha: clampDouble(theme.backPageOpacity, 0, 1));
+  }
+
+  void _paintPageSurface(
+    ui.Canvas canvas,
+    _BookSpreadMetrics metrics, {
+    required Rect destinationRect,
+    required int pageIndex,
+    required int totalPages,
+    required _BookPageSlot sourceSlot,
+    required bool backPage,
+  }) {
+    _paintPageChrome(
+      canvas,
+      metrics,
+      destinationRect: destinationRect,
+      pageIndex: pageIndex,
+      totalPages: totalPages,
+      sourceSlot: sourceSlot,
+      backPage: backPage,
+    );
+
+    engine.paintPage(
+      canvas,
+      pageIndex,
+      PagePaintContext(
+        contentRect: destinationRect,
+        backPage: backPage,
+        recordInteractiveRegions: !backPage,
+        inlineAlignment: _alignmentForSlot(sourceSlot),
+      ),
+    );
+  }
+
+  void _paintPageChrome(
+    ui.Canvas canvas,
+    _BookSpreadMetrics metrics, {
+    required Rect destinationRect,
+    required int pageIndex,
+    required int totalPages,
+    required _BookPageSlot sourceSlot,
+    required bool backPage,
+  }) {
+    final sourceRect = _sourceRectForSlot(metrics, sourceSlot);
+    canvas.save();
+    canvas.translate(destinationRect.left, 0);
+    if (backPage) {
+      canvas.translate(destinationRect.width, 0);
+      canvas.scale(-1, 1);
+      canvas.saveLayer(
+        Rect.fromLTWH(0, 0, destinationRect.width, metrics.size.height),
+        _backPageLayerPaint(),
+      );
+    }
+    _paintHeader(
+      canvas,
+      metrics,
+      sourceRect: sourceRect,
+      pageWidth: destinationRect.width,
+    );
+    _paintPageNumber(
+      canvas,
+      metrics,
+      sourceRect: sourceRect,
+      pageWidth: destinationRect.width,
+      pageIndex: pageIndex,
+      totalPages: totalPages,
+      sourceSlot: sourceSlot,
+    );
+    if (backPage) {
+      canvas.restore();
+    }
+    canvas.restore();
+  }
+
+  void _paintHeader(
+    ui.Canvas canvas,
+    _BookSpreadMetrics metrics, {
+    required Rect sourceRect,
+    required double pageWidth,
+  }) {
+    final headerTitle = engine.headerTitle;
+    if (!layout.showTitle || headerTitle.isEmpty) {
+      return;
+    }
+
+    final y = _headerY(metrics);
+    final x = _headerGlobalX(metrics) - sourceRect.left;
+    final width = math.max(pageWidth - metrics.contentPadding.horizontal, 1.0);
 
     canvas.save();
-    canvas.clipRect(Rect.fromLTWH(x, y, width, metrics.pageMarginTop));
+    canvas.clipRect(
+      Rect.fromLTWH(
+        metrics.contentPadding.left,
+        y,
+        width,
+        metrics.pageMarginTop,
+      ),
+    );
     final painter = TextPainter(
       text: TextSpan(
         text: headerTitle,
@@ -260,92 +377,56 @@ class BookSpreadRenderer {
       textDirection: TextDirection.ltr,
       maxLines: 1,
       textScaler: TextScaler.noScaling,
-    )..layout(maxWidth: width);
+    )..layout(maxWidth: _headerGlobalWidth(metrics));
     painter.paint(canvas, Offset(x, y));
     canvas.restore();
   }
 
-  void _paintPageNumbers(
+  void _paintPageNumber(
     ui.Canvas canvas,
     _BookSpreadMetrics metrics, {
-    required int currentPage,
+    required Rect sourceRect,
+    required double pageWidth,
+    required int pageIndex,
     required int totalPages,
+    required _BookPageSlot sourceSlot,
   }) {
     if (!layout.showPageNumber || totalPages <= 0) {
       return;
     }
 
-    if (spreadMode == KumihanSpreadMode.doublePage) {
-      if (currentPage < totalPages) {
-        _paintPageNumberLabel(
-          canvas,
-          metrics,
-          pageIndex: currentPage,
-          x:
-              metrics.rightRect.right -
-              metrics.contentPadding.right -
-              metrics.fontSize,
-          alignRight: true,
-          totalPages: totalPages,
-        );
-      }
-      if (currentPage + 1 < totalPages) {
-        _paintPageNumberLabel(
-          canvas,
-          metrics,
-          pageIndex: currentPage + 1,
-          x:
-              metrics.leftRect!.left +
-              metrics.contentPadding.left +
-              metrics.fontSize,
-          alignRight: false,
-          totalPages: totalPages,
-        );
-      }
-      return;
-    }
-
-    final label = '${currentPage + 1}/$totalPages';
-    final painter = _pageNumberPainter(label, metrics.fontSize);
-    final x = switch (layout.singlePageNumberPosition) {
-      KumihanSinglePageNumberPosition.left =>
-        metrics.rightRect.left + metrics.contentPadding.left + metrics.fontSize,
-      KumihanSinglePageNumberPosition.center =>
-        metrics.size.width / 2 - painter.width / 2,
-      KumihanSinglePageNumberPosition.right =>
-        metrics.rightRect.right -
+    final painter = _pageNumberPainter(
+      '${pageIndex + 1}/$totalPages',
+      metrics.fontSize,
+    );
+    final x = switch (sourceSlot) {
+      _BookPageSlot.left =>
+        metrics.contentPadding.left + metrics.fontSize,
+      _BookPageSlot.right =>
+        pageWidth -
             metrics.contentPadding.right -
             metrics.fontSize -
             painter.width,
+      _BookPageSlot.single => switch (layout.singlePageNumberPosition) {
+        KumihanSinglePageNumberPosition.left =>
+          metrics.rightRect.left +
+              metrics.contentPadding.left +
+              metrics.fontSize -
+              sourceRect.left,
+        KumihanSinglePageNumberPosition.center =>
+          metrics.size.width / 2 - painter.width / 2 - sourceRect.left,
+        KumihanSinglePageNumberPosition.right =>
+          metrics.rightRect.right -
+              metrics.contentPadding.right -
+              metrics.fontSize -
+              painter.width -
+              sourceRect.left,
+      },
     };
     painter.paint(
       canvas,
       Offset(
         x,
-        metrics.size.height -
-            metrics.pageMarginBottom +
-            metrics.fontSize -
-            painter.height / 2,
-      ),
-    );
-  }
-
-  void _paintPageNumberLabel(
-    ui.Canvas canvas,
-    _BookSpreadMetrics metrics, {
-    required bool alignRight,
-    required int pageIndex,
-    required double x,
-    required int totalPages,
-  }) {
-    final painter = _pageNumberPainter(
-      '${pageIndex + 1}/$totalPages',
-      metrics.fontSize,
-    );
-    painter.paint(
-      canvas,
-      Offset(
-        alignRight ? x - painter.width : x,
         metrics.size.height -
             metrics.pageMarginBottom +
             metrics.fontSize -
@@ -394,3 +475,5 @@ class _BookSpreadMetrics {
   final Rect? leftRect;
   final Size size;
 }
+
+enum _BookPageSlot { single, right, left }
