@@ -239,8 +239,22 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
 
   String get headerTitle => _headerTitle;
 
+  List<ClickableArea> get clickableAreas =>
+      List<ClickableArea>.unmodifiable(_clickable);
+
   List<KumihanSelectableGlyph> get selectableGlyphs =>
       List<KumihanSelectableGlyph>.unmodifiable(_selectableGlyphs);
+
+  ClickableArea? hitTestClickable(Offset position) {
+    for (final clickable in _clickable.reversed) {
+      if (clickable.hit(position.dx, position.dy)) {
+        return clickable;
+      }
+    }
+    return null;
+  }
+
+  int? resolveAnchorPage(String target) => _anchorList[target];
 
   @override
   MeasuredText layoutText(LayoutAtom atom, String text, Color color) {

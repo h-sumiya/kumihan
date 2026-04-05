@@ -299,7 +299,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                 : DecoratedBox(
                     decoration: const BoxDecoration(color: Color(0xfffffdf1)),
                     child: switch (_viewMode) {
-                      ReaderViewMode.book => KumihanBookCanvas(
+                      ReaderViewMode.book => KumihanBook(
                         document: _document!,
                         controller: _pagedController,
                         layout: _bookLayout,

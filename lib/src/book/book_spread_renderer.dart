@@ -24,7 +24,7 @@ class BookSpreadRenderer {
 
   Size resolvePageSize(Size size) {
     final viewportSize = _viewportSize(size);
-    return _resolvePageMetrics(viewportSize, BookPageSlot.right).bodyRect.size;
+    return resolvePageMetrics(viewportSize, BookPageSlot.right).bodyRect.size;
   }
 
   void paint(
@@ -76,6 +76,7 @@ class BookSpreadRenderer {
     required Offset globalViewportOrigin,
     required int currentPage,
     required int totalPages,
+    bool recordInteractiveRegions = true,
   }) {
     _paintViewport(
       canvas,
@@ -84,6 +85,7 @@ class BookSpreadRenderer {
       globalViewportOrigin: globalViewportOrigin,
       currentPage: currentPage,
       totalPages: totalPages,
+      recordInteractiveRegions: recordInteractiveRegions,
     );
   }
 
@@ -135,7 +137,7 @@ class BookSpreadRenderer {
     );
   }
 
-  _BookPageMetrics _resolvePageMetrics(Size viewportSize, BookPageSlot slot) {
+  BookPageMetrics resolvePageMetrics(Size viewportSize, BookPageSlot slot) {
     final fontSize = layout.fontSize.roundToDouble();
     final minBodyHeight = fontSize * 6;
     final headerReservedExtent =
@@ -206,7 +208,7 @@ class BookSpreadRenderer {
       ),
     );
 
-    return _BookPageMetrics(
+    return BookPageMetrics(
       bodyPadding: scaledBodyPadding,
       bodyRect: bodyRect,
       bottomReservedExtent: scaledBottomReservedExtent,
@@ -218,6 +220,46 @@ class BookSpreadRenderer {
     );
   }
 
+  Rect resolveBodyRect(Size viewportSize, BookPageSlot slot) {
+    return resolvePageMetrics(viewportSize, slot).bodyRect;
+  }
+
+  void paintDocumentPageSurface(
+    ui.Canvas canvas,
+    Size viewportSize, {
+    required int pageIndex,
+    required int totalPages,
+    required BookPageSlot slot,
+    Offset globalViewportOrigin = Offset.zero,
+    bool resetPaintState = true,
+    bool recordInteractiveRegions = true,
+  }) {
+    canvas.drawRect(
+      Offset.zero & viewportSize,
+      Paint()..color = theme.paperColor,
+    );
+
+    if (resetPaintState) {
+      engine.resetPaintState();
+    }
+
+    if (pageIndex < 0 || pageIndex >= totalPages) {
+      return;
+    }
+
+    final metrics = resolvePageMetrics(viewportSize, slot);
+    _paintPageSurface(
+      canvas,
+      metrics,
+      globalContentOrigin: globalViewportOrigin + metrics.bodyRect.topLeft,
+      pageIndex: pageIndex,
+      totalPages: totalPages,
+      sourceSlot: slot,
+      backPage: false,
+      recordInteractiveRegions: recordInteractiveRegions,
+    );
+  }
+
   void _paintViewport(
     ui.Canvas canvas,
     Size viewportSize, {
@@ -225,13 +267,14 @@ class BookSpreadRenderer {
     required Offset globalViewportOrigin,
     required int currentPage,
     required int totalPages,
+    bool recordInteractiveRegions = true,
   }) {
     canvas.drawRect(
       Offset.zero & viewportSize,
       Paint()..color = theme.paperColor,
     );
 
-    final metrics = _resolvePageMetrics(viewportSize, viewportSlot);
+    final metrics = resolvePageMetrics(viewportSize, viewportSlot);
     final lastPage = math.max(totalPages - 1, 0);
     final backPageIndex = _backPageIndexForViewport(
       viewportSlot,
@@ -254,6 +297,7 @@ class BookSpreadRenderer {
         totalPages: totalPages,
         sourceSlot: _slotForPage(backPageIndex),
         backPage: true,
+        recordInteractiveRegions: recordInteractiveRegions,
       );
     }
 
@@ -266,6 +310,7 @@ class BookSpreadRenderer {
         totalPages: totalPages,
         sourceSlot: _slotForPage(frontPageIndex),
         backPage: false,
+        recordInteractiveRegions: recordInteractiveRegions,
       );
     }
   }
@@ -319,12 +364,13 @@ class BookSpreadRenderer {
 
   void _paintPageSurface(
     ui.Canvas canvas,
-    _BookPageMetrics metrics, {
+    BookPageMetrics metrics, {
     required Offset globalContentOrigin,
     required int pageIndex,
     required int totalPages,
     required BookPageSlot sourceSlot,
     required bool backPage,
+    bool recordInteractiveRegions = true,
   }) {
     if (backPage) {
       canvas.save();
@@ -357,7 +403,7 @@ class BookSpreadRenderer {
         contentRect: metrics.bodyRect,
         globalContentOrigin: globalContentOrigin,
         backPage: backPage,
-        recordInteractiveRegions: !backPage,
+        recordInteractiveRegions: !backPage && recordInteractiveRegions,
         inlineAlignment: _alignmentForSlot(sourceSlot),
       ),
     );
@@ -365,15 +411,15 @@ class BookSpreadRenderer {
 
   Rect _globalBodyRectForSlot(Size viewportSize, BookPageSlot slot) {
     return switch (slot) {
-      BookPageSlot.single => _resolvePageMetrics(
+      BookPageSlot.single => resolvePageMetrics(
         viewportSize,
         BookPageSlot.single,
       ).bodyRect,
-      BookPageSlot.left => _resolvePageMetrics(
+      BookPageSlot.left => resolvePageMetrics(
         viewportSize,
         BookPageSlot.left,
       ).bodyRect,
-      BookPageSlot.right => _resolvePageMetrics(
+      BookPageSlot.right => resolvePageMetrics(
         viewportSize,
         BookPageSlot.right,
       ).bodyRect.shift(Offset(viewportSize.width, 0)),
@@ -382,7 +428,7 @@ class BookSpreadRenderer {
 
   void _paintHeader(
     ui.Canvas canvas,
-    _BookPageMetrics metrics, {
+    BookPageMetrics metrics, {
     required BookPageSlot sourceSlot,
   }) {
     final headerTitle = engine.headerTitle;
@@ -399,7 +445,7 @@ class BookSpreadRenderer {
         : metrics.bodyRect;
     final globalHeaderX = switch (spreadMode) {
       KumihanSpreadMode.single => metrics.topUiPadding.left,
-      KumihanSpreadMode.doublePage => _resolvePageMetrics(
+      KumihanSpreadMode.doublePage => resolvePageMetrics(
         metrics.viewportSize,
         BookPageSlot.left,
       ).topUiPadding.left,
@@ -408,11 +454,11 @@ class BookSpreadRenderer {
       KumihanSpreadMode.single => availableWidth,
       KumihanSpreadMode.doublePage => math.max(
         metrics.viewportSize.width * 2 -
-            _resolvePageMetrics(
+            resolvePageMetrics(
               metrics.viewportSize,
               BookPageSlot.left,
             ).topUiPadding.left -
-            _resolvePageMetrics(
+            resolvePageMetrics(
               metrics.viewportSize,
               BookPageSlot.right,
             ).topUiPadding.right,
@@ -461,7 +507,7 @@ class BookSpreadRenderer {
 
   void _paintPageNumber(
     ui.Canvas canvas,
-    _BookPageMetrics metrics, {
+    BookPageMetrics metrics, {
     required int pageIndex,
     required int totalPages,
     required BookPageSlot sourceSlot,
@@ -525,8 +571,8 @@ class BookSpreadRenderer {
   }
 }
 
-class _BookPageMetrics {
-  const _BookPageMetrics({
+class BookPageMetrics {
+  const BookPageMetrics({
     required this.bodyPadding,
     required this.bodyRect,
     required this.bottomReservedExtent,
