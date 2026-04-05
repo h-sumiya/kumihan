@@ -89,6 +89,8 @@ class _PageFlipBookState extends State<PageFlipBook>
   final Map<int, GlobalKey> _snapshotKeys = <int, GlobalKey>{};
   final Map<int, ui.Image> _pageImages = <int, ui.Image>{};
   final Set<int> _capturingPages = <int>{};
+  final Set<int> _dirtySnapshotPages = <int>{};
+  final Map<int, int> _pagePaintGenerations = <int, int>{};
 
   int _rightPageIndex = 0;
   int _pageImageVersion = 0;
@@ -106,6 +108,7 @@ class _PageFlipBookState extends State<PageFlipBook>
   Offset? _animationStart;
   Offset? _animationEnd;
   bool _animationTurnsPage = false;
+  bool _snapshotCaptureScheduled = false;
 
   @override
   void initState() {
@@ -400,7 +403,11 @@ class _PageFlipBookState extends State<PageFlipBook>
       top: 0,
       width: widget.pageSize.width,
       height: widget.pageSize.height,
-      child: RepaintBoundary(key: key, child: _pageWidgetForIndex(pageIndex)),
+      child: _SnapshotBoundary(
+        key: key,
+        onPainted: () => _handlePagePaint(pageIndex),
+        child: _pageWidgetForIndex(pageIndex),
+      ),
     );
   }
 
@@ -409,8 +416,9 @@ class _PageFlipBookState extends State<PageFlipBook>
     return SizedBox(
       width: widget.pageSize.width,
       height: widget.pageSize.height,
-      child: RepaintBoundary(
+      child: _SnapshotBoundary(
         key: key,
+        onPainted: () => _handlePagePaint(pageIndex),
         child: _snapshotWidgetForIndex(pageIndex),
       ),
     );
@@ -439,20 +447,42 @@ class _PageFlipBookState extends State<PageFlipBook>
     return builder(context, pageIndex);
   }
 
+  void _handlePagePaint(int pageIndex) {
+    _pagePaintGenerations[pageIndex] =
+        (_pagePaintGenerations[pageIndex] ?? 0) + 1;
+    _dirtySnapshotPages.add(pageIndex);
+    _scheduleSnapshotCapture();
+  }
+
   void _scheduleSnapshotCapture() {
+    if (_snapshotCaptureScheduled || !_shouldCaptureSnapshots) {
+      return;
+    }
+    _snapshotCaptureScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _snapshotCaptureScheduled = false;
       if (!mounted) {
+        return;
+      }
+      if (!_shouldCaptureSnapshots) {
         return;
       }
       unawaited(_captureRequiredSnapshots());
     });
   }
 
+  bool get _shouldCaptureSnapshots =>
+      mounted &&
+      _scene == null &&
+      !_animationController.isAnimating &&
+      !_isDragging;
+
   Future<void> _captureRequiredSnapshots() async {
     final pixelRatio = View.of(context).devicePixelRatio;
 
     for (final pageIndex in _requiredSnapshotIndices) {
-      if (_pageImages.containsKey(pageIndex) ||
+      if ((!_dirtySnapshotPages.contains(pageIndex) &&
+              _pageImages.containsKey(pageIndex)) ||
           _capturingPages.contains(pageIndex)) {
         continue;
       }
@@ -465,15 +495,21 @@ class _PageFlipBookState extends State<PageFlipBook>
       }
 
       _capturingPages.add(pageIndex);
+      final paintGeneration = _pagePaintGenerations[pageIndex] ?? 0;
       try {
         final image = await boundary.toImage(pixelRatio: pixelRatio);
         if (!mounted) {
           image.dispose();
           return;
         }
+        if ((_pagePaintGenerations[pageIndex] ?? 0) != paintGeneration) {
+          image.dispose();
+          continue;
+        }
         final oldImage = _pageImages[pageIndex];
         setState(() {
           _pageImages[pageIndex] = image;
+          _dirtySnapshotPages.remove(pageIndex);
           _pageImageVersion += 1;
         });
         oldImage?.dispose();
@@ -985,6 +1021,7 @@ class _PageFlipBookState extends State<PageFlipBook>
     final oldImage = _pageImages.remove(pageIndex);
     oldImage?.dispose();
     _capturingPages.remove(pageIndex);
+    _dirtySnapshotPages.add(pageIndex);
     _pageImageVersion += oldImage == null ? 0 : 1;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1008,15 +1045,21 @@ class _PageFlipBookState extends State<PageFlipBook>
 
     final pixelRatio = View.of(context).devicePixelRatio;
     _capturingPages.add(pageIndex);
+    final paintGeneration = _pagePaintGenerations[pageIndex] ?? 0;
     try {
       final image = await boundary.toImage(pixelRatio: pixelRatio);
       if (!mounted) {
         image.dispose();
         return;
       }
+      if ((_pagePaintGenerations[pageIndex] ?? 0) != paintGeneration) {
+        image.dispose();
+        return;
+      }
       final oldImage = _pageImages[pageIndex];
       setState(() {
         _pageImages[pageIndex] = image;
+        _dirtySnapshotPages.remove(pageIndex);
         _pageImageVersion += 1;
       });
       oldImage?.dispose();
@@ -1032,6 +1075,9 @@ class _PageFlipBookState extends State<PageFlipBook>
     _pageImages.clear();
     _snapshotKeys.clear();
     _capturingPages.clear();
+    _dirtySnapshotPages.clear();
+    _pagePaintGenerations.clear();
+    _snapshotCaptureScheduled = false;
     _pageImageVersion = 0;
   }
 
@@ -1042,6 +1088,39 @@ class _PageFlipBookState extends State<PageFlipBook>
   PageDensity get debugStaticGutterDensity => _staticGutterDensity;
 
   PageDensity get debugCurrentGutterDensity => _currentGutterDensity;
+
+  int get debugPageImageVersion => _pageImageVersion;
+}
+
+final class _SnapshotBoundary extends SingleChildRenderObjectWidget {
+  const _SnapshotBoundary({super.key, required this.onPainted, super.child});
+
+  final VoidCallback onPainted;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) {
+    return _RenderSnapshotBoundary(onPainted);
+  }
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    covariant _RenderSnapshotBoundary renderObject,
+  ) {
+    renderObject.onPainted = onPainted;
+  }
+}
+
+final class _RenderSnapshotBoundary extends RenderRepaintBoundary {
+  _RenderSnapshotBoundary(this.onPainted);
+
+  VoidCallback onPainted;
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    super.paint(context, offset);
+    onPainted();
+  }
 }
 
 final class _BookGutterShadowPainter extends CustomPainter {
