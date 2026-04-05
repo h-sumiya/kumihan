@@ -582,6 +582,7 @@ class _KumihanBookState extends State<KumihanBook>
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onLongPressStart: (details) {
+          _pageFlipController.cancelActiveTouch();
           _startSelection(details.localPosition + rect.topLeft);
         },
         onLongPressMoveUpdate: (details) {
@@ -610,27 +611,41 @@ class _KumihanBookState extends State<KumihanBook>
 
   Widget _buildInteractiveLayer(Size pageSize) {
     final bodyRects = _bodyRectsFor(pageSize);
-    return Stack(
-      fit: StackFit.expand,
-      children: <Widget>[
-        if (widget.selectable)
-          for (final rect in bodyRects) _buildSelectionRegion(rect),
-        for (final clickable in _engine.clickableAreas)
-          Positioned.fromRect(
-            rect: Rect.fromLTWH(
-              clickable.x,
-              clickable.y,
-              clickable.width,
-              clickable.height,
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: _selectionMode
+          ? (_) {
+              _pageFlipController.cancelActiveTouch();
+            }
+          : null,
+      child: Stack(
+        fit: StackFit.expand,
+        children: <Widget>[
+          if (widget.selectable)
+            for (final rect in bodyRects) _buildSelectionRegion(rect),
+          for (final clickable in _engine.clickableAreas)
+            Positioned.fromRect(
+              rect: Rect.fromLTWH(
+                clickable.x,
+                clickable.y,
+                clickable.width,
+                clickable.height,
+              ),
+              child: Listener(
+                behavior: HitTestBehavior.opaque,
+                onPointerDown: (_) {
+                  _pageFlipController.cancelActiveTouch();
+                },
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => unawaited(_handleClickableAreaTap(clickable)),
+                  child: const SizedBox.expand(),
+                ),
+              ),
             ),
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => unawaited(_handleClickableAreaTap(clickable)),
-              child: const SizedBox.expand(),
-            ),
-          ),
-        _buildSelectionOverlay(Size(pageSize.width * 2, pageSize.height)),
-      ],
+          _buildSelectionOverlay(Size(pageSize.width * 2, pageSize.height)),
+        ],
+      ),
     );
   }
 
@@ -689,8 +704,10 @@ class _KumihanBookState extends State<KumihanBook>
                         totalPages: _totalPages,
                       );
                     },
+                    overlay: !_isFlipping
+                        ? _buildInteractiveLayer(pageSize)
+                        : null,
                   ),
-                  if (!_isFlipping) _buildInteractiveLayer(pageSize),
                 ],
               ),
             ),

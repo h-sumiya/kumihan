@@ -774,10 +774,113 @@ void main() {
     expect(find.text('閉じる'), findsNothing);
   });
 
-  testWidgets('kumihan book shows selection highlight and closes toolbar after copy', (tester) async {
-    final document = Document(<Object>['本文です。']);
+  testWidgets(
+    'kumihan book shows selection highlight and closes toolbar after copy',
+    (tester) async {
+      final document = Document(<Object>['本文です。']);
+      const size = Size(800, 600);
+      final point = await _firstBookGlyphCenter(size: size, document: document);
+
+      await tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: SizedBox(
+            width: size.width,
+            height: size.height,
+            child: KumihanBook(document: document),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+      await _longPressCanvas(
+        tester,
+        find.byType(KumihanBook),
+        localPosition: point,
+      );
+
+      expect(_selectionHighlightFinder(), findsAtLeastNWidgets(1));
+      expect(find.text('コピー'), findsOneWidget);
+      await tester.tap(find.text('コピー'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('コピー'), findsNothing);
+      expect(find.text('閉じる'), findsNothing);
+    },
+  );
+
+  testWidgets('kumihan book tap on left-page text flips to the next spread', (
+    tester,
+  ) async {
+    final document = const AozoraParser().parse(
+      '甲頁です。\n［＃改ページ］\n乙頁です。\n［＃改ページ］\n丙頁です。\n［＃改ページ］\n丁頁です。',
+    );
+    final controller = KumihanPagedController();
     const size = Size(800, 600);
-    final point = await _firstBookGlyphCenter(size: size, document: document);
+    final point = await _bookPageGlyphCenter(
+      size: size,
+      document: document,
+      onLeftPage: true,
+    );
+
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: SizedBox(
+          width: size.width,
+          height: size.height,
+          child: KumihanBook(document: document, controller: controller),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+    final bookRect = tester.getRect(find.byType(KumihanBook));
+    await tester.tapAt(bookRect.topLeft + point);
+    await tester.pumpAndSettle();
+
+    expect(controller.snapshot.currentPage, 2);
+  });
+
+  testWidgets('kumihan book tap on blank area flips to the next spread', (
+    tester,
+  ) async {
+    final document = const AozoraParser().parse(
+      '甲頁です。\n［＃改ページ］\n乙頁です。\n［＃改ページ］\n丙頁です。\n［＃改ページ］\n丁頁です。',
+    );
+    final controller = KumihanPagedController();
+    const size = Size(800, 600);
+    final point = Offset(size.width * 0.25, size.height * 0.85);
+
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: SizedBox(
+          width: size.width,
+          height: size.height,
+          child: KumihanBook(document: document, controller: controller),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+    final bookRect = tester.getRect(find.byType(KumihanBook));
+    await tester.tapAt(bookRect.topLeft + point);
+    await tester.pumpAndSettle();
+
+    expect(controller.snapshot.currentPage, 2);
+  });
+
+  testWidgets('kumihan book supports text selection on the left page', (
+    tester,
+  ) async {
+    final document = const AozoraParser().parse('右頁です。\n［＃改ページ］\n左頁です。');
+    const size = Size(800, 600);
+    final point = await _bookPageGlyphCenter(
+      size: size,
+      document: document,
+      onLeftPage: true,
+    );
 
     await tester.pumpWidget(
       Directionality(
@@ -797,14 +900,45 @@ void main() {
       localPosition: point,
     );
 
-    expect(_selectionHighlightFinder(), findsAtLeastNWidgets(1));
     expect(find.text('コピー'), findsOneWidget);
-    await tester.tap(find.text('コピー'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('コピー'), findsNothing);
-    expect(find.text('閉じる'), findsNothing);
+    expect(find.text('閉じる'), findsOneWidget);
+    expect(_selectionHighlightFinder(), findsAtLeastNWidgets(1));
   });
+
+  testWidgets(
+    'kumihan book horizontal swipe from blank area starts page drag',
+    (tester) async {
+      final document = const AozoraParser().parse(
+        '甲頁です。\n［＃改ページ］\n乙頁です。\n［＃改ページ］\n丙頁です。\n［＃改ページ］\n丁頁です。',
+      );
+      const size = Size(800, 600);
+      final point = Offset(size.width * 0.25, size.height * 0.85);
+
+      await tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: SizedBox(
+            width: size.width,
+            height: size.height,
+            child: KumihanBook(document: document),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      final bookRect = tester.getRect(find.byType(KumihanBook));
+      final gesture = await tester.startGesture(bookRect.topLeft + point);
+      await gesture.moveBy(const Offset(80, 0));
+      await tester.pump();
+
+      final state = tester.state(find.byType(PageFlipBook)) as dynamic;
+      expect(state.debugIsDragging, isTrue);
+
+      await gesture.up();
+      await tester.pumpAndSettle();
+    },
+  );
 
   testWidgets('book canvas can disable text selection', (tester) async {
     final document = Document(<Object>['本文です。']);
@@ -1008,6 +1142,71 @@ Future<Offset> _bookGlyphCenterForText({
     return _firstGlyphCenter(glyphs);
   }
   return glyphs.firstWhere((item) => item.text == text).rect.center;
+}
+
+Future<Offset> _bookPageGlyphCenter({
+  required Size size,
+  required Document document,
+  required bool onLeftPage,
+}) async {
+  const layout = KumihanBookLayoutData();
+  final engine = KumihanEngine(
+    baseUri: null,
+    initialPage: 0,
+    onInvalidate: () {},
+    onSnapshot: (_) {},
+  );
+  const theme = KumihanThemeData();
+  final renderer = BookSpreadRenderer(
+    engine: engine,
+    layout: layout,
+    theme: theme,
+    spreadMode: KumihanSpreadMode.doublePage,
+  );
+  final enginePageSize = renderer.resolvePageSize(size);
+  final viewportPageSize = Size(size.width / 2, size.height);
+
+  await engine.resize(enginePageSize.width, enginePageSize.height);
+  await engine.open(document);
+
+  final recorder = PictureRecorder();
+  final canvas = Canvas(recorder);
+  renderer.paintDocumentPageSurface(
+    canvas,
+    viewportPageSize,
+    pageIndex: 0,
+    totalPages: engine.snapshot.totalPages,
+    slot: BookPageSlot.right,
+    globalViewportOrigin: Offset(viewportPageSize.width, 0),
+    resetPaintState: true,
+    recordInteractiveRegions: true,
+  );
+  renderer.paintDocumentPageSurface(
+    canvas,
+    viewportPageSize,
+    pageIndex: 1,
+    totalPages: engine.snapshot.totalPages,
+    slot: BookPageSlot.left,
+    globalViewportOrigin: Offset.zero,
+    resetPaintState: false,
+    recordInteractiveRegions: true,
+  );
+  recorder.endRecording();
+
+  final glyphs = List<KumihanSelectableGlyph>.of(engine.selectableGlyphs);
+  final midpoint = size.width / 2;
+  final candidates = glyphs
+      .where(
+        (glyph) => onLeftPage
+            ? glyph.rect.center.dx < midpoint
+            : glyph.rect.center.dx >= midpoint,
+      )
+      .toList(growable: false);
+  if (candidates.isEmpty) {
+    throw StateError('No selectable glyphs were recorded on the target page.');
+  }
+  candidates.sort((a, b) => b.rect.center.dy.compareTo(a.rect.center.dy));
+  return candidates.first.rect.center;
 }
 
 Future<Rect> _bookBounds({

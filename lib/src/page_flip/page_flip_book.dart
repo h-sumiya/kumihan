@@ -49,6 +49,7 @@ class PageFlipBook extends StatefulWidget {
     this.borderColor = const Color(0xFFBDB7AA),
     this.pageDensityBuilder,
     this.onSnapshotChanged,
+    this.overlay,
   });
 
   final int pageCount;
@@ -65,6 +66,7 @@ class PageFlipBook extends StatefulWidget {
   final Color borderColor;
   final PageDensity Function(int pageIndex)? pageDensityBuilder;
   final ValueChanged<PageFlipSnapshot>? onSnapshotChanged;
+  final Widget? overlay;
 
   @override
   State<PageFlipBook> createState() => _PageFlipBookState();
@@ -302,6 +304,7 @@ class _PageFlipBookState extends State<PageFlipBook>
                   ),
                 ),
               ),
+            if (widget.overlay != null) Positioned.fill(child: widget.overlay!),
             Positioned(
               left: -widget.pageSize.width * 8,
               top: 0,
@@ -352,6 +355,24 @@ class _PageFlipBookState extends State<PageFlipBook>
   }
 
   @override
+  void cancelActiveTouch() {
+    _clearBlockedInteraction();
+
+    if (_scene != null || _isDragging) {
+      _resetFlipState();
+      _notifySnapshotChanged();
+      return;
+    }
+
+    if (!_isUserTouch) {
+      return;
+    }
+
+    _clearTouchTracking();
+    _notifySnapshotChanged();
+  }
+
+  @override
   PageFlipSnapshot get snapshot => _currentSnapshot();
 
   List<Widget> _buildLivePages() {
@@ -360,13 +381,13 @@ class _PageFlipBookState extends State<PageFlipBook>
     }
 
     return <Widget>[
-      if (_rightPageIndex + 1 < _renderPageCount)
-        _buildVisiblePage(pageIndex: _rightPageIndex + 1, left: 0),
       if (_rightPageIndex < _renderPageCount)
         _buildVisiblePage(
           pageIndex: _rightPageIndex,
           left: widget.pageSize.width,
         ),
+      if (_rightPageIndex + 1 < _renderPageCount)
+        _buildVisiblePage(pageIndex: _rightPageIndex + 1, left: 0),
     ];
   }
 

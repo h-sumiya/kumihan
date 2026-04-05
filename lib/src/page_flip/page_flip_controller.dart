@@ -6,6 +6,7 @@ abstract interface class PageFlipViewport {
   Future<void> nextSpread([int? amount]);
   Future<void> prevSpread([int? amount]);
   Future<void> showRightPage(int pageIndex);
+  void cancelActiveTouch();
   PageFlipSnapshot get snapshot;
 }
 
@@ -46,4 +47,6 @@ class PageFlipController extends ChangeNotifier {
 
   Future<void> showRightPage(int pageIndex) async =>
       _viewport?.showRightPage(pageIndex);
+
+  void cancelActiveTouch() => _viewport?.cancelActiveTouch();
 }
