@@ -50,6 +50,7 @@ class PageFlipBook extends StatefulWidget {
     this.pageDensityBuilder,
     this.onSnapshotChanged,
     this.overlay,
+    this.interactionEnabled = true,
   });
 
   final int pageCount;
@@ -67,6 +68,7 @@ class PageFlipBook extends StatefulWidget {
   final PageDensity Function(int pageIndex)? pageDensityBuilder;
   final ValueChanged<PageFlipSnapshot>? onSnapshotChanged;
   final Widget? overlay;
+  final bool interactionEnabled;
 
   @override
   State<PageFlipBook> createState() => _PageFlipBookState();
@@ -482,6 +484,9 @@ class _PageFlipBookState extends State<PageFlipBook>
   }
 
   void _handlePointerDown(PointerDownEvent event) {
+    if (!widget.interactionEnabled) {
+      return;
+    }
     if (_blockedPointer == event.pointer) {
       return;
     }
@@ -520,6 +525,9 @@ class _PageFlipBookState extends State<PageFlipBook>
   }
 
   void _handlePointerMove(PointerMoveEvent event) {
+    if (!widget.interactionEnabled) {
+      return;
+    }
     if (_blockedPointer == event.pointer) {
       return;
     }
@@ -547,6 +555,9 @@ class _PageFlipBookState extends State<PageFlipBook>
   }
 
   void _handlePointerUp(PointerUpEvent event) {
+    if (!widget.interactionEnabled) {
+      return;
+    }
     if (_blockedPointer == event.pointer) {
       _refreshBlockedPageSnapshot();
       return;
@@ -583,6 +594,9 @@ class _PageFlipBookState extends State<PageFlipBook>
   }
 
   void _handlePointerCancel(PointerCancelEvent event) {
+    if (!widget.interactionEnabled) {
+      return;
+    }
     if (_blockedPointer == event.pointer) {
       _clearBlockedInteraction();
       return;

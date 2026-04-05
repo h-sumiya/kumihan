@@ -809,6 +809,79 @@ void main() {
     },
   );
 
+  testWidgets('kumihan book toolbar tap does not flip pages', (tester) async {
+    final document = const AozoraParser().parse(
+      '甲頁です。\n［＃改ページ］\n乙頁です。\n［＃改ページ］\n丙頁です。\n［＃改ページ］\n丁頁です。',
+    );
+    final controller = KumihanPagedController();
+    const size = Size(800, 600);
+    final point = await _firstBookGlyphCenter(size: size, document: document);
+
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: SizedBox(
+          width: size.width,
+          height: size.height,
+          child: KumihanBook(document: document, controller: controller),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+    await _longPressCanvas(
+      tester,
+      find.byType(KumihanBook),
+      localPosition: point,
+    );
+
+    await tester.tap(find.text('コピー'));
+    await tester.pumpAndSettle();
+
+    expect(controller.snapshot.currentPage, 0);
+    expect(find.text('コピー'), findsNothing);
+  });
+
+  testWidgets(
+    'kumihan book dismisses selection without flipping when toolbar is visible',
+    (tester) async {
+      final document = const AozoraParser().parse(
+        '甲頁です。\n［＃改ページ］\n乙頁です。\n［＃改ページ］\n丙頁です。\n［＃改ページ］\n丁頁です。',
+      );
+      final controller = KumihanPagedController();
+      const size = Size(800, 600);
+      final point = await _firstBookGlyphCenter(size: size, document: document);
+
+      await tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: SizedBox(
+            width: size.width,
+            height: size.height,
+            child: KumihanBook(document: document, controller: controller),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+      await _longPressCanvas(
+        tester,
+        find.byType(KumihanBook),
+        localPosition: point,
+      );
+
+      final bookRect = tester.getRect(find.byType(KumihanBook));
+      await tester.tapAt(
+        bookRect.topLeft + Offset(size.width * 0.25, size.height * 0.85),
+      );
+      await tester.pumpAndSettle();
+
+      expect(controller.snapshot.currentPage, 0);
+      expect(find.text('コピー'), findsNothing);
+      expect(_selectionHighlightFinder(), findsNothing);
+    },
+  );
+
   testWidgets('kumihan book tap on left-page text flips to the next spread', (
     tester,
   ) async {

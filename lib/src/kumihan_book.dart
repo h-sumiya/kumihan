@@ -514,6 +514,20 @@ class _KumihanBookState extends State<KumihanBook>
 
     return Stack(
       children: <Widget>[
+        if (_showSelectionToolbar)
+          Positioned.fill(
+            child: Listener(
+              behavior: HitTestBehavior.opaque,
+              onPointerDown: (_) {
+                _pageFlipController.cancelActiveTouch();
+              },
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _clearSelection,
+                child: const SizedBox.expand(),
+              ),
+            ),
+          ),
         for (final rect in rects)
           Positioned.fromRect(
             rect: rect.inflate(2),
@@ -555,9 +569,15 @@ class _KumihanBookState extends State<KumihanBook>
     return Positioned(
       left: left,
       top: toolbarTop,
-      child: _SelectionToolbar(
-        onCopy: _copySelection,
-        onClose: _clearSelection,
+      child: Listener(
+        behavior: HitTestBehavior.opaque,
+        onPointerDown: (_) {
+          _pageFlipController.cancelActiveTouch();
+        },
+        child: _SelectionToolbar(
+          onCopy: _copySelection,
+          onClose: _clearSelection,
+        ),
       ),
     );
   }
@@ -707,6 +727,7 @@ class _KumihanBookState extends State<KumihanBook>
                     overlay: !_isFlipping
                         ? _buildInteractiveLayer(pageSize)
                         : null,
+                    interactionEnabled: !_showSelectionToolbar,
                   ),
                 ],
               ),
