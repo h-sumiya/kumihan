@@ -22,104 +22,9 @@ class BookSpreadRenderer {
   final KumihanThemeData theme;
   final KumihanSpreadMode spreadMode;
 
-  Size resolvePageSize(Size size) => _resolve(size).rightRect.size;
-
-  _BookSpreadMetrics _resolve(Size size) {
-    final fontSize = layout.fontSize.roundToDouble();
-    final outerPadding = layout.outerPadding;
-    final contentPadding = layout.contentPadding;
-    final minPageHeight = fontSize * 6;
-    final pageGap = spreadMode == KumihanSpreadMode.doublePage
-        ? layout.pageGap
-        : 0.0;
-    final leftSlotWidth = spreadMode == KumihanSpreadMode.doublePage
-        ? math.max(size.width / 2 - outerPadding.left - pageGap, fontSize)
-        : 0.0;
-    final rightSlotWidth = spreadMode == KumihanSpreadMode.doublePage
-        ? math.max(size.width / 2 - outerPadding.right - pageGap, fontSize)
-        : math.max(
-            size.width - outerPadding.left - outerPadding.right,
-            fontSize,
-          );
-    final pageWidthBase = spreadMode == KumihanSpreadMode.doublePage
-        ? math.max(math.min(leftSlotWidth, rightSlotWidth), fontSize)
-        : rightSlotWidth;
-
-    final pageWidth = math.max(pageWidthBase, fontSize);
-
-    final headerReservedExtent =
-        layout.showTitle && engine.headerTitle.isNotEmpty
-        ? math.max(1.85 * fontSize + 20, 0)
-        : 0.0;
-    final pageNumberReservedExtent = layout.showPageNumber
-        ? math.max(2.07 * fontSize, 44)
-        : 0.0;
-    final desiredTop =
-        outerPadding.top + contentPadding.top + headerReservedExtent;
-    final desiredBottom =
-        outerPadding.bottom + contentPadding.bottom + pageNumberReservedExtent;
-    final maxMarginTotal = math.max(size.height - minPageHeight, 0.0);
-    final verticalMarginTotal = desiredTop + desiredBottom;
-    final verticalFactor =
-        verticalMarginTotal > maxMarginTotal && verticalMarginTotal > 0
-        ? maxMarginTotal / verticalMarginTotal
-        : 1.0;
-    final pageMarginTop = desiredTop * verticalFactor;
-    final pageMarginBottom = desiredBottom * verticalFactor;
-    final pageHeight = math.max(
-      size.height - pageMarginTop - pageMarginBottom,
-      fontSize,
-    );
-    final centerX = size.width / 2;
-    final leftX = spreadMode == KumihanSpreadMode.doublePage
-        ? outerPadding.left +
-              _inlineOffset(
-                leftSlotWidth - pageWidth,
-                layout.leftPageFullPageAlignment,
-              )
-        : null;
-    final rightBaseX = spreadMode == KumihanSpreadMode.doublePage
-        ? centerX + pageGap
-        : outerPadding.left;
-    final rightX =
-        rightBaseX +
-        _inlineOffset(
-          rightSlotWidth - pageWidth,
-          layout.rightPageFullPageAlignment,
-        );
-
-    final rightRect = Rect.fromLTWH(
-      rightX,
-      pageMarginTop,
-      pageWidth,
-      pageHeight,
-    );
-    final leftRect = spreadMode == KumihanSpreadMode.doublePage
-        ? Rect.fromLTWH(leftX!, pageMarginTop, pageWidth, pageHeight)
-        : null;
-
-    return _BookSpreadMetrics(
-      fontSize: fontSize,
-      contentPadding: contentPadding,
-      pageMarginBottom: pageMarginBottom,
-      outerPadding: outerPadding,
-      pageMarginTop: pageMarginTop,
-      rightRect: rightRect,
-      leftRect: leftRect,
-      size: size,
-    );
-  }
-
-  double _inlineOffset(
-    double inlineOverflow,
-    KumihanFullPageAlignment alignment,
-  ) {
-    final overflow = math.max(inlineOverflow, 0.0);
-    return switch (alignment) {
-      KumihanFullPageAlignment.left => 0.0,
-      KumihanFullPageAlignment.center => overflow / 2,
-      KumihanFullPageAlignment.right => overflow,
-    };
+  Size resolvePageSize(Size size) {
+    final viewportSize = _viewportSize(size);
+    return _resolvePageMetrics(viewportSize, BookPageSlot.right).bodyRect.size;
   }
 
   void paint(
@@ -128,136 +33,281 @@ class BookSpreadRenderer {
     required int currentPage,
     required int totalPages,
   }) {
-    final metrics = _resolve(size);
-    final lastPage = math.max(totalPages - 1, 0);
-
     canvas.drawRect(Offset.zero & size, Paint()..color = theme.paperColor);
 
     if (spreadMode == KumihanSpreadMode.doublePage) {
-      canvas.drawLine(
-        Offset(size.width / 2, 0),
-        Offset(size.width / 2, size.height),
-        Paint()
-          ..color = engine.fontColor.withValues(alpha: 0.18)
-          ..strokeWidth = 1,
+      final viewportWidth = size.width / 2;
+      _paintViewport(
+        canvas,
+        Size(viewportWidth, size.height),
+        viewportSlot: BookPageSlot.left,
+        globalViewportOrigin: Offset.zero,
+        currentPage: currentPage,
+        totalPages: totalPages,
       );
+      canvas.save();
+      canvas.translate(viewportWidth, 0);
+      _paintViewport(
+        canvas,
+        Size(viewportWidth, size.height),
+        viewportSlot: BookPageSlot.right,
+        globalViewportOrigin: Offset(viewportWidth, 0),
+        currentPage: currentPage,
+        totalPages: totalPages,
+      );
+      canvas.restore();
+      return;
     }
 
-    if (spreadMode == KumihanSpreadMode.doublePage) {
-      if (currentPage > 0) {
-        _paintPageSurface(
-          canvas,
-          metrics,
-          destinationRect: metrics.rightRect,
-          pageIndex: currentPage - 1,
-          totalPages: totalPages,
-          sourceSlot: _slotForPage(currentPage - 1),
-          backPage: true,
-        );
-      }
-      if (currentPage < lastPage - 1 && metrics.leftRect != null) {
-        _paintPageSurface(
-          canvas,
-          metrics,
-          destinationRect: metrics.leftRect!,
-          pageIndex: currentPage + 2,
-          totalPages: totalPages,
-          sourceSlot: _slotForPage(currentPage + 2),
-          backPage: true,
-        );
-      }
-    } else if (currentPage < lastPage) {
+    _paintViewport(
+      canvas,
+      size,
+      viewportSlot: BookPageSlot.single,
+      globalViewportOrigin: Offset.zero,
+      currentPage: currentPage,
+      totalPages: totalPages,
+    );
+  }
+
+  void paintViewport(
+    ui.Canvas canvas,
+    Size viewportSize, {
+    required BookPageSlot viewportSlot,
+    required Offset globalViewportOrigin,
+    required int currentPage,
+    required int totalPages,
+  }) {
+    _paintViewport(
+      canvas,
+      viewportSize,
+      viewportSlot: viewportSlot,
+      globalViewportOrigin: globalViewportOrigin,
+      currentPage: currentPage,
+      totalPages: totalPages,
+    );
+  }
+
+  Size _viewportSize(Size spreadSize) {
+    return spreadMode == KumihanSpreadMode.doublePage
+        ? Size(spreadSize.width / 2, spreadSize.height)
+        : spreadSize;
+  }
+
+  EdgeInsets _resolveUiPadding(EdgeInsets padding, BookPageSlot slot) {
+    if (slot == BookPageSlot.left) {
+      return EdgeInsets.fromLTRB(
+        padding.right,
+        padding.top,
+        padding.left,
+        padding.bottom,
+      );
+    }
+    return padding;
+  }
+
+  EdgeInsets _resolveBodyPadding(BookPageSlot slot) {
+    final bodyPadding = layout.bodyPadding;
+    return switch (slot) {
+      BookPageSlot.left => EdgeInsets.fromLTRB(
+        bodyPadding.outer,
+        bodyPadding.top,
+        bodyPadding.inner,
+        bodyPadding.bottom,
+      ),
+      BookPageSlot.right || BookPageSlot.single => EdgeInsets.fromLTRB(
+        bodyPadding.inner,
+        bodyPadding.top,
+        bodyPadding.outer,
+        bodyPadding.bottom,
+      ),
+    };
+  }
+
+  EdgeInsets _scaleVerticalInsets(EdgeInsets insets, double factor) {
+    if (factor == 1) {
+      return insets;
+    }
+    return EdgeInsets.fromLTRB(
+      insets.left,
+      insets.top * factor,
+      insets.right,
+      insets.bottom * factor,
+    );
+  }
+
+  _BookPageMetrics _resolvePageMetrics(Size viewportSize, BookPageSlot slot) {
+    final fontSize = layout.fontSize.roundToDouble();
+    final minBodyHeight = fontSize * 6;
+    final headerReservedExtent =
+        layout.showTitle && engine.headerTitle.isNotEmpty
+        ? math.max(1.85 * fontSize + 20, 0)
+        : 0.0;
+    final pageNumberReservedExtent = layout.showPageNumber
+        ? math.max(2.07 * fontSize, 44)
+        : 0.0;
+
+    final topUiPadding = _resolveUiPadding(layout.topUiPadding, slot);
+    final bottomUiPadding = _resolveUiPadding(layout.bottomUiPadding, slot);
+    final bodyPadding = _resolveBodyPadding(slot);
+
+    final topReservedExtent =
+        topUiPadding.top +
+        headerReservedExtent +
+        topUiPadding.bottom +
+        bodyPadding.top;
+    final bottomReservedExtent =
+        bodyPadding.bottom +
+        bottomUiPadding.top +
+        pageNumberReservedExtent +
+        bottomUiPadding.bottom;
+
+    final maxReservedExtent = math.max(viewportSize.height - minBodyHeight, 0);
+    final reservedExtent = topReservedExtent + bottomReservedExtent;
+    final verticalFactor =
+        reservedExtent > maxReservedExtent && reservedExtent > 0
+        ? maxReservedExtent / reservedExtent
+        : 1.0;
+
+    final scaledTopUiPadding = _scaleVerticalInsets(
+      topUiPadding,
+      verticalFactor,
+    );
+    final scaledBottomUiPadding = _scaleVerticalInsets(
+      bottomUiPadding,
+      verticalFactor,
+    );
+    final scaledBodyPadding = _scaleVerticalInsets(bodyPadding, verticalFactor);
+    final scaledHeaderReservedExtent = headerReservedExtent * verticalFactor;
+    final scaledPageNumberReservedExtent =
+        pageNumberReservedExtent * verticalFactor;
+    final scaledTopReservedExtent =
+        scaledTopUiPadding.top +
+        scaledHeaderReservedExtent +
+        scaledTopUiPadding.bottom +
+        scaledBodyPadding.top;
+    final scaledBottomReservedExtent =
+        scaledBodyPadding.bottom +
+        scaledBottomUiPadding.top +
+        scaledPageNumberReservedExtent +
+        scaledBottomUiPadding.bottom;
+
+    final bodyRect = Rect.fromLTWH(
+      scaledBodyPadding.left,
+      scaledTopReservedExtent,
+      math.max(
+        viewportSize.width - scaledBodyPadding.left - scaledBodyPadding.right,
+        fontSize,
+      ),
+      math.max(
+        viewportSize.height -
+            scaledTopReservedExtent -
+            scaledBottomReservedExtent,
+        fontSize,
+      ),
+    );
+
+    return _BookPageMetrics(
+      bodyPadding: scaledBodyPadding,
+      bodyRect: bodyRect,
+      bottomReservedExtent: scaledBottomReservedExtent,
+      bottomUiPadding: scaledBottomUiPadding,
+      fontSize: fontSize,
+      pageNumberReservedExtent: scaledPageNumberReservedExtent,
+      topUiPadding: scaledTopUiPadding,
+      viewportSize: viewportSize,
+    );
+  }
+
+  void _paintViewport(
+    ui.Canvas canvas,
+    Size viewportSize, {
+    required BookPageSlot viewportSlot,
+    required Offset globalViewportOrigin,
+    required int currentPage,
+    required int totalPages,
+  }) {
+    canvas.drawRect(
+      Offset.zero & viewportSize,
+      Paint()..color = theme.paperColor,
+    );
+
+    final metrics = _resolvePageMetrics(viewportSize, viewportSlot);
+    final lastPage = math.max(totalPages - 1, 0);
+    final backPageIndex = _backPageIndexForViewport(
+      viewportSlot,
+      currentPage,
+      lastPage,
+    );
+    final frontPageIndex = _frontPageIndexForViewport(
+      viewportSlot,
+      currentPage,
+      lastPage,
+    );
+    final globalContentOrigin = globalViewportOrigin + metrics.bodyRect.topLeft;
+
+    if (backPageIndex != null) {
       _paintPageSurface(
         canvas,
         metrics,
-        destinationRect: metrics.rightRect,
-        pageIndex: currentPage + 1,
+        globalContentOrigin: globalContentOrigin,
+        pageIndex: backPageIndex,
         totalPages: totalPages,
-        sourceSlot: _BookPageSlot.single,
+        sourceSlot: _slotForPage(backPageIndex),
         backPage: true,
       );
     }
 
-    if (spreadMode == KumihanSpreadMode.doublePage) {
-      if (currentPage <= lastPage) {
-        _paintPageSurface(
-          canvas,
-          metrics,
-          destinationRect: metrics.rightRect,
-          pageIndex: currentPage,
-          totalPages: totalPages,
-          sourceSlot: _slotForPage(currentPage),
-          backPage: false,
-        );
-      }
-      if (currentPage + 1 <= lastPage && metrics.leftRect != null) {
-        _paintPageSurface(
-          canvas,
-          metrics,
-          destinationRect: metrics.leftRect!,
-          pageIndex: currentPage + 1,
-          totalPages: totalPages,
-          sourceSlot: _slotForPage(currentPage + 1),
-          backPage: false,
-        );
-      }
-      return;
-    }
-
-    if (currentPage <= lastPage) {
+    if (frontPageIndex != null) {
       _paintPageSurface(
         canvas,
         metrics,
-        destinationRect: metrics.rightRect,
-        pageIndex: currentPage,
+        globalContentOrigin: globalContentOrigin,
+        pageIndex: frontPageIndex,
         totalPages: totalPages,
-        sourceSlot: _BookPageSlot.single,
+        sourceSlot: _slotForPage(frontPageIndex),
         backPage: false,
       );
     }
   }
 
-  _BookPageSlot _slotForPage(int pageIndex) {
+  int? _frontPageIndexForViewport(
+    BookPageSlot viewportSlot,
+    int currentPage,
+    int lastPage,
+  ) {
+    final pageIndex = switch (viewportSlot) {
+      BookPageSlot.single || BookPageSlot.right => currentPage,
+      BookPageSlot.left => currentPage + 1,
+    };
+    return pageIndex <= lastPage ? pageIndex : null;
+  }
+
+  int? _backPageIndexForViewport(
+    BookPageSlot viewportSlot,
+    int currentPage,
+    int lastPage,
+  ) {
+    final pageIndex = switch (viewportSlot) {
+      BookPageSlot.single => currentPage + 1,
+      BookPageSlot.right => currentPage > 0 ? currentPage - 1 : -1,
+      BookPageSlot.left => currentPage + 2,
+    };
+    return pageIndex >= 0 && pageIndex <= lastPage ? pageIndex : null;
+  }
+
+  KumihanFullPageAlignment _alignmentForSlot(BookPageSlot slot) {
+    return switch (slot) {
+      BookPageSlot.single ||
+      BookPageSlot.right => layout.rightPageFullPageAlignment,
+      BookPageSlot.left => layout.leftPageFullPageAlignment,
+    };
+  }
+
+  BookPageSlot _slotForPage(int pageIndex) {
     if (spreadMode == KumihanSpreadMode.single) {
-      return _BookPageSlot.single;
+      return BookPageSlot.single;
     }
-    return pageIndex.isEven ? _BookPageSlot.right : _BookPageSlot.left;
-  }
-
-  KumihanFullPageAlignment _alignmentForSlot(_BookPageSlot slot) {
-    return switch (slot) {
-      _BookPageSlot.single || _BookPageSlot.right =>
-        layout.rightPageFullPageAlignment,
-      _BookPageSlot.left => layout.leftPageFullPageAlignment,
-    };
-  }
-
-  Rect _sourceRectForSlot(_BookSpreadMetrics metrics, _BookPageSlot slot) {
-    return switch (slot) {
-      _BookPageSlot.single || _BookPageSlot.right => metrics.rightRect,
-      _BookPageSlot.left => metrics.leftRect!,
-    };
-  }
-
-  double _headerGlobalX(_BookSpreadMetrics metrics) {
-    return spreadMode == KumihanSpreadMode.single
-        ? metrics.rightRect.left + metrics.contentPadding.left
-        : metrics.outerPadding.left + metrics.contentPadding.left;
-  }
-
-  double _headerGlobalWidth(_BookSpreadMetrics metrics) {
-    return math.max(
-      spreadMode == KumihanSpreadMode.single
-          ? metrics.rightRect.width - metrics.contentPadding.horizontal
-          : metrics.size.width -
-                metrics.outerPadding.horizontal -
-                metrics.contentPadding.horizontal,
-      1.0,
-    );
-  }
-
-  double _headerY(_BookSpreadMetrics metrics) {
-    return metrics.pageMarginTop - 1.85 * metrics.fontSize;
+    return pageIndex.isEven ? BookPageSlot.right : BookPageSlot.left;
   }
 
   Paint _backPageLayerPaint() {
@@ -269,28 +319,43 @@ class BookSpreadRenderer {
 
   void _paintPageSurface(
     ui.Canvas canvas,
-    _BookSpreadMetrics metrics, {
-    required Rect destinationRect,
+    _BookPageMetrics metrics, {
+    required Offset globalContentOrigin,
     required int pageIndex,
     required int totalPages,
-    required _BookPageSlot sourceSlot,
+    required BookPageSlot sourceSlot,
     required bool backPage,
   }) {
-    _paintPageChrome(
+    if (backPage) {
+      canvas.save();
+      canvas.translate(metrics.viewportSize.width, 0);
+      canvas.scale(-1, 1);
+      canvas.saveLayer(
+        Offset.zero & metrics.viewportSize,
+        _backPageLayerPaint(),
+      );
+    }
+
+    _paintHeader(canvas, metrics, sourceSlot: sourceSlot);
+    _paintPageNumber(
       canvas,
       metrics,
-      destinationRect: destinationRect,
       pageIndex: pageIndex,
       totalPages: totalPages,
       sourceSlot: sourceSlot,
-      backPage: backPage,
     );
+
+    if (backPage) {
+      canvas.restore();
+      canvas.restore();
+    }
 
     engine.paintPage(
       canvas,
       pageIndex,
       PagePaintContext(
-        contentRect: destinationRect,
+        contentRect: metrics.bodyRect,
+        globalContentOrigin: globalContentOrigin,
         backPage: backPage,
         recordInteractiveRegions: !backPage,
         inlineAlignment: _alignmentForSlot(sourceSlot),
@@ -298,69 +363,78 @@ class BookSpreadRenderer {
     );
   }
 
-  void _paintPageChrome(
-    ui.Canvas canvas,
-    _BookSpreadMetrics metrics, {
-    required Rect destinationRect,
-    required int pageIndex,
-    required int totalPages,
-    required _BookPageSlot sourceSlot,
-    required bool backPage,
-  }) {
-    final sourceRect = _sourceRectForSlot(metrics, sourceSlot);
-    canvas.save();
-    canvas.translate(destinationRect.left, 0);
-    if (backPage) {
-      canvas.translate(destinationRect.width, 0);
-      canvas.scale(-1, 1);
-      canvas.saveLayer(
-        Rect.fromLTWH(0, 0, destinationRect.width, metrics.size.height),
-        _backPageLayerPaint(),
-      );
-    }
-    _paintHeader(
-      canvas,
-      metrics,
-      sourceRect: sourceRect,
-      pageWidth: destinationRect.width,
-    );
-    _paintPageNumber(
-      canvas,
-      metrics,
-      sourceRect: sourceRect,
-      pageWidth: destinationRect.width,
-      pageIndex: pageIndex,
-      totalPages: totalPages,
-      sourceSlot: sourceSlot,
-    );
-    if (backPage) {
-      canvas.restore();
-    }
-    canvas.restore();
+  Rect _globalBodyRectForSlot(Size viewportSize, BookPageSlot slot) {
+    return switch (slot) {
+      BookPageSlot.single => _resolvePageMetrics(
+        viewportSize,
+        BookPageSlot.single,
+      ).bodyRect,
+      BookPageSlot.left => _resolvePageMetrics(
+        viewportSize,
+        BookPageSlot.left,
+      ).bodyRect,
+      BookPageSlot.right => _resolvePageMetrics(
+        viewportSize,
+        BookPageSlot.right,
+      ).bodyRect.shift(Offset(viewportSize.width, 0)),
+    };
   }
 
   void _paintHeader(
     ui.Canvas canvas,
-    _BookSpreadMetrics metrics, {
-    required Rect sourceRect,
-    required double pageWidth,
+    _BookPageMetrics metrics, {
+    required BookPageSlot sourceSlot,
   }) {
     final headerTitle = engine.headerTitle;
     if (!layout.showTitle || headerTitle.isEmpty) {
       return;
     }
 
-    final y = _headerY(metrics);
-    final x = _headerGlobalX(metrics) - sourceRect.left;
-    final width = math.max(pageWidth - metrics.contentPadding.horizontal, 1.0);
+    final availableWidth = math.max(
+      metrics.viewportSize.width - metrics.topUiPadding.horizontal,
+      1.0,
+    );
+    final globalBodyRect = spreadMode == KumihanSpreadMode.doublePage
+        ? _globalBodyRectForSlot(metrics.viewportSize, sourceSlot)
+        : metrics.bodyRect;
+    final globalHeaderX = switch (spreadMode) {
+      KumihanSpreadMode.single => metrics.topUiPadding.left,
+      KumihanSpreadMode.doublePage => _resolvePageMetrics(
+        metrics.viewportSize,
+        BookPageSlot.left,
+      ).topUiPadding.left,
+    };
+    final globalHeaderWidth = switch (spreadMode) {
+      KumihanSpreadMode.single => availableWidth,
+      KumihanSpreadMode.doublePage => math.max(
+        metrics.viewportSize.width * 2 -
+            _resolvePageMetrics(
+              metrics.viewportSize,
+              BookPageSlot.left,
+            ).topUiPadding.left -
+            _resolvePageMetrics(
+              metrics.viewportSize,
+              BookPageSlot.right,
+            ).topUiPadding.right,
+        1.0,
+      ),
+    };
+    final baselineY =
+        metrics.bodyRect.top -
+        metrics.bodyPadding.top -
+        metrics.topUiPadding.bottom -
+        1.85 * metrics.fontSize;
 
     canvas.save();
     canvas.clipRect(
       Rect.fromLTWH(
-        metrics.contentPadding.left,
-        y,
-        width,
-        metrics.pageMarginTop,
+        metrics.topUiPadding.left,
+        0,
+        availableWidth,
+        math.max(
+          metrics.bodyRect.top - metrics.bodyPadding.top,
+          metrics.fontSize,
+        ),
       ),
     );
     final painter = TextPainter(
@@ -377,19 +451,20 @@ class BookSpreadRenderer {
       textDirection: TextDirection.ltr,
       maxLines: 1,
       textScaler: TextScaler.noScaling,
-    )..layout(maxWidth: _headerGlobalWidth(metrics));
-    painter.paint(canvas, Offset(x, y));
+    )..layout(maxWidth: globalHeaderWidth);
+    painter.paint(
+      canvas,
+      Offset(globalHeaderX - globalBodyRect.left, baselineY),
+    );
     canvas.restore();
   }
 
   void _paintPageNumber(
     ui.Canvas canvas,
-    _BookSpreadMetrics metrics, {
-    required Rect sourceRect,
-    required double pageWidth,
+    _BookPageMetrics metrics, {
     required int pageIndex,
     required int totalPages,
-    required _BookPageSlot sourceSlot,
+    required BookPageSlot sourceSlot,
   }) {
     if (!layout.showPageNumber || totalPages <= 0) {
       return;
@@ -400,35 +475,31 @@ class BookSpreadRenderer {
       metrics.fontSize,
     );
     final x = switch (sourceSlot) {
-      _BookPageSlot.left =>
-        metrics.contentPadding.left + metrics.fontSize,
-      _BookPageSlot.right =>
-        pageWidth -
-            metrics.contentPadding.right -
+      BookPageSlot.left => metrics.bottomUiPadding.left + metrics.fontSize,
+      BookPageSlot.right =>
+        metrics.viewportSize.width -
+            metrics.bottomUiPadding.right -
             metrics.fontSize -
             painter.width,
-      _BookPageSlot.single => switch (layout.singlePageNumberPosition) {
+      BookPageSlot.single => switch (layout.singlePageNumberPosition) {
         KumihanSinglePageNumberPosition.left =>
-          metrics.rightRect.left +
-              metrics.contentPadding.left +
-              metrics.fontSize -
-              sourceRect.left,
+          metrics.bottomUiPadding.left + metrics.fontSize,
         KumihanSinglePageNumberPosition.center =>
-          metrics.size.width / 2 - painter.width / 2 - sourceRect.left,
+          metrics.viewportSize.width / 2 - painter.width / 2,
         KumihanSinglePageNumberPosition.right =>
-          metrics.rightRect.right -
-              metrics.contentPadding.right -
+          metrics.viewportSize.width -
+              metrics.bottomUiPadding.right -
               metrics.fontSize -
-              painter.width -
-              sourceRect.left,
+              painter.width,
       },
     };
+
     painter.paint(
       canvas,
       Offset(
         x,
-        metrics.size.height -
-            metrics.pageMarginBottom +
+        metrics.viewportSize.height -
+            metrics.bottomReservedExtent +
             metrics.fontSize -
             painter.height / 2,
       ),
@@ -454,26 +525,26 @@ class BookSpreadRenderer {
   }
 }
 
-class _BookSpreadMetrics {
-  const _BookSpreadMetrics({
+class _BookPageMetrics {
+  const _BookPageMetrics({
+    required this.bodyPadding,
+    required this.bodyRect,
+    required this.bottomReservedExtent,
+    required this.bottomUiPadding,
     required this.fontSize,
-    required this.contentPadding,
-    required this.pageMarginBottom,
-    required this.outerPadding,
-    required this.pageMarginTop,
-    required this.rightRect,
-    required this.leftRect,
-    required this.size,
+    required this.pageNumberReservedExtent,
+    required this.topUiPadding,
+    required this.viewportSize,
   });
 
+  final EdgeInsets bodyPadding;
+  final Rect bodyRect;
+  final double bottomReservedExtent;
+  final EdgeInsets bottomUiPadding;
   final double fontSize;
-  final EdgeInsets contentPadding;
-  final double pageMarginBottom;
-  final EdgeInsets outerPadding;
-  final double pageMarginTop;
-  final Rect rightRect;
-  final Rect? leftRect;
-  final Size size;
+  final double pageNumberReservedExtent;
+  final EdgeInsets topUiPadding;
+  final Size viewportSize;
 }
 
-enum _BookPageSlot { single, right, left }
+enum BookPageSlot { single, right, left }

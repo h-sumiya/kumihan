@@ -7,12 +7,14 @@ import 'kumihan_types.dart';
 class PagePaintContext {
   const PagePaintContext({
     required this.contentRect,
+    this.globalContentOrigin,
     this.backPage = false,
     this.recordInteractiveRegions = true,
     this.inlineAlignment,
   });
 
   final Rect contentRect;
+  final Offset? globalContentOrigin;
   final bool backPage;
   final bool recordInteractiveRegions;
   final KumihanFullPageAlignment? inlineAlignment;

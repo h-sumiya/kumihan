@@ -17,7 +17,8 @@ extension on KumihanEngine {
         ? _pages[pageNo + 1].line
         : _lines.length;
     final rect = context.contentRect;
-    final origin = rect.topLeft;
+    final paintOrigin = rect.topLeft;
+    final interactionOrigin = context.globalContentOrigin ?? paintOrigin;
 
     canvas.save();
     canvas.translate(rect.left, rect.top);
@@ -67,9 +68,9 @@ extension on KumihanEngine {
           );
         }
 
-        line.x = x + origin.dx;
+        line.x = x + interactionOrigin.dx;
         if (context.recordInteractiveRegions && !context.backPage) {
-          _recordSelectableGlyphs(line, x, y, vertical, origin);
+          _recordSelectableGlyphs(line, x, y, vertical, interactionOrigin);
         }
 
         for (final attachment in line.attachments) {
@@ -82,7 +83,7 @@ extension on KumihanEngine {
             x,
             y,
             vertical,
-            origin: origin,
+            origin: interactionOrigin,
             backPage: context.backPage,
             recordInteractiveRegions: context.recordInteractiveRegions,
           );

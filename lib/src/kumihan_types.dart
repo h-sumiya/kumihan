@@ -6,8 +6,9 @@ const EdgeInsets? defaultKumihanPagePadding = null;
 const bool defaultKumihanShowTitle = true;
 const bool defaultKumihanShowPageNumber = true;
 const Object _unsetPagePadding = Object();
-const Object _unsetBookOuterPadding = Object();
-const Object _unsetBookContentPadding = Object();
+const Object _unsetBookTopUiPadding = Object();
+const Object _unsetBookBodyPadding = Object();
+const Object _unsetBookBottomUiPadding = Object();
 
 enum KumihanSinglePageNumberPosition { left, center, right }
 
@@ -85,12 +86,53 @@ enum KumihanWritingMode { vertical }
 enum KumihanSpreadMode { single, doublePage }
 
 @immutable
+class KumihanBookBodyPadding {
+  const KumihanBookBodyPadding({
+    this.top = 0,
+    this.inner = 0,
+    this.outer = 0,
+    this.bottom = 0,
+  }) : assert(top >= 0),
+       assert(inner >= 0),
+       assert(outer >= 0),
+       assert(bottom >= 0);
+
+  final double top;
+  final double inner;
+  final double outer;
+  final double bottom;
+
+  KumihanBookBodyPadding copyWith({
+    double? top,
+    double? inner,
+    double? outer,
+    double? bottom,
+  }) => KumihanBookBodyPadding(
+    top: top ?? this.top,
+    inner: inner ?? this.inner,
+    outer: outer ?? this.outer,
+    bottom: bottom ?? this.bottom,
+  );
+
+  @override
+  bool operator ==(Object other) =>
+      other is KumihanBookBodyPadding &&
+      other.top == top &&
+      other.inner == inner &&
+      other.outer == outer &&
+      other.bottom == bottom;
+
+  @override
+  int get hashCode => Object.hash(top, inner, outer, bottom);
+}
+
+@immutable
 class KumihanBookLayoutData {
   const KumihanBookLayoutData({
     this.fontSize = defaultKumihanFontSize,
-    this.outerPadding = EdgeInsets.zero,
-    this.contentPadding = EdgeInsets.zero,
-    this.pageGap = 0,
+    this.topUiPadding = EdgeInsets.zero,
+    this.bodyPadding = const KumihanBookBodyPadding(),
+    this.bottomUiPadding = EdgeInsets.zero,
     this.showTitle = defaultKumihanShowTitle,
     this.showPageNumber = defaultKumihanShowPageNumber,
     this.singlePageNumberPosition = defaultKumihanSinglePageNumberPosition,
@@ -98,13 +140,12 @@ class KumihanBookLayoutData {
         defaultKumihanBookRightPageFullPageAlignment,
     this.leftPageFullPageAlignment =
         defaultKumihanBookLeftPageFullPageAlignment,
-  }) : assert(fontSize > 0),
-       assert(pageGap >= 0);
+  }) : assert(fontSize > 0);
 
   final double fontSize;
-  final EdgeInsets outerPadding;
-  final EdgeInsets contentPadding;
-  final double pageGap;
+  final EdgeInsets topUiPadding;
+  final KumihanBookBodyPadding bodyPadding;
+  final EdgeInsets bottomUiPadding;
   final bool showTitle;
   final bool showPageNumber;
   final KumihanSinglePageNumberPosition singlePageNumberPosition;
@@ -113,9 +154,9 @@ class KumihanBookLayoutData {
 
   KumihanBookLayoutData copyWith({
     double? fontSize,
-    Object? outerPadding = _unsetBookOuterPadding,
-    Object? contentPadding = _unsetBookContentPadding,
-    double? pageGap,
+    Object? topUiPadding = _unsetBookTopUiPadding,
+    Object? bodyPadding = _unsetBookBodyPadding,
+    Object? bottomUiPadding = _unsetBookBottomUiPadding,
     bool? showTitle,
     bool? showPageNumber,
     KumihanSinglePageNumberPosition? singlePageNumberPosition,
@@ -123,13 +164,15 @@ class KumihanBookLayoutData {
     KumihanFullPageAlignment? leftPageFullPageAlignment,
   }) => KumihanBookLayoutData(
     fontSize: fontSize ?? this.fontSize,
-    outerPadding: identical(outerPadding, _unsetBookOuterPadding)
-        ? this.outerPadding
-        : outerPadding as EdgeInsets,
-    contentPadding: identical(contentPadding, _unsetBookContentPadding)
-        ? this.contentPadding
-        : contentPadding as EdgeInsets,
-    pageGap: pageGap ?? this.pageGap,
+    topUiPadding: identical(topUiPadding, _unsetBookTopUiPadding)
+        ? this.topUiPadding
+        : topUiPadding as EdgeInsets,
+    bodyPadding: identical(bodyPadding, _unsetBookBodyPadding)
+        ? this.bodyPadding
+        : bodyPadding as KumihanBookBodyPadding,
+    bottomUiPadding: identical(bottomUiPadding, _unsetBookBottomUiPadding)
+        ? this.bottomUiPadding
+        : bottomUiPadding as EdgeInsets,
     showTitle: showTitle ?? this.showTitle,
     showPageNumber: showPageNumber ?? this.showPageNumber,
     singlePageNumberPosition:
@@ -144,9 +187,9 @@ class KumihanBookLayoutData {
   bool operator ==(Object other) =>
       other is KumihanBookLayoutData &&
       other.fontSize == fontSize &&
-      other.outerPadding == outerPadding &&
-      other.contentPadding == contentPadding &&
-      other.pageGap == pageGap &&
+      other.topUiPadding == topUiPadding &&
+      other.bodyPadding == bodyPadding &&
+      other.bottomUiPadding == bottomUiPadding &&
       other.showTitle == showTitle &&
       other.showPageNumber == showPageNumber &&
       other.singlePageNumberPosition == singlePageNumberPosition &&
@@ -156,9 +199,9 @@ class KumihanBookLayoutData {
   @override
   int get hashCode => Object.hash(
     fontSize,
-    outerPadding,
-    contentPadding,
-    pageGap,
+    topUiPadding,
+    bodyPadding,
+    bottomUiPadding,
     showTitle,
     showPageNumber,
     singlePageNumberPosition,

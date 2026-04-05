@@ -542,16 +542,61 @@ class _KumihanBookCanvasState extends State<KumihanBookCanvas>
           spreadMode: widget.spreadMode,
         );
         _scheduleResize(renderer.resolvePageSize(size));
-        final paint = CustomPaint(
-          painter: _KumihanBookPainter(
-            currentPage: _currentPage,
-            engine: _engine,
-            layout: widget.layout,
-            spreadMode: widget.spreadMode,
-            theme: widget.theme,
-            totalPages: _totalPages,
-          ),
-          size: size,
+        final paint = SizedBox.expand(
+          child: widget.spreadMode == KumihanSpreadMode.doublePage
+              ? Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  textDirection: TextDirection.rtl,
+                  children: <Widget>[
+                    Expanded(
+                      child: SizedBox.expand(
+                        child: CustomPaint(
+                          painter: _KumihanBookPagePainter(
+                            currentPage: _currentPage,
+                            engine: _engine,
+                            globalViewportOrigin: Offset(size.width / 2, 0),
+                            layout: widget.layout,
+                            resetPaintState: true,
+                            slot: BookPageSlot.right,
+                            spreadMode: widget.spreadMode,
+                            theme: widget.theme,
+                            totalPages: _totalPages,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: SizedBox.expand(
+                        child: CustomPaint(
+                          painter: _KumihanBookPagePainter(
+                            currentPage: _currentPage,
+                            engine: _engine,
+                            globalViewportOrigin: Offset.zero,
+                            layout: widget.layout,
+                            resetPaintState: false,
+                            slot: BookPageSlot.left,
+                            spreadMode: widget.spreadMode,
+                            theme: widget.theme,
+                            totalPages: _totalPages,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              : CustomPaint(
+                  painter: _KumihanBookPagePainter(
+                    currentPage: _currentPage,
+                    engine: _engine,
+                    globalViewportOrigin: Offset.zero,
+                    layout: widget.layout,
+                    resetPaintState: true,
+                    slot: BookPageSlot.single,
+                    spreadMode: widget.spreadMode,
+                    theme: widget.theme,
+                    totalPages: _totalPages,
+                  ),
+                ),
         );
         if (!widget.selectable) {
           return paint;
@@ -589,11 +634,14 @@ class _KumihanBookCanvasState extends State<KumihanBookCanvas>
   }
 }
 
-class _KumihanBookPainter extends CustomPainter {
-  const _KumihanBookPainter({
+class _KumihanBookPagePainter extends CustomPainter {
+  const _KumihanBookPagePainter({
     required this.currentPage,
     required this.engine,
+    required this.globalViewportOrigin,
     required this.layout,
+    required this.resetPaintState,
+    required this.slot,
     required this.spreadMode,
     required this.theme,
     required this.totalPages,
@@ -601,27 +649,43 @@ class _KumihanBookPainter extends CustomPainter {
 
   final int currentPage;
   final KumihanEngine engine;
+  final Offset globalViewportOrigin;
   final KumihanBookLayoutData layout;
+  final bool resetPaintState;
+  final BookPageSlot slot;
   final KumihanSpreadMode spreadMode;
   final KumihanThemeData theme;
   final int totalPages;
 
   @override
   void paint(ui.Canvas canvas, ui.Size size) {
-    engine.resetPaintState();
-    BookSpreadRenderer(
+    if (resetPaintState) {
+      engine.resetPaintState();
+    }
+    final renderer = BookSpreadRenderer(
       engine: engine,
       layout: layout,
       theme: theme,
       spreadMode: spreadMode,
-    ).paint(canvas, size, currentPage: currentPage, totalPages: totalPages);
+    );
+    renderer.paintViewport(
+      canvas,
+      size,
+      viewportSlot: slot,
+      globalViewportOrigin: globalViewportOrigin,
+      currentPage: currentPage,
+      totalPages: totalPages,
+    );
   }
 
   @override
-  bool shouldRepaint(covariant _KumihanBookPainter oldDelegate) {
+  bool shouldRepaint(covariant _KumihanBookPagePainter oldDelegate) {
     return oldDelegate.currentPage != currentPage ||
         oldDelegate.engine != engine ||
+        oldDelegate.globalViewportOrigin != globalViewportOrigin ||
         oldDelegate.layout != layout ||
+        oldDelegate.resetPaintState != resetPaintState ||
+        oldDelegate.slot != slot ||
         oldDelegate.spreadMode != spreadMode ||
         oldDelegate.theme != theme ||
         oldDelegate.totalPages != totalPages;

@@ -54,18 +54,26 @@ void main() {
     expect(left, isNot(right));
   });
 
-  test('KumihanBookLayoutData keeps outer/content padding and gap', () {
+  test('KumihanBookLayoutData keeps top/body/bottom padding', () {
     const layout = KumihanBookLayoutData(
-      outerPadding: EdgeInsets.fromLTRB(8, 10, 12, 14),
-      contentPadding: EdgeInsets.symmetric(horizontal: 16),
-      pageGap: 18,
+      topUiPadding: EdgeInsets.fromLTRB(8, 10, 12, 14),
+      bodyPadding: KumihanBookBodyPadding(
+        top: 4,
+        inner: 16,
+        outer: 18,
+        bottom: 20,
+      ),
+      bottomUiPadding: EdgeInsets.fromLTRB(2, 6, 10, 12),
     );
 
     final updated = layout.copyWith(showTitle: false);
 
-    expect(updated.outerPadding, const EdgeInsets.fromLTRB(8, 10, 12, 14));
-    expect(updated.contentPadding, const EdgeInsets.symmetric(horizontal: 16));
-    expect(updated.pageGap, 18);
+    expect(updated.topUiPadding, const EdgeInsets.fromLTRB(8, 10, 12, 14));
+    expect(
+      updated.bodyPadding,
+      const KumihanBookBodyPadding(top: 4, inner: 16, outer: 18, bottom: 20),
+    );
+    expect(updated.bottomUiPadding, const EdgeInsets.fromLTRB(2, 6, 10, 12));
     expect(updated.showTitle, isFalse);
   });
 

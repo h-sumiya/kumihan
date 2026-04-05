@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:flutter/widgets.dart';
@@ -199,27 +200,30 @@ void main() {
     },
   );
 
-  test('engine keeps fractional resize width for pagination thresholds', () async {
-    Future<int> totalPagesForWidth(double width) async {
-      final engine = KumihanEngine(
-        baseUri: null,
-        initialPage: 0,
-        onInvalidate: () {},
-        onSnapshot: (_) {},
-      );
+  test(
+    'engine keeps fractional resize width for pagination thresholds',
+    () async {
+      Future<int> totalPagesForWidth(double width) async {
+        final engine = KumihanEngine(
+          baseUri: null,
+          initialPage: 0,
+          onInvalidate: () {},
+          onSnapshot: (_) {},
+        );
 
-      await engine.resize(width, 600);
-      await engine.open(
-        Document(<Object>[List<String>.filled(93, '本文です。').join()]),
-      );
-      return engine.snapshot.totalPages;
-    }
+        await engine.resize(width, 600);
+        await engine.open(
+          Document(<Object>[List<String>.filled(93, '本文です。').join()]),
+        );
+        return engine.snapshot.totalPages;
+      }
 
-    final narrowPages = await totalPagesForWidth(399.0);
-    final fractionalPages = await totalPagesForWidth(399.8);
+      final narrowPages = await totalPagesForWidth(399.0);
+      final fractionalPages = await totalPagesForWidth(399.8);
 
-    expect(fractionalPages, lessThanOrEqualTo(narrowPages));
-  });
+      expect(fractionalPages, lessThanOrEqualTo(narrowPages));
+    },
+  );
 
   test('theme update changes engine text color', () async {
     final engine = KumihanEngine(
@@ -369,6 +373,42 @@ void main() {
     expect(controller.snapshot.currentPage, 2);
   });
 
+  testWidgets('book canvas builds two independent page widgets', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: SizedBox(
+          width: 800,
+          height: 600,
+          child: KumihanBookCanvas(document: Document(<Object>['本文です。'])),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    final paints = tester.widgetList<CustomPaint>(
+      find.descendant(
+        of: find.byType(KumihanBookCanvas),
+        matching: find.byType(CustomPaint),
+      ),
+    );
+    for (final paint in paints) {
+      final renderBox = tester.renderObject<RenderBox>(find.byWidget(paint));
+      expect(renderBox.size.height, 600);
+    }
+
+    expect(
+      find.descendant(
+        of: find.byType(KumihanBookCanvas),
+        matching: find.byType(CustomPaint),
+      ),
+      findsNWidgets(2),
+    );
+  });
+
   test(
     'book renderer places the single right page toward the gutter by default',
     () async {
@@ -435,11 +475,113 @@ void main() {
       bothOverrideGlyphs.where((item) => item.text == '右').toList(),
     );
 
-    expect(defaultRightBounds.left, lessThanOrEqualTo(rightOnlyRightBounds.left));
+    expect(
+      defaultRightBounds.left,
+      lessThanOrEqualTo(rightOnlyRightBounds.left),
+    );
     expect(bothRightBounds.left, closeTo(rightOnlyRightBounds.left, 0.001));
   });
 
-  test('book renderer resolves double-page width from center gap', () {
+  test(
+    'book renderer records selectable glyphs in right-to-left page order',
+    () async {
+      const size = Size(840, 600);
+      final document = Document(<Object>[
+        '右頁です。',
+        const PageBreak(AstPageBreakKind.kaipage),
+        '左頁です。',
+      ]);
+
+      final glyphs = await _bookGlyphs(
+        size: size,
+        document: document,
+        spreadMode: KumihanSpreadMode.doublePage,
+      );
+
+      final rightGlyph = glyphs.firstWhere((item) => item.text == '右');
+      final leftGlyph = glyphs.firstWhere((item) => item.text == '左');
+
+      expect(rightGlyph.order, lessThan(leftGlyph.order));
+    },
+  );
+
+  test('book renderer paints backside body text onto the spread', () async {
+    const size = Size(840, 600);
+    const layout = KumihanBookLayoutData(
+      showTitle: false,
+      showPageNumber: false,
+    );
+    const theme = KumihanThemeData(backPageOpacity: 1);
+    final engine = KumihanEngine(
+      baseUri: null,
+      initialPage: 0,
+      onInvalidate: () {},
+      onSnapshot: (_) {},
+    );
+    final renderer = BookSpreadRenderer(
+      engine: engine,
+      layout: layout,
+      theme: theme,
+      spreadMode: KumihanSpreadMode.doublePage,
+    );
+    final pageSize = renderer.resolvePageSize(size);
+
+    Future<Uint8List> renderBytes(Document document) async {
+      await engine.resize(pageSize.width, pageSize.height);
+      await engine.open(document);
+      expect(engine.snapshot.totalPages, greaterThanOrEqualTo(3));
+
+      final recorder = PictureRecorder();
+      final canvas = Canvas(recorder);
+      renderer.paint(
+        canvas,
+        size,
+        currentPage: 0,
+        totalPages: engine.snapshot.totalPages,
+      );
+      final image = await recorder.endRecording().toImage(
+        size.width.toInt(),
+        size.height.toInt(),
+      );
+      final bytes = await image.toByteData(format: ImageByteFormat.rawRgba);
+      expect(bytes, isNotNull);
+      return bytes!.buffer.asUint8List();
+    }
+
+    final withoutBack = await renderBytes(
+      const AozoraParser().parse('表です。\n［＃改ページ］\n一\n［＃改ページ］\n一'),
+    );
+    final withBack = await renderBytes(
+      const AozoraParser().parse(
+        '表です。\n［＃改ページ］\n一\n［＃改ページ］\n'
+        '裏写りです。裏写りです。裏写りです。裏写りです。'
+        '裏写りです。裏写りです。裏写りです。裏写りです。'
+        '裏写りです。裏写りです。裏写りです。裏写りです。'
+        '裏写りです。裏写りです。裏写りです。裏写りです。'
+        '裏写りです。裏写りです。裏写りです。裏写りです。'
+        '裏写りです。裏写りです。裏写りです。裏写りです。',
+      ),
+    );
+
+    final leftViewportWidth = (size.width / 2).toInt();
+    var differingPixels = 0;
+
+    for (var y = 0; y < size.height.toInt(); y += 1) {
+      for (var x = 0; x < leftViewportWidth / 2; x += 1) {
+        final index = (y * size.width.toInt() + x) * 4;
+        if (withoutBack[index] != withBack[index] ||
+            withoutBack[index + 1] != withBack[index + 1] ||
+            withoutBack[index + 2] != withBack[index + 2] ||
+            withoutBack[index + 3] != withBack[index + 3]) {
+          differingPixels += 1;
+        }
+      }
+    }
+
+    expect(differingPixels, greaterThan(0));
+  });
+
+  test('book renderer resolves double-page width from body padding', () {
     final engine = KumihanEngine(
       baseUri: null,
       initialPage: 0,
@@ -448,8 +590,7 @@ void main() {
     );
     const layout = KumihanBookLayoutData(
       fontSize: 18,
-      outerPadding: EdgeInsets.fromLTRB(12, 0, 30, 0),
-      pageGap: 14,
+      bodyPadding: KumihanBookBodyPadding(inner: 14, outer: 30),
       showTitle: false,
       showPageNumber: false,
     );
@@ -463,17 +604,16 @@ void main() {
 
     final pageSize = renderer.resolvePageSize(canvasSize);
     final expectedWidth = math.max(
-      math.min(
-        canvasSize.width / 2 - layout.outerPadding.left - layout.pageGap,
-        canvasSize.width / 2 - layout.outerPadding.right - layout.pageGap,
-      ),
+      canvasSize.width / 2 -
+          layout.bodyPadding.inner -
+          layout.bodyPadding.outer,
       layout.fontSize,
     );
 
     expect(pageSize.width, closeTo(expectedWidth, 0.001));
   });
 
-  test('book renderer reserves vertical content padding outside body area', () {
+  test('book renderer reserves vertical body padding outside body area', () {
     final engine = KumihanEngine(
       baseUri: null,
       initialPage: 0,
@@ -487,7 +627,7 @@ void main() {
     );
     const paddedLayout = KumihanBookLayoutData(
       fontSize: 18,
-      contentPadding: EdgeInsets.only(bottom: 24),
+      bodyPadding: KumihanBookBodyPadding(bottom: 24),
       showTitle: false,
       showPageNumber: true,
     );

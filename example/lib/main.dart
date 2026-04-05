@@ -53,9 +53,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
   );
   static const KumihanBookLayoutData _bookLayout = KumihanBookLayoutData(
     fontSize: 18,
-    outerPadding: EdgeInsets.fromLTRB(8, 8, 8, 8),
-    contentPadding: EdgeInsets.fromLTRB(36, 0, 36, 0),
-    pageGap: 20,
+    topUiPadding: EdgeInsets.fromLTRB(36, 8, 36, 0),
+    bodyPadding: KumihanBookBodyPadding(inner: 20, outer: 8),
+    bottomUiPadding: EdgeInsets.fromLTRB(36, 0, 36, 8),
   );
 
   Document _documentWithHeaderTitle(Document document, String fileName) {
