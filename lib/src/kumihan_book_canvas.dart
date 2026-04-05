@@ -468,6 +468,9 @@ class _KumihanBookCanvasState extends State<KumihanBookCanvas>
     if (text.isEmpty) {
       return;
     }
+    if (mounted) {
+      _clearSelection();
+    }
     await Clipboard.setData(ClipboardData(text: text));
   }
 
@@ -485,7 +488,7 @@ class _KumihanBookCanvasState extends State<KumihanBookCanvas>
             child: IgnorePointer(
               child: DecoratedBox(
                 decoration: BoxDecoration(
-                  color: const Color(0x1a1a73e8),
+                  color: const Color(0x331a73e8),
                   border: Border.all(color: const Color(0xff1a73e8), width: 2),
                   borderRadius: BorderRadius.circular(6),
                 ),
@@ -615,15 +618,14 @@ class _KumihanBookCanvasState extends State<KumihanBookCanvas>
           onLongPressEnd: (details) {
             _finishSelection(_globalToLocal(details.globalPosition));
           },
-          onTapUp: (details) {
-            if (!_selectionMode) {
-              return;
-            }
-            final hit = _findSelectableGlyph(details.localPosition);
-            if (hit == null || !_isSelectedGlyph(hit)) {
-              _clearSelection();
-            }
-          },
+          onTapUp: _selectionMode
+              ? (details) {
+                  final hit = _findSelectableGlyph(details.localPosition);
+                  if (hit == null || !_isSelectedGlyph(hit)) {
+                    _clearSelection();
+                  }
+                }
+              : null,
           child: Stack(
             fit: StackFit.expand,
             children: <Widget>[paint, _buildSelectionOverlay(size)],

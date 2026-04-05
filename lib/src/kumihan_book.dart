@@ -487,6 +487,9 @@ class _KumihanBookState extends State<KumihanBook>
     if (text.isEmpty) {
       return;
     }
+    if (mounted) {
+      _clearSelection();
+    }
     await Clipboard.setData(ClipboardData(text: text));
   }
 
@@ -517,7 +520,7 @@ class _KumihanBookState extends State<KumihanBook>
             child: IgnorePointer(
               child: DecoratedBox(
                 decoration: BoxDecoration(
-                  color: const Color(0x1a1a73e8),
+                  color: const Color(0x331a73e8),
                   border: Border.all(color: const Color(0xff1a73e8), width: 2),
                   borderRadius: BorderRadius.circular(6),
                 ),

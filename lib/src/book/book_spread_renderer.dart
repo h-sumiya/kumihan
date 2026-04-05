@@ -313,6 +313,8 @@ class BookSpreadRenderer {
         recordInteractiveRegions: recordInteractiveRegions,
       );
     }
+
+    _paintGutterShadow(canvas, metrics, viewportSlot: viewportSlot);
   }
 
   int? _frontPageIndexForViewport(
@@ -360,6 +362,52 @@ class BookSpreadRenderer {
       ..color =
           (theme.isDark ? const Color(0xff000000) : const Color(0xffffffff))
               .withValues(alpha: clampDouble(theme.backPageOpacity, 0, 1));
+  }
+
+  void _paintGutterShadow(
+    ui.Canvas canvas,
+    BookPageMetrics metrics, {
+    required BookPageSlot viewportSlot,
+  }) {
+    if (spreadMode != KumihanSpreadMode.doublePage ||
+        viewportSlot == BookPageSlot.single) {
+      return;
+    }
+
+    final shadowWidth = math.min(metrics.viewportSize.width * 0.08, 24.0);
+    if (shadowWidth <= 0) {
+      return;
+    }
+
+    final rect = viewportSlot == BookPageSlot.left
+        ? Rect.fromLTWH(
+            metrics.viewportSize.width - shadowWidth,
+            0,
+            shadowWidth,
+            metrics.viewportSize.height,
+          )
+        : Rect.fromLTWH(0, 0, shadowWidth, metrics.viewportSize.height);
+    final begin = viewportSlot == BookPageSlot.left
+        ? rect.centerLeft
+        : rect.centerRight;
+    final end = viewportSlot == BookPageSlot.left
+        ? rect.centerRight
+        : rect.centerLeft;
+
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..shader = ui.Gradient.linear(
+          begin,
+          end,
+          const <Color>[
+            Color(0x00000000),
+            Color(0x14000000),
+            Color(0x24000000),
+          ],
+          const <double>[0.0, 0.55, 1.0],
+        ),
+    );
   }
 
   void _paintPageSurface(

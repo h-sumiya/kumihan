@@ -679,6 +679,133 @@ void main() {
     expect(find.text('閉じる'), findsOneWidget);
   });
 
+  testWidgets('book canvas supports text selection on the left page', (
+    tester,
+  ) async {
+    final document = Document(<Object>[
+      '右頁です。',
+      const PageBreak(AstPageBreakKind.kaipage),
+      '左頁です。',
+    ]);
+    const size = Size(800, 600);
+    final point = await _bookGlyphCenterForText(
+      size: size,
+      document: document,
+      text: '左',
+    );
+
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: SizedBox(
+          width: size.width,
+          height: size.height,
+          child: KumihanBookCanvas(document: document),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+    await _longPressCanvas(
+      tester,
+      find.byType(KumihanBookCanvas),
+      localPosition: point,
+    );
+
+    expect(find.text('コピー'), findsOneWidget);
+    expect(find.text('閉じる'), findsOneWidget);
+    expect(_selectionHighlightFinder(), findsAtLeastNWidgets(1));
+  });
+
+  testWidgets('book canvas does not swallow plain taps', (tester) async {
+    var tapped = false;
+
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: GestureDetector(
+          onTap: () {
+            tapped = true;
+          },
+          child: SizedBox(
+            width: 800,
+            height: 600,
+            child: KumihanBookCanvas(document: Document(<Object>['本文です。'])),
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(KumihanBookCanvas));
+    await tester.pumpAndSettle();
+
+    expect(tapped, isTrue);
+  });
+
+  testWidgets('copy closes selection toolbar on book canvas', (tester) async {
+    final document = Document(<Object>['本文です。']);
+    const size = Size(800, 600);
+    final point = await _firstBookGlyphCenter(size: size, document: document);
+
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: SizedBox(
+          width: size.width,
+          height: size.height,
+          child: KumihanBookCanvas(document: document),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+    await _longPressCanvas(
+      tester,
+      find.byType(KumihanBookCanvas),
+      localPosition: point,
+    );
+
+    expect(find.text('コピー'), findsOneWidget);
+    await tester.tap(find.text('コピー'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('コピー'), findsNothing);
+    expect(find.text('閉じる'), findsNothing);
+  });
+
+  testWidgets('kumihan book shows selection highlight and closes toolbar after copy', (tester) async {
+    final document = Document(<Object>['本文です。']);
+    const size = Size(800, 600);
+    final point = await _firstBookGlyphCenter(size: size, document: document);
+
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: SizedBox(
+          width: size.width,
+          height: size.height,
+          child: KumihanBook(document: document),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+    await _longPressCanvas(
+      tester,
+      find.byType(KumihanBook),
+      localPosition: point,
+    );
+
+    expect(_selectionHighlightFinder(), findsAtLeastNWidgets(1));
+    expect(find.text('コピー'), findsOneWidget);
+    await tester.tap(find.text('コピー'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('コピー'), findsNothing);
+    expect(find.text('閉じる'), findsNothing);
+  });
+
   testWidgets('book canvas can disable text selection', (tester) async {
     final document = Document(<Object>['本文です。']);
     const size = Size(800, 600);
@@ -838,6 +965,14 @@ Future<Offset> _firstBookGlyphCenter({
   required Size size,
   required Document document,
 }) async {
+  return _bookGlyphCenterForText(size: size, document: document, text: null);
+}
+
+Future<Offset> _bookGlyphCenterForText({
+  required Size size,
+  required Document document,
+  required String? text,
+}) async {
   const layout = KumihanBookLayoutData();
   final engine = KumihanEngine(
     baseUri: null,
@@ -868,7 +1003,11 @@ Future<Offset> _firstBookGlyphCenter({
   );
   recorder.endRecording();
 
-  return _firstGlyphCenter(engine.selectableGlyphs);
+  final glyphs = engine.selectableGlyphs;
+  if (text == null) {
+    return _firstGlyphCenter(glyphs);
+  }
+  return glyphs.firstWhere((item) => item.text == text).rect.center;
 }
 
 Future<Rect> _bookBounds({
@@ -930,6 +1069,19 @@ Offset _firstGlyphCenter(List<KumihanSelectableGlyph> glyphs) {
     throw StateError('No selectable glyphs were recorded.');
   }
   return glyphs.first.rect.center;
+}
+
+Finder _selectionHighlightFinder() {
+  return find.byWidgetPredicate((widget) {
+    if (widget is! DecoratedBox) {
+      return false;
+    }
+    final decoration = widget.decoration;
+    if (decoration is! BoxDecoration) {
+      return false;
+    }
+    return decoration.color == const Color(0x331a73e8);
+  });
 }
 
 Rect _glyphBounds(List<KumihanSelectableGlyph> glyphs) {
