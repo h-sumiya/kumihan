@@ -539,8 +539,11 @@ class _PageFlipBookState extends State<PageFlipBook>
       !_animationController.isAnimating &&
       !_isDragging;
 
+  double get _snapshotPixelRatio =>
+      math.max(View.of(context).devicePixelRatio, 2.0);
+
   Future<void> _captureRequiredSnapshots() async {
-    final pixelRatio = View.of(context).devicePixelRatio;
+    final pixelRatio = _snapshotPixelRatio;
 
     for (final pageIndex in _requiredSnapshotIndices) {
       if ((!_dirtySnapshotPages.contains(pageIndex) &&
@@ -1302,7 +1305,7 @@ class _PageFlipBookState extends State<PageFlipBook>
       return;
     }
 
-    final pixelRatio = View.of(context).devicePixelRatio;
+    final pixelRatio = _snapshotPixelRatio;
     _capturingPages.add(pageIndex);
     final paintGeneration = _pagePaintGenerations[pageIndex] ?? 0;
     try {
