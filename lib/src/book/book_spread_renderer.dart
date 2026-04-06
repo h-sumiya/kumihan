@@ -254,6 +254,7 @@ class BookSpreadRenderer {
       globalContentOrigin: globalViewportOrigin + metrics.bodyRect.topLeft,
       pageIndex: pageIndex,
       totalPages: totalPages,
+      viewportSlot: slot,
       sourceSlot: slot,
       backPage: false,
       recordInteractiveRegions: recordInteractiveRegions,
@@ -295,6 +296,7 @@ class BookSpreadRenderer {
         globalContentOrigin: globalContentOrigin,
         pageIndex: backPageIndex,
         totalPages: totalPages,
+        viewportSlot: viewportSlot,
         sourceSlot: _slotForPage(backPageIndex),
         backPage: true,
         recordInteractiveRegions: recordInteractiveRegions,
@@ -308,6 +310,7 @@ class BookSpreadRenderer {
         globalContentOrigin: globalContentOrigin,
         pageIndex: frontPageIndex,
         totalPages: totalPages,
+        viewportSlot: viewportSlot,
         sourceSlot: _slotForPage(frontPageIndex),
         backPage: false,
         recordInteractiveRegions: recordInteractiveRegions,
@@ -416,6 +419,7 @@ class BookSpreadRenderer {
     required Offset globalContentOrigin,
     required int pageIndex,
     required int totalPages,
+    required BookPageSlot viewportSlot,
     required BookPageSlot sourceSlot,
     required bool backPage,
     bool recordInteractiveRegions = true,
@@ -430,7 +434,7 @@ class BookSpreadRenderer {
       );
     }
 
-    _paintHeader(canvas, metrics, sourceSlot: sourceSlot);
+    _paintHeader(canvas, metrics, viewportSlot: viewportSlot);
     _paintPageNumber(
       canvas,
       metrics,
@@ -457,27 +461,10 @@ class BookSpreadRenderer {
     );
   }
 
-  Rect _globalBodyRectForSlot(Size viewportSize, BookPageSlot slot) {
-    return switch (slot) {
-      BookPageSlot.single => resolvePageMetrics(
-        viewportSize,
-        BookPageSlot.single,
-      ).bodyRect,
-      BookPageSlot.left => resolvePageMetrics(
-        viewportSize,
-        BookPageSlot.left,
-      ).bodyRect,
-      BookPageSlot.right => resolvePageMetrics(
-        viewportSize,
-        BookPageSlot.right,
-      ).bodyRect.shift(Offset(viewportSize.width, 0)),
-    };
-  }
-
   void _paintHeader(
     ui.Canvas canvas,
     BookPageMetrics metrics, {
-    required BookPageSlot sourceSlot,
+    required BookPageSlot viewportSlot,
   }) {
     final headerTitle = engine.headerTitle;
     if (!layout.showTitle || headerTitle.isEmpty) {
@@ -488,9 +475,6 @@ class BookSpreadRenderer {
       metrics.viewportSize.width - metrics.topUiPadding.horizontal,
       1.0,
     );
-    final globalBodyRect = spreadMode == KumihanSpreadMode.doublePage
-        ? _globalBodyRectForSlot(metrics.viewportSize, sourceSlot)
-        : metrics.bodyRect;
     final globalHeaderX = switch (spreadMode) {
       KumihanSpreadMode.single => resolvePageMetrics(
         metrics.viewportSize,
@@ -515,6 +499,11 @@ class BookSpreadRenderer {
             ).topUiPadding.right,
         1.0,
       ),
+    };
+    final globalViewportLeft = switch (spreadMode) {
+      KumihanSpreadMode.single => 0.0,
+      KumihanSpreadMode.doublePage =>
+        viewportSlot == BookPageSlot.right ? metrics.viewportSize.width : 0.0,
     };
     final baselineY =
         metrics.bodyRect.top -
@@ -551,7 +540,7 @@ class BookSpreadRenderer {
     )..layout(maxWidth: globalHeaderWidth);
     painter.paint(
       canvas,
-      Offset(globalHeaderX - globalBodyRect.left, baselineY),
+      Offset(globalHeaderX - globalViewportLeft, baselineY),
     );
     canvas.restore();
   }
