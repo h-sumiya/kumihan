@@ -938,12 +938,16 @@ class _KumihanBookState extends State<KumihanBook>
           engine: _engine,
           layout: widget.layout,
           theme: widget.theme,
-          spreadMode: KumihanSpreadMode.doublePage,
+          spreadMode: widget.spreadMode,
         );
         final enginePageSize = renderer.resolvePageSize(availableSize);
         _scheduleResize(enginePageSize);
-        final pageSize = Size(availableSize.width / 2, availableSize.height);
-        final spreadSize = Size(pageSize.width * 2, pageSize.height);
+        final pageSize = _isSingleSpread
+            ? availableSize
+            : Size(availableSize.width / 2, availableSize.height);
+        final spreadSize = _isSingleSpread
+            ? pageSize
+            : Size(pageSize.width * 2, pageSize.height);
 
         return SizedBox.expand(
           child: Center(

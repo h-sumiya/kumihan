@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kumihan/kumihan.dart' hide Text;
+import 'package:kumihan/src/page_flip/page_flip_painter.dart';
 
 void main() {
   testWidgets('page flip action region blocks page turning', (tester) async {
@@ -187,7 +188,7 @@ void main() {
     final book = find.byType(PageFlipBook);
     final state = tester.state(book) as dynamic;
 
-    await tester.tapAt(tester.getCenter(book) + const Offset(-180, 0));
+    await tester.tapAt(tester.getCenter(book) + const Offset(-40, 0));
     await tester.pumpAndSettle();
 
     expect(state.debugRightPageIndex, 1);
@@ -221,7 +222,7 @@ void main() {
     final state = tester.state(book) as dynamic;
 
     for (var i = 0; i < 3; i += 1) {
-      await tester.tapAt(tester.getCenter(book) + const Offset(-180, 0));
+      await tester.tapAt(tester.getCenter(book) + const Offset(-40, 0));
       await tester.pumpAndSettle();
     }
 
@@ -237,4 +238,40 @@ void main() {
     await gesture.up();
     await tester.pump();
   });
+
+  testWidgets(
+    'single mode keeps double-width paint layout and clips viewport',
+    (tester) async {
+      final pages = List<Widget>.generate(
+        3,
+        (index) => Center(
+          child: Text('Page ${index + 1}', textDirection: TextDirection.ltr),
+        ),
+      );
+
+      await tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: Center(
+            child: PageFlipBook(
+              pageCount: pages.length,
+              pageSize: const Size(240, 360),
+              displayMode: PageDisplayMode.singlePage,
+              pageBuilder: (context, index) => pages[index],
+            ),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      expect(tester.getSize(find.byType(PageFlipBook)), const Size(240, 360));
+
+      final paintFinder = find.byWidgetPredicate(
+        (widget) => widget is CustomPaint && widget.painter is PageFlipPainter,
+      );
+      expect(paintFinder, findsOneWidget);
+      expect(tester.getSize(paintFinder), const Size(480, 360));
+    },
+  );
 }

@@ -302,75 +302,89 @@ class _PageFlipBookState extends State<PageFlipBook>
   Widget build(BuildContext context) {
     _scheduleSnapshotCapture();
 
-    final bookContent = Listener(
-      behavior: HitTestBehavior.translucent,
-      onPointerDown: _handlePointerDown,
-      onPointerMove: _handlePointerMove,
-      onPointerUp: _handlePointerUp,
-      onPointerCancel: _handlePointerCancel,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: <Widget>[
-          RepaintBoundary(
-            child: CustomPaint(
-              size: Size(widget.pageSize.width * 2, widget.pageSize.height),
-              painter: PageFlipPainter(
-                pageImages: _pageImages,
-                pageImageVersion: _pageImageVersion,
-                rightPageIndex: _rightPageIndex,
-                pageCount: _renderPageCount,
-                pageSize: widget.pageSize,
-                displayMode: widget.displayMode,
-                scene: _scene,
-                staticGutterDensity: _currentGutterDensity,
-                bookColor: widget.bookColor,
-                pageBackgroundColor: widget.pageBackgroundColor,
-                borderColor: widget.borderColor,
+    final spreadContentWidth = widget.pageSize.width * 2;
+    final spreadContentHeight = widget.pageSize.height;
+
+    final bookContent = SizedBox(
+      width: spreadContentWidth,
+      height: spreadContentHeight,
+      child: Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: _handlePointerDown,
+        onPointerMove: _handlePointerMove,
+        onPointerUp: _handlePointerUp,
+        onPointerCancel: _handlePointerCancel,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: <Widget>[
+            RepaintBoundary(
+              child: CustomPaint(
+                size: Size(spreadContentWidth, spreadContentHeight),
+                painter: PageFlipPainter(
+                  pageImages: _pageImages,
+                  pageImageVersion: _pageImageVersion,
+                  rightPageIndex: _rightPageIndex,
+                  pageCount: _renderPageCount,
+                  pageSize: widget.pageSize,
+                  displayMode: widget.displayMode,
+                  scene: _scene,
+                  staticGutterDensity: _currentGutterDensity,
+                  bookColor: widget.bookColor,
+                  pageBackgroundColor: widget.pageBackgroundColor,
+                  borderColor: widget.borderColor,
+                ),
               ),
             ),
-          ),
-          ..._buildLivePages(),
-          if (_scene == null)
-            Positioned.fill(
+            ..._buildLivePages(),
+            if (_scene == null)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: CustomPaint(
+                    painter: _BookGutterShadowPainter(
+                      pageWidth: widget.pageSize.width,
+                      density: _currentGutterDensity,
+                    ),
+                  ),
+                ),
+              ),
+            if (widget.overlay != null) Positioned.fill(child: widget.overlay!),
+            Positioned(
+              left: -widget.pageSize.width * 8,
+              top: 0,
               child: IgnorePointer(
-                child: CustomPaint(
-                  painter: _BookGutterShadowPainter(
-                    pageWidth: widget.pageSize.width,
-                    density: _currentGutterDensity,
+                child: Opacity(
+                  opacity: 0.01,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: _requiredSnapshotIndices
+                        .where(
+                          (pageIndex) => !_livePageIndices.contains(pageIndex),
+                        )
+                        .map(_buildSnapshotHost)
+                        .toList(growable: false),
                   ),
                 ),
               ),
             ),
-          if (widget.overlay != null) Positioned.fill(child: widget.overlay!),
-          Positioned(
-            left: -widget.pageSize.width * 8,
-            top: 0,
-            child: IgnorePointer(
-              child: Opacity(
-                opacity: 0.01,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: _requiredSnapshotIndices
-                      .where(
-                        (pageIndex) => !_livePageIndices.contains(pageIndex),
-                      )
-                      .map(_buildSnapshotHost)
-                      .toList(growable: false),
-                ),
-              ),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
 
     return SizedBox(
-      width: widget.pageSize.width * 2,
+      width: _isSinglePage ? widget.pageSize.width : widget.pageSize.width * 2,
       height: widget.pageSize.height,
       child: _isSinglePage
           ? ClipRect(
               clipper: _SinglePageViewportClipper(widget.pageSize),
-              child: bookContent,
+              child: OverflowBox(
+                alignment: Alignment.topLeft,
+                minWidth: spreadContentWidth,
+                maxWidth: spreadContentWidth,
+                minHeight: spreadContentHeight,
+                maxHeight: spreadContentHeight,
+                child: bookContent,
+              ),
             )
           : bookContent,
     );
