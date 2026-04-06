@@ -16,7 +16,7 @@ import 'page_flip/page_flip_book.dart';
 import 'page_flip/page_flip_controller.dart';
 import 'page_flip/page_flip_types.dart';
 
-enum _BookRenderPageKind { frontCover, content, blank, backCover }
+enum _BookRenderPageKind { desk, frontCover, content, blank, backCover }
 
 final class _BookRenderPage {
   const _BookRenderPage.content(this.documentPageIndex)
@@ -24,6 +24,10 @@ final class _BookRenderPage {
 
   const _BookRenderPage.frontCover()
     : kind = _BookRenderPageKind.frontCover,
+      documentPageIndex = null;
+
+  const _BookRenderPage.desk()
+    : kind = _BookRenderPageKind.desk,
       documentPageIndex = null;
 
   const _BookRenderPage.blank()
@@ -152,10 +156,12 @@ class _KumihanBookState extends State<KumihanBook>
       return;
     }
 
-    if (oldWidget.spreadMode != widget.spreadMode ||
-        !identical(oldWidget.frontCover, widget.frontCover) ||
-        !identical(oldWidget.backCover, widget.backCover) ||
-        !identical(oldWidget.blankPage, widget.blankPage)) {
+    final compositionChanged =
+        oldWidget.spreadMode != widget.spreadMode ||
+        (oldWidget.frontCover == null) != (widget.frontCover == null) ||
+        (oldWidget.backCover == null) != (widget.backCover == null) ||
+        (oldWidget.blankPage == null) != (widget.blankPage == null);
+    if (compositionChanged) {
       _clearSelection();
       _currentPage = _normalizePage(_currentPage, totalPages: _totalPages);
       unawaited(
@@ -209,9 +215,12 @@ class _KumihanBookState extends State<KumihanBook>
         );
         widget.controller?.updateSnapshot(pagedSnapshot);
         widget.onSnapshotChanged?.call(pagedSnapshot);
-        final targetRenderPage = _renderIndexForDocumentPage(normalized);
-        if (_pageFlipController.snapshot.rightPageIndex != targetRenderPage) {
-          unawaited(_pageFlipController.showRightPage(targetRenderPage));
+        final activeRenderPage = _pageFlipController.snapshot.rightPageIndex;
+        if (_isContentVisibleAtSpread(activeRenderPage)) {
+          final targetRenderPage = _renderIndexForDocumentPage(normalized);
+          if (activeRenderPage != targetRenderPage) {
+            unawaited(_pageFlipController.showRightPage(targetRenderPage));
+          }
         }
       },
     );
@@ -225,7 +234,20 @@ class _KumihanBookState extends State<KumihanBook>
 
   int get _pageStep => _isSingleSpread ? 1 : 2;
 
-  int get _contentRenderStartIndex => widget.frontCover == null ? 0 : 1;
+  bool get _useDeskBoards =>
+      !_isSingleSpread &&
+      (widget.frontCover != null || widget.backCover != null);
+
+  int get _contentRenderStartIndex {
+    var index = 0;
+    if (_useDeskBoards) {
+      index += 1;
+    }
+    if (widget.frontCover != null) {
+      index += 1;
+    }
+    return index;
+  }
 
   bool get _needsBlankRenderPage => !_isSingleSpread && _totalPages.isOdd;
 
@@ -241,8 +263,21 @@ class _KumihanBookState extends State<KumihanBook>
         (_needsBlankRenderPage ? 1 : 0);
   }
 
+  int get _trailingDeskRenderPageIndex {
+    if (!_useDeskBoards) {
+      return -1;
+    }
+    return _contentRenderStartIndex +
+        _totalPages +
+        (_needsBlankRenderPage ? 1 : 0) +
+        (widget.backCover == null ? 0 : 1);
+  }
+
   List<_BookRenderPage> get _renderPages {
     final pages = <_BookRenderPage>[];
+    if (_useDeskBoards) {
+      pages.add(const _BookRenderPage.desk());
+    }
     if (widget.frontCover != null) {
       pages.add(const _BookRenderPage.frontCover());
     }
@@ -254,6 +289,9 @@ class _KumihanBookState extends State<KumihanBook>
     }
     if (widget.backCover != null) {
       pages.add(const _BookRenderPage.backCover());
+    }
+    if (_useDeskBoards) {
+      pages.add(const _BookRenderPage.desk());
     }
     return pages;
   }
@@ -340,7 +378,14 @@ class _KumihanBookState extends State<KumihanBook>
     required bool recordInteractiveRegions,
     required bool resetPaintState,
   }) {
-    if (renderPageIndex == 0 && widget.frontCover != null) {
+    if (renderPageIndex == 0 && _useDeskBoards) {
+      return KeyedSubtree(
+        key: const ValueKey<String>('kumihan-book-desk-front'),
+        child: widget.desk ?? const KumihanDefaultBookDesk(),
+      );
+    }
+    if (renderPageIndex == _contentRenderStartIndex - 1 &&
+        widget.frontCover != null) {
       return widget.frontCover!;
     }
     if (renderPageIndex == _blankRenderPageIndex) {
@@ -349,6 +394,12 @@ class _KumihanBookState extends State<KumihanBook>
     if (renderPageIndex == _backCoverRenderPageIndex &&
         widget.backCover != null) {
       return widget.backCover!;
+    }
+    if (renderPageIndex == _trailingDeskRenderPageIndex && _useDeskBoards) {
+      return KeyedSubtree(
+        key: const ValueKey<String>('kumihan-book-desk-back'),
+        child: widget.desk ?? const KumihanDefaultBookDesk(),
+      );
     }
 
     final documentPageIndex = _documentPageAtRenderIndex(renderPageIndex);
@@ -958,10 +1009,6 @@ class _KumihanBookState extends State<KumihanBook>
               child: Stack(
                 fit: StackFit.expand,
                 children: <Widget>[
-                  if (!_isSingleSpread)
-                    Positioned.fill(
-                      child: widget.desk ?? const KumihanDefaultBookDesk(),
-                    ),
                   PageFlipBook(
                     controller: _pageFlipController,
                     pageCount: _composedPageCount,

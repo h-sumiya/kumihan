@@ -148,6 +148,81 @@ class _ReaderScreenState extends State<ReaderScreen> {
     await _scrollController.scrollBy(delta);
   }
 
+  Widget _buildFrontCover() {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: <Color>[Color(0xFF304A67), Color(0xFF1B2D40)],
+        ),
+        border: Border.all(color: const Color(0xFFC8A96F), width: 1.6),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              'KUMIHAN',
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                color: const Color(0xFFE8D4A2),
+                letterSpacing: 3.0,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const Spacer(),
+            Text(
+              _fileName ?? 'Sample Book',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w800,
+                height: 1.1,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBackCover() {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
+          colors: <Color>[Color(0xFF223748), Color(0xFF101C26)],
+        ),
+        border: Border.all(color: const Color(0xFFC8A96F), width: 1.6),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: <Widget>[
+            const Spacer(),
+            Icon(
+              Icons.auto_stories_rounded,
+              color: const Color(0xFFE8D4A2).withValues(alpha: 0.92),
+              size: 42,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Back Cover',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildViewportControls() {
     if (_viewMode == ReaderViewMode.scroll) {
       final offset = _scrollSnapshot.scrollOffset.toStringAsFixed(0);
@@ -325,6 +400,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
                         document: _document!,
                         controller: _pagedController,
                         spreadMode: _bookSpreadMode,
+                        frontCover: _buildFrontCover(),
+                        backCover: _buildBackCover(),
                         layout: _bookLayout,
                         selectable: _selectable,
                         onSnapshotChanged: (snapshot) {

@@ -845,12 +845,127 @@ void main() {
 
     final pageFlip = tester.widget<PageFlipBook>(find.byType(PageFlipBook));
     expect(pageFlip.displayMode, PageDisplayMode.doublePage);
-    expect(pageFlip.pageCount, 6);
-    expect(pageFlip.pageDensityBuilder?.call(0), PageDensity.hard);
-    expect(pageFlip.pageDensityBuilder?.call(4), PageDensity.soft);
-    expect(pageFlip.pageDensityBuilder?.call(5), PageDensity.hard);
+    expect(pageFlip.pageCount, 8);
+    expect(pageFlip.pageDensityBuilder?.call(0), PageDensity.soft);
+    expect(pageFlip.pageDensityBuilder?.call(1), PageDensity.hard);
+    expect(pageFlip.pageDensityBuilder?.call(6), PageDensity.hard);
+    expect(pageFlip.pageDensityBuilder?.call(7), PageDensity.soft);
     expect(find.byType(KumihanDefaultBookDesk), findsOneWidget);
   });
+
+  testWidgets('kumihan book starts from front-cover spread in double mode', (
+    tester,
+  ) async {
+    final document = const AozoraParser().parse(
+      '甲頁です。\n［＃改ページ］\n乙頁です。\n［＃改ページ］\n丙頁です。',
+    );
+
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: SizedBox(
+          width: 800,
+          height: 600,
+          child: KumihanBook(
+            document: document,
+            frontCover: const ColoredBox(
+              color: Color(0xFF1F3B5C),
+              child: SizedBox.expand(),
+            ),
+            backCover: const ColoredBox(
+              color: Color(0xFF3B1F4A),
+              child: SizedBox.expand(),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    final pageFlipState = tester.state(find.byType(PageFlipBook)) as dynamic;
+    expect(pageFlipState.debugRightPageIndex, 0);
+  });
+
+  testWidgets('kumihan book can stay on trailing back-cover spread', (
+    tester,
+  ) async {
+    final document = const AozoraParser().parse(
+      '甲頁です。\n［＃改ページ］\n乙頁です。\n［＃改ページ］\n丙頁です。',
+    );
+
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: SizedBox(
+          width: 800,
+          height: 600,
+          child: KumihanBook(
+            document: document,
+            frontCover: const ColoredBox(
+              color: Color(0xFF1F3B5C),
+              child: SizedBox.expand(),
+            ),
+            backCover: const ColoredBox(
+              color: Color(0xFF3B1F4A),
+              child: SizedBox.expand(),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    final pageFlipState = tester.state(find.byType(PageFlipBook)) as dynamic;
+    await pageFlipState.showRightPage(6);
+    await tester.pumpAndSettle();
+
+    expect(pageFlipState.debugRightPageIndex, 6);
+  });
+
+  testWidgets(
+    'kumihan book rebuild with new cover instances keeps current cover spread',
+    (tester) async {
+      final document = const AozoraParser().parse(
+        '甲頁です。\n［＃改ページ］\n乙頁です。\n［＃改ページ］\n丙頁です。',
+      );
+      var frontColor = const Color(0xFF1F3B5C);
+
+      Widget buildHost() {
+        return Directionality(
+          textDirection: TextDirection.ltr,
+          child: SizedBox(
+            width: 800,
+            height: 600,
+            child: KumihanBook(
+              document: document,
+              frontCover: ColoredBox(
+                color: frontColor,
+                child: const SizedBox.expand(),
+              ),
+              backCover: const ColoredBox(
+                color: Color(0xFF3B1F4A),
+                child: SizedBox.expand(),
+              ),
+            ),
+          ),
+        );
+      }
+
+      await tester.pumpWidget(buildHost());
+      await tester.pumpAndSettle();
+
+      final pageFlipState = tester.state(find.byType(PageFlipBook)) as dynamic;
+      expect(pageFlipState.debugRightPageIndex, 0);
+
+      frontColor = const Color(0xFF314E6E);
+      await tester.pumpWidget(buildHost());
+      await tester.pumpAndSettle();
+
+      expect(pageFlipState.debugRightPageIndex, 0);
+    },
+  );
 
   testWidgets(
     'kumihan book single spread enables edge overlay and skips blank',
