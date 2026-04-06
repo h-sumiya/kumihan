@@ -1412,6 +1412,18 @@ final class _BookGutterShadowPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    if (density == PageDensity.hard) {
+      final centerX = pageWidth;
+      canvas.drawLine(
+        Offset(centerX, 0),
+        Offset(centerX, size.height),
+        Paint()
+          ..color = const Color(0x55202020)
+          ..strokeWidth = 1,
+      );
+      return;
+    }
+
     paintBookGutterShadow(
       canvas,
       size: size,
