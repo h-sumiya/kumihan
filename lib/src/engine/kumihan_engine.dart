@@ -46,14 +46,12 @@ class PositionInfo {
     required this.length,
     required this.offset,
     required this.paragraphNo,
-    required this.shift1page,
   });
 
   bool leftToRight;
   int length;
   int offset;
   int paragraphNo;
-  bool shift1page;
 }
 
 class ChapterEntry {
@@ -137,7 +135,6 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
          length: 0,
          offset: 0,
          paragraphNo: 0,
-         shift1page: false,
        ) {
     fontColor = theme.textColor;
     paperColor = theme.paperColor;
@@ -169,8 +166,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
 
   List<AstCompiledEntry> _entries = const <AstCompiledEntry>[];
   int _layoutToken = 0;
-  final String _currentState = 'vsingle';
-  final bool _shift1page = false;
+  final EngineLayoutState _layoutState = defaultEngineLayoutState;
   final bool _forceIndent = false;
   PositionInfo _currentPosition;
   final List<LayoutTextBlock> _blocks = <LayoutTextBlock>[];
@@ -231,6 +227,8 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
 
   int _internalToDocumentPageNo(int pageNo) => pageNo - 1;
 
+  String get _defaultTextRotation => _layoutState.isHorizontal ? 'h' : 'v';
+
   @override
   KumihanSnapshot get snapshot => KumihanSnapshot(
     currentPage: math.max(_currentPageNo, 0),
@@ -288,7 +286,6 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
       length: 0,
       offset: 0,
       paragraphNo: 0,
-      shift1page: _shift1page,
     );
     await _relayout(false);
   }
@@ -373,7 +370,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
   Future<void> nextStop() async {
     final stops = _getStopList();
     var target = _currentPageNo + 1;
-    if (_currentState.endsWith('double')) {
+    if (_layoutState.isDoublePage) {
       target += 1;
     }
     for (final stop in stops) {
@@ -435,7 +432,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
   Future<void> _relayout(bool preservePosition) async {
     final token = ++_layoutToken;
     final position = preservePosition && _blocks.isNotEmpty
-        ? _getPositionInfo(true)
+        ? _getPositionInfo()
         : _currentPosition;
 
     _updateSizes();
@@ -691,7 +688,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
           ),
         );
       }
-      if (_currentState.startsWith('v') && _currentTextRotation == 'v') {
+      if (_layoutState.isVertical && _currentTextRotation == 'v') {
         for (final tcy in entry.tcyRanges) {
           block.setTCY(tcy.startIndex, tcy.endIndex);
         }
@@ -863,7 +860,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
     _currentFontBold = false;
     _currentFontItalic = false;
     _currentFontSize = _fontSize;
-    _currentTextRotation = _currentState.startsWith('h') ? 'h' : 'v';
+    _currentTextRotation = _defaultTextRotation;
     _inCaption = false;
     _inYokogumi = false;
     _firstTopMargin = 0;
@@ -940,7 +937,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
         _currentTextRotation = 'h';
       case AstCommandKind.yokogumiEnd:
         _inYokogumi = false;
-        _currentTextRotation = _currentState.startsWith('h') ? 'h' : 'v';
+        _currentTextRotation = _defaultTextRotation;
       case AstCommandKind.headingStart:
         _currentFontType = 2;
         _currentFontSize = switch (entry.headingLevel) {
@@ -1040,7 +1037,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
         _currentPosition.paragraphNo == paragraphNo &&
         block.getAtomIndexAt(_currentPosition.offset) < line.end) {
       _currentPageNo = _internalToDocumentPageNo(_pages.length - 1);
-      if (_currentState.endsWith('double')) {
+      if (_layoutState.isDoublePage) {
         _currentPageNo &= ~1;
       }
     }
@@ -1175,7 +1172,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
             0,
             false,
             false,
-            _currentState.startsWith('h') ? 'h' : 'v',
+            _defaultTextRotation,
           );
         final markerLine = markerBlock.createTextLine()!;
         final atomIndex = block.getAtomIndexAt(startIndex);
@@ -1333,7 +1330,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
               0,
               false,
               false,
-              _currentState.startsWith('h') ? 'h' : 'v',
+              _defaultTextRotation,
             );
           final markerLine = markerBlock.createTextLine()!;
           final atomIndex = block.getAtomIndexAt(index);
@@ -1365,7 +1362,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
             0,
             false,
             false,
-            _currentState.startsWith('h') ? 'h' : 'v',
+            _defaultTextRotation,
           );
         final markerLine = markerBlock.createTextLine()!;
         markerLine.color = const Color(0xffff0000);
@@ -1446,7 +1443,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
     }
 
     final atom = block.atom[atomIndex];
-    if (_currentState.startsWith('v')) {
+    if (_layoutState.isVertical) {
       atom.width = fittedWidth.floorToDouble();
       atom.height = fittedHeight.floorToDouble();
     } else {
@@ -1472,7 +1469,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
           0,
           false,
           false,
-          _currentState.startsWith('h') ? 'h' : 'v',
+          _defaultTextRotation,
         );
       if (insert.type == LayoutInlineDecorationKind.kaeri) {
         if (insert.text == '一レ') {
@@ -1635,7 +1632,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
           0,
           false,
           false,
-          _currentState.startsWith('h') ? 'h' : 'v',
+          _defaultTextRotation,
         );
       for (final span in ruby.spans) {
         _applyStyle(rubyBlock, span.startIndex, span.endIndex, span);
@@ -2067,7 +2064,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
     return stops;
   }
 
-  PositionInfo _getPositionInfo([bool leftPage = false]) {
+  PositionInfo _getPositionInfo() {
     var pageNo = _currentPageNo;
     if (_currentPageNo >= 0 && pageNo >= 0) {
       final internalPageNo = _documentToInternalPageNo(pageNo);
@@ -2084,7 +2081,6 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
         length: 0,
         offset: line.block.atom[line.start].index,
         paragraphNo: _blocks.indexOf(line.block),
-        shift1page: _shift1page,
       );
     }
     return _currentPosition;

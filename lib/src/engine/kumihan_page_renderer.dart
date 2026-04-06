@@ -6,7 +6,7 @@ extension on KumihanEngine {
     int pageNo,
     PagePaintContext context,
   ) {
-    final vertical = _currentState.startsWith('v');
+    final vertical = _layoutState.isVertical;
     final pageStartLine = pageNo < _pages.length ? _pages[pageNo].line : 0;
     final pageMarginSide = _pageMarginSideFor(
       pageNo,

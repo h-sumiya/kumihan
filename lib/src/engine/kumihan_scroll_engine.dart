@@ -44,14 +44,12 @@ class PositionInfo {
     required this.length,
     required this.offset,
     required this.paragraphNo,
-    required this.shift1page,
   });
 
   bool leftToRight;
   int length;
   int offset;
   int paragraphNo;
-  bool shift1page;
 }
 
 class ChapterEntry {
@@ -149,7 +147,7 @@ class KumihanScrollEngine implements LayoutEnvironment {
 
   List<AstCompiledEntry> _entries = const <AstCompiledEntry>[];
   int _layoutToken = 0;
-  final String _currentState = 'vsingle';
+  final EngineLayoutState _layoutState = defaultEngineLayoutState;
   final bool _forceIndent = false;
   final List<LayoutTextBlock> _blocks = <LayoutTextBlock>[];
   final List<LineGroup> _lines = <LineGroup>[];
@@ -197,6 +195,8 @@ class KumihanScrollEngine implements LayoutEnvironment {
   final double _fontScaleS = 0.85;
 
   bool get _hasLayoutContent => _entries.isNotEmpty;
+
+  String get _defaultTextRotation => _layoutState.isHorizontal ? 'h' : 'v';
 
   KumihanScrollSnapshot get snapshot => KumihanScrollSnapshot(
     viewportWidth: _width,
@@ -534,7 +534,7 @@ class KumihanScrollEngine implements LayoutEnvironment {
           ),
         );
       }
-      if (_currentState.startsWith('v') && _currentTextRotation == 'v') {
+      if (_layoutState.isVertical && _currentTextRotation == 'v') {
         for (final tcy in entry.tcyRanges) {
           block.setTCY(tcy.startIndex, tcy.endIndex);
         }
@@ -691,7 +691,7 @@ class KumihanScrollEngine implements LayoutEnvironment {
     _currentFontBold = false;
     _currentFontItalic = false;
     _currentFontSize = _fontSize;
-    _currentTextRotation = _currentState.startsWith('h') ? 'h' : 'v';
+    _currentTextRotation = _defaultTextRotation;
     _inCaption = false;
     _inYokogumi = false;
     _firstTopMargin = 0;
@@ -767,7 +767,7 @@ class KumihanScrollEngine implements LayoutEnvironment {
         _currentTextRotation = 'h';
       case AstCommandKind.yokogumiEnd:
         _inYokogumi = false;
-        _currentTextRotation = _currentState.startsWith('h') ? 'h' : 'v';
+        _currentTextRotation = _defaultTextRotation;
       case AstCommandKind.headingStart:
         _currentFontType = 2;
         _currentFontSize = switch (entry.headingLevel) {
@@ -958,7 +958,7 @@ class KumihanScrollEngine implements LayoutEnvironment {
             0,
             false,
             false,
-            _currentState.startsWith('h') ? 'h' : 'v',
+            _defaultTextRotation,
           );
         final markerLine = markerBlock.createTextLine()!;
         final atomIndex = block.getAtomIndexAt(startIndex);
@@ -1116,7 +1116,7 @@ class KumihanScrollEngine implements LayoutEnvironment {
               0,
               false,
               false,
-              _currentState.startsWith('h') ? 'h' : 'v',
+              _defaultTextRotation,
             );
           final markerLine = markerBlock.createTextLine()!;
           final atomIndex = block.getAtomIndexAt(index);
@@ -1148,7 +1148,7 @@ class KumihanScrollEngine implements LayoutEnvironment {
             0,
             false,
             false,
-            _currentState.startsWith('h') ? 'h' : 'v',
+            _defaultTextRotation,
           );
         final markerLine = markerBlock.createTextLine()!;
         markerLine.color = const Color(0xffff0000);
@@ -1229,7 +1229,7 @@ class KumihanScrollEngine implements LayoutEnvironment {
     }
 
     final atom = block.atom[atomIndex];
-    if (_currentState.startsWith('v')) {
+    if (_layoutState.isVertical) {
       atom.width = fittedWidth.floorToDouble();
       atom.height = fittedHeight.floorToDouble();
     } else {
@@ -1255,7 +1255,7 @@ class KumihanScrollEngine implements LayoutEnvironment {
           0,
           false,
           false,
-          _currentState.startsWith('h') ? 'h' : 'v',
+          _defaultTextRotation,
         );
       if (insert.type == LayoutInlineDecorationKind.kaeri) {
         if (insert.text == '一レ') {
@@ -1418,7 +1418,7 @@ class KumihanScrollEngine implements LayoutEnvironment {
           0,
           false,
           false,
-          _currentState.startsWith('h') ? 'h' : 'v',
+          _defaultTextRotation,
         );
       for (final span in ruby.spans) {
         _applyStyle(rubyBlock, span.startIndex, span.endIndex, span);
@@ -1679,10 +1679,10 @@ class KumihanScrollEngine implements LayoutEnvironment {
       }
     }
 
-    final contentLeadingInset = _currentState.startsWith('v')
+    final contentLeadingInset = _layoutState.isVertical
         ? _pageMarginSide
         : _pageMarginTop;
-    final contentTrailingInset = _currentState.startsWith('v')
+    final contentTrailingInset = _layoutState.isVertical
         ? _pageMarginTrailing
         : _pageMarginBottom;
     _contentWidth = math.max(

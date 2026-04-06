@@ -2,7 +2,7 @@ part of 'kumihan_scroll_engine.dart';
 
 extension on KumihanScrollEngine {
   void _paintVisibleRange(ui.Canvas canvas) {
-    final vertical = _currentState.startsWith('v');
+    final vertical = _layoutState.isVertical;
     final visibleLeft = _scrollOffset;
     final visibleRight = _scrollOffset + _width;
 
