@@ -10,6 +10,8 @@ import 'page_flip_types.dart';
 final class PageFlipPainter extends CustomPainter {
   const PageFlipPainter({
     required this.pageImages,
+    required this.backfaceForBackPageImages,
+    required this.backfaceForForwardPageImages,
     required this.pageImageVersion,
     required this.rightPageIndex,
     required this.pageCount,
@@ -23,6 +25,8 @@ final class PageFlipPainter extends CustomPainter {
   });
 
   final Map<int, ui.Image> pageImages;
+  final Map<int, ui.Image> backfaceForBackPageImages;
+  final Map<int, ui.Image> backfaceForForwardPageImages;
   final int pageImageVersion;
   final int rightPageIndex;
   final int pageCount;
@@ -149,7 +153,7 @@ final class PageFlipPainter extends CustomPainter {
 
       final flippingImage = flippingPageIndex == null
           ? null
-          : _imageForPage(flippingPageIndex);
+          : _imageForFlippingPage(flippingPageIndex, scene!);
       if (flippingPageIndex != null &&
           flippingPageIndex >= 0 &&
           flippingPageIndex < pageCount) {
@@ -353,6 +357,16 @@ final class PageFlipPainter extends CustomPainter {
   }
 
   ui.Image? _imageForPage(int pageIndex) => pageImages[pageIndex];
+
+  ui.Image? _imageForFlippingPage(int pageIndex, FlipScene scene) {
+    if (scene.density != PageDensity.soft) {
+      return _imageForPage(pageIndex);
+    }
+    if (scene.direction == FlipDirection.back) {
+      return backfaceForBackPageImages[pageIndex] ?? _imageForPage(pageIndex);
+    }
+    return backfaceForForwardPageImages[pageIndex] ?? _imageForPage(pageIndex);
+  }
 
   void _drawStaticPage(
     Canvas canvas, {
@@ -810,6 +824,9 @@ final class PageFlipPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant PageFlipPainter oldDelegate) {
     return oldDelegate.pageImages != pageImages ||
+        oldDelegate.backfaceForBackPageImages != backfaceForBackPageImages ||
+        oldDelegate.backfaceForForwardPageImages !=
+            backfaceForForwardPageImages ||
         oldDelegate.pageImageVersion != pageImageVersion ||
         oldDelegate.rightPageIndex != rightPageIndex ||
         oldDelegate.pageCount != pageCount ||

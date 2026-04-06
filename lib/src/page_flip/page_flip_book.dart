@@ -90,6 +90,8 @@ class _PageFlipBookState extends State<PageFlipBook>
 
   final Map<int, GlobalKey> _snapshotKeys = <int, GlobalKey>{};
   final Map<int, ui.Image> _pageImages = <int, ui.Image>{};
+  final Map<int, ui.Image> _backfaceForBackPageImages = <int, ui.Image>{};
+  final Map<int, ui.Image> _backfaceForForwardPageImages = <int, ui.Image>{};
   final Set<int> _capturingPages = <int>{};
   final Set<int> _dirtySnapshotPages = <int>{};
   final Map<int, int> _pagePaintGenerations = <int, int>{};
@@ -322,6 +324,8 @@ class _PageFlipBookState extends State<PageFlipBook>
                 size: Size(spreadContentWidth, spreadContentHeight),
                 painter: PageFlipPainter(
                   pageImages: _pageImages,
+                  backfaceForBackPageImages: _backfaceForBackPageImages,
+                  backfaceForForwardPageImages: _backfaceForForwardPageImages,
                   pageImageVersion: _pageImageVersion,
                   rightPageIndex: _rightPageIndex,
                   pageCount: _renderPageCount,
@@ -565,12 +569,20 @@ class _PageFlipBookState extends State<PageFlipBook>
           continue;
         }
         final oldImage = _pageImages[pageIndex];
+        final oldBackfaceForBackImage = _backfaceForBackPageImages.remove(
+          pageIndex,
+        );
+        final oldBackfaceForForwardImage = _backfaceForForwardPageImages.remove(
+          pageIndex,
+        );
         setState(() {
           _pageImages[pageIndex] = image;
           _dirtySnapshotPages.remove(pageIndex);
           _pageImageVersion += 1;
         });
         oldImage?.dispose();
+        oldBackfaceForBackImage?.dispose();
+        oldBackfaceForForwardImage?.dispose();
       } finally {
         _capturingPages.remove(pageIndex);
       }
@@ -760,8 +772,116 @@ class _PageFlipBookState extends State<PageFlipBook>
       pageWidth: widget.pageSize.width,
       pageHeight: widget.pageSize.height,
     );
+    _prepareFlippingBackfaceImage(direction);
     _notifySnapshotChanged();
     return true;
+  }
+
+  bool _shouldComposeFlippingBackfaceImage(FlipDirection direction) {
+    if (_isSinglePage || !widget.drawShadow) {
+      return false;
+    }
+    if (_drawingDensityFor(direction) == PageDensity.hard) {
+      return false;
+    }
+    if (_animationGutterDensityFor(direction) == PageDensity.hard) {
+      return false;
+    }
+    return true;
+  }
+
+  Map<int, ui.Image> _backfaceImagesFor(FlipDirection direction) {
+    return direction == FlipDirection.back
+        ? _backfaceForBackPageImages
+        : _backfaceForForwardPageImages;
+  }
+
+  void _prepareFlippingBackfaceImage(FlipDirection direction) {
+    final pageIndex = _flippingPageIndexFor(direction);
+    if (pageIndex < 0 || pageIndex >= _renderPageCount) {
+      return;
+    }
+    final backfaceImages = _backfaceImagesFor(direction);
+    if (!_shouldComposeFlippingBackfaceImage(direction)) {
+      final staleImage = backfaceImages.remove(pageIndex);
+      staleImage?.dispose();
+      return;
+    }
+    if (backfaceImages.containsKey(pageIndex)) {
+      return;
+    }
+
+    final source = _pageImages[pageIndex];
+    if (source == null) {
+      return;
+    }
+    unawaited(_refreshBackfaceSnapshot(pageIndex, direction, source));
+  }
+
+  Future<void> _refreshBackfaceSnapshot(
+    int pageIndex,
+    FlipDirection direction,
+    ui.Image source,
+  ) async {
+    final composed = await _composeGutterShadowBackfaceImage(source, direction);
+    if (composed == null) {
+      return;
+    }
+    if (!mounted || !identical(_pageImages[pageIndex], source)) {
+      composed.dispose();
+      return;
+    }
+    if (!_shouldComposeFlippingBackfaceImage(direction)) {
+      composed.dispose();
+      return;
+    }
+
+    final targetMap = _backfaceImagesFor(direction);
+    final oldImage = targetMap[pageIndex];
+    setState(() {
+      targetMap[pageIndex] = composed;
+      _pageImageVersion += 1;
+    });
+    oldImage?.dispose();
+  }
+
+  Future<ui.Image?> _composeGutterShadowBackfaceImage(
+    ui.Image image,
+    FlipDirection direction,
+  ) async {
+    if (_isSinglePage) {
+      return null;
+    }
+
+    final pageWidth = widget.pageSize.width;
+    final pageHeight = widget.pageSize.height;
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    final pageRect = Rect.fromLTWH(0, 0, pageWidth, pageHeight);
+    canvas.drawImageRect(
+      image,
+      Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+      pageRect,
+      Paint()..filterQuality = FilterQuality.high,
+    );
+
+    canvas.save();
+    if (direction == FlipDirection.back) {
+      canvas.translate(-pageWidth, 0);
+    }
+    paintBookGutterShadow(
+      canvas,
+      size: Size(pageWidth * 2, pageHeight),
+      pageWidth: pageWidth,
+      density: PageDensity.soft,
+    );
+    canvas.restore();
+
+    final picture = recorder.endRecording();
+    return picture.toImage(
+      math.max(1, pageWidth.ceil()),
+      math.max(1, pageHeight.ceil()),
+    );
   }
 
   void _updateFlip(Offset bookPosition) {
@@ -1145,10 +1265,23 @@ class _PageFlipBookState extends State<PageFlipBook>
 
   void _scheduleSnapshotRefresh(int pageIndex) {
     final oldImage = _pageImages.remove(pageIndex);
+    final oldBackfaceForBackImage = _backfaceForBackPageImages.remove(
+      pageIndex,
+    );
+    final oldBackfaceForForwardImage = _backfaceForForwardPageImages.remove(
+      pageIndex,
+    );
     oldImage?.dispose();
+    oldBackfaceForBackImage?.dispose();
+    oldBackfaceForForwardImage?.dispose();
     _capturingPages.remove(pageIndex);
     _dirtySnapshotPages.add(pageIndex);
-    _pageImageVersion += oldImage == null ? 0 : 1;
+    _pageImageVersion +=
+        (oldImage == null &&
+            oldBackfaceForBackImage == null &&
+            oldBackfaceForForwardImage == null)
+        ? 0
+        : 1;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) {
@@ -1183,12 +1316,20 @@ class _PageFlipBookState extends State<PageFlipBook>
         return;
       }
       final oldImage = _pageImages[pageIndex];
+      final oldBackfaceForBackImage = _backfaceForBackPageImages.remove(
+        pageIndex,
+      );
+      final oldBackfaceForForwardImage = _backfaceForForwardPageImages.remove(
+        pageIndex,
+      );
       setState(() {
         _pageImages[pageIndex] = image;
         _dirtySnapshotPages.remove(pageIndex);
         _pageImageVersion += 1;
       });
       oldImage?.dispose();
+      oldBackfaceForBackImage?.dispose();
+      oldBackfaceForForwardImage?.dispose();
     } finally {
       _capturingPages.remove(pageIndex);
     }
@@ -1198,7 +1339,15 @@ class _PageFlipBookState extends State<PageFlipBook>
     for (final image in _pageImages.values) {
       image.dispose();
     }
+    for (final image in _backfaceForBackPageImages.values) {
+      image.dispose();
+    }
+    for (final image in _backfaceForForwardPageImages.values) {
+      image.dispose();
+    }
     _pageImages.clear();
+    _backfaceForBackPageImages.clear();
+    _backfaceForForwardPageImages.clear();
     _snapshotKeys.clear();
     _capturingPages.clear();
     _dirtySnapshotPages.clear();
