@@ -15,12 +15,14 @@ class BookSpreadRenderer {
     required this.layout,
     required this.theme,
     required this.spreadMode,
+    this.drawGutterShadow = true,
   });
 
   final KumihanEngine engine;
   final KumihanBookLayoutData layout;
   final KumihanThemeData theme;
   final KumihanSpreadMode spreadMode;
+  final bool drawGutterShadow;
 
   Size resolvePageSize(Size size) {
     final viewportSize = _viewportSize(size);
@@ -372,7 +374,8 @@ class BookSpreadRenderer {
     BookPageMetrics metrics, {
     required BookPageSlot viewportSlot,
   }) {
-    if (spreadMode != KumihanSpreadMode.doublePage ||
+    if (!drawGutterShadow ||
+        spreadMode != KumihanSpreadMode.doublePage ||
         viewportSlot == BookPageSlot.single) {
       return;
     }

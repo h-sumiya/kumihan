@@ -89,6 +89,7 @@ class _KumihanBookPageSurfacePainter extends CustomPainter {
       layout: layoutForPainting,
       theme: theme,
       spreadMode: spreadMode,
+      drawGutterShadow: false,
     );
     renderer.paintViewport(
       canvas,
