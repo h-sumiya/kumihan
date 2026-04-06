@@ -38,6 +38,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
   String? _fileName;
   Document? _document;
   ReaderViewMode _viewMode = ReaderViewMode.paged;
+  KumihanSpreadMode _bookSpreadMode = KumihanSpreadMode.doublePage;
   bool _selectable = true;
   KumihanPagedSnapshot _pagedSnapshot = const KumihanPagedSnapshot(
     currentPage: 0,
@@ -266,6 +267,27 @@ class _ReaderScreenState extends State<ReaderScreen> {
                     });
                   },
                 ),
+                if (_viewMode == ReaderViewMode.book) ...<Widget>[
+                  const SizedBox(width: 8),
+                  SegmentedButton<KumihanSpreadMode>(
+                    segments: const <ButtonSegment<KumihanSpreadMode>>[
+                      ButtonSegment(
+                        value: KumihanSpreadMode.doublePage,
+                        label: Text('見開き'),
+                      ),
+                      ButtonSegment(
+                        value: KumihanSpreadMode.single,
+                        label: Text('シングル'),
+                      ),
+                    ],
+                    selected: <KumihanSpreadMode>{_bookSpreadMode},
+                    onSelectionChanged: (selection) {
+                      setState(() {
+                        _bookSpreadMode = selection.first;
+                      });
+                    },
+                  ),
+                ],
                 const SizedBox(width: 12),
                 Row(
                   mainAxisSize: MainAxisSize.min,
@@ -302,6 +324,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                       ReaderViewMode.book => KumihanBook(
                         document: _document!,
                         controller: _pagedController,
+                        spreadMode: _bookSpreadMode,
                         layout: _bookLayout,
                         selectable: _selectable,
                         onSnapshotChanged: (snapshot) {

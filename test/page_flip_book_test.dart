@@ -161,4 +161,80 @@ void main() {
 
     expect(state.debugPageImageVersion, greaterThan(initialVersion));
   });
+
+  testWidgets('single page mode advances one page per turn', (tester) async {
+    final pages = List<Widget>.generate(
+      5,
+      (index) => Center(
+        child: Text('Page ${index + 1}', textDirection: TextDirection.ltr),
+      ),
+    );
+
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: Center(
+          child: PageFlipBook(
+            pageCount: pages.length,
+            pageSize: const Size(240, 360),
+            displayMode: PageDisplayMode.singlePage,
+            pageBuilder: (context, index) => pages[index],
+          ),
+        ),
+      ),
+    );
+
+    final book = find.byType(PageFlipBook);
+    final state = tester.state(book) as dynamic;
+
+    await tester.tapAt(tester.getCenter(book) + const Offset(-180, 0));
+    await tester.pumpAndSettle();
+
+    expect(state.debugRightPageIndex, 1);
+  });
+
+  testWidgets('single page backward grip flips to previous page', (
+    tester,
+  ) async {
+    final pages = List<Widget>.generate(
+      6,
+      (index) => Center(
+        child: Text('Page ${index + 1}', textDirection: TextDirection.ltr),
+      ),
+    );
+
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: Center(
+          child: PageFlipBook(
+            pageCount: pages.length,
+            pageSize: const Size(240, 360),
+            displayMode: PageDisplayMode.singlePage,
+            pageBuilder: (context, index) => pages[index],
+          ),
+        ),
+      ),
+    );
+
+    final book = find.byType(PageFlipBook);
+    final state = tester.state(book) as dynamic;
+
+    for (var i = 0; i < 3; i += 1) {
+      await tester.tapAt(tester.getCenter(book) + const Offset(-180, 0));
+      await tester.pumpAndSettle();
+    }
+
+    expect(state.debugRightPageIndex, 3);
+
+    final gesture = await tester.startGesture(
+      tester.getTopLeft(book) + const Offset(228, 40),
+    );
+    await tester.pump();
+
+    expect(state.debugIsDragging, isTrue);
+
+    await gesture.up();
+    await tester.pump();
+  });
 }

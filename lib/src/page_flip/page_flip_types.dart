@@ -6,6 +6,8 @@ enum FlipCorner { top, bottom }
 
 enum PageDensity { soft, hard }
 
+enum PageDisplayMode { doublePage, singlePage }
+
 final class BookRect {
   const BookRect({
     required this.left,

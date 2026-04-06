@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:math' as math;
+
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import 'book/book_spread_renderer.dart';
+import 'book/kumihan_book_defaults.dart';
 import 'book/kumihan_book_page_surface.dart';
 import 'document.dart';
 import 'engine/kumihan_engine.dart';
@@ -13,6 +15,32 @@ import 'kumihan_types.dart';
 import 'page_flip/page_flip_book.dart';
 import 'page_flip/page_flip_controller.dart';
 import 'page_flip/page_flip_types.dart';
+
+enum _BookRenderPageKind { frontCover, content, blank, backCover }
+
+final class _BookRenderPage {
+  const _BookRenderPage.content(this.documentPageIndex)
+    : kind = _BookRenderPageKind.content;
+
+  const _BookRenderPage.frontCover()
+    : kind = _BookRenderPageKind.frontCover,
+      documentPageIndex = null;
+
+  const _BookRenderPage.blank()
+    : kind = _BookRenderPageKind.blank,
+      documentPageIndex = null;
+
+  const _BookRenderPage.backCover()
+    : kind = _BookRenderPageKind.backCover,
+      documentPageIndex = null;
+
+  final _BookRenderPageKind kind;
+  final int? documentPageIndex;
+
+  bool get isHard =>
+      kind == _BookRenderPageKind.frontCover ||
+      kind == _BookRenderPageKind.backCover;
+}
 
 class KumihanBook extends StatefulWidget {
   const KumihanBook({
@@ -27,10 +55,12 @@ class KumihanBook extends StatefulWidget {
     this.selectable = true,
     this.onLinkTap,
     this.onSnapshotChanged,
-  }) : assert(
-         spreadMode == KumihanSpreadMode.doublePage,
-         'KumihanBook currently supports double-page spreads only.',
-       );
+    this.frontCover,
+    this.backCover,
+    this.desk,
+    this.blankPage,
+    this.singlePageEdge,
+  });
 
   final Document document;
   final KumihanPagedController? controller;
@@ -42,6 +72,11 @@ class KumihanBook extends StatefulWidget {
   final bool selectable;
   final ValueChanged<String>? onLinkTap;
   final ValueChanged<KumihanPagedSnapshot>? onSnapshotChanged;
+  final Widget? frontCover;
+  final Widget? backCover;
+  final Widget? desk;
+  final Widget? blankPage;
+  final Widget? singlePageEdge;
 
   @override
   State<KumihanBook> createState() => _KumihanBookState();
@@ -117,6 +152,19 @@ class _KumihanBookState extends State<KumihanBook>
       return;
     }
 
+    if (oldWidget.spreadMode != widget.spreadMode ||
+        !identical(oldWidget.frontCover, widget.frontCover) ||
+        !identical(oldWidget.backCover, widget.backCover) ||
+        !identical(oldWidget.blankPage, widget.blankPage)) {
+      _clearSelection();
+      _currentPage = _normalizePage(_currentPage, totalPages: _totalPages);
+      unawaited(
+        _pageFlipController.showRightPage(
+          _renderIndexForDocumentPage(_currentPage),
+        ),
+      );
+    }
+
     if (oldWidget.selectable && !widget.selectable) {
       _clearSelection(notify: false);
     }
@@ -161,8 +209,9 @@ class _KumihanBookState extends State<KumihanBook>
         );
         widget.controller?.updateSnapshot(pagedSnapshot);
         widget.onSnapshotChanged?.call(pagedSnapshot);
-        if (_pageFlipController.snapshot.rightPageIndex != normalized) {
-          unawaited(_pageFlipController.showRightPage(normalized));
+        final targetRenderPage = _renderIndexForDocumentPage(normalized);
+        if (_pageFlipController.snapshot.rightPageIndex != targetRenderPage) {
+          unawaited(_pageFlipController.showRightPage(targetRenderPage));
         }
       },
     );
@@ -172,12 +221,175 @@ class _KumihanBookState extends State<KumihanBook>
     return KumihanLayoutData(fontSize: layout.fontSize);
   }
 
+  bool get _isSingleSpread => widget.spreadMode == KumihanSpreadMode.single;
+
+  int get _pageStep => _isSingleSpread ? 1 : 2;
+
+  int get _contentRenderStartIndex => widget.frontCover == null ? 0 : 1;
+
+  bool get _needsBlankRenderPage => !_isSingleSpread && _totalPages.isOdd;
+
+  int get _blankRenderPageIndex =>
+      _needsBlankRenderPage ? _contentRenderStartIndex + _totalPages : -1;
+
+  int get _backCoverRenderPageIndex {
+    if (widget.backCover == null) {
+      return -1;
+    }
+    return _contentRenderStartIndex +
+        _totalPages +
+        (_needsBlankRenderPage ? 1 : 0);
+  }
+
+  List<_BookRenderPage> get _renderPages {
+    final pages = <_BookRenderPage>[];
+    if (widget.frontCover != null) {
+      pages.add(const _BookRenderPage.frontCover());
+    }
+    for (var pageIndex = 0; pageIndex < _totalPages; pageIndex += 1) {
+      pages.add(_BookRenderPage.content(pageIndex));
+    }
+    if (_needsBlankRenderPage) {
+      pages.add(const _BookRenderPage.blank());
+    }
+    if (widget.backCover != null) {
+      pages.add(const _BookRenderPage.backCover());
+    }
+    return pages;
+  }
+
+  int get _composedPageCount => _renderPages.length;
+
+  int? _documentPageAtRenderIndex(int renderPageIndex) {
+    final documentPageIndex = renderPageIndex - _contentRenderStartIndex;
+    if (documentPageIndex < 0 || documentPageIndex >= _totalPages) {
+      return null;
+    }
+    return documentPageIndex;
+  }
+
+  int _renderIndexForDocumentPage(int documentPageIndex) {
+    if (_totalPages <= 0) {
+      return 0;
+    }
+    final normalizedDocumentPage = documentPageIndex
+        .clamp(0, _totalPages - 1)
+        .toInt();
+    final rawRenderIndex = _contentRenderStartIndex + normalizedDocumentPage;
+    final spreadIndex = _isSingleSpread ? rawRenderIndex : rawRenderIndex & ~1;
+    final lastRenderIndex = math.max(_composedPageCount - 1, 0);
+    return spreadIndex.clamp(0, lastRenderIndex).toInt();
+  }
+
+  int _documentPageForRenderSpreadIndex(int renderSpreadIndex) {
+    if (_totalPages <= 0) {
+      return 0;
+    }
+
+    final rightDocumentPage = _documentPageAtRenderIndex(renderSpreadIndex);
+    final leftDocumentPage = _isSingleSpread
+        ? null
+        : _documentPageAtRenderIndex(renderSpreadIndex + 1);
+
+    if (_isSingleSpread) {
+      if (rightDocumentPage != null) {
+        return rightDocumentPage;
+      }
+    } else {
+      if (rightDocumentPage != null && rightDocumentPage.isEven) {
+        return rightDocumentPage;
+      }
+      if (leftDocumentPage != null && leftDocumentPage.isEven) {
+        return leftDocumentPage;
+      }
+      if (rightDocumentPage != null) {
+        return _normalizePage(rightDocumentPage, totalPages: _totalPages);
+      }
+      if (leftDocumentPage != null) {
+        return _normalizePage(leftDocumentPage, totalPages: _totalPages);
+      }
+    }
+
+    if (renderSpreadIndex < _contentRenderStartIndex) {
+      return 0;
+    }
+    return _totalPages - 1;
+  }
+
+  bool _isContentVisibleAtSpread(int renderSpreadIndex) {
+    if (_documentPageAtRenderIndex(renderSpreadIndex) != null) {
+      return true;
+    }
+    if (!_isSingleSpread &&
+        _documentPageAtRenderIndex(renderSpreadIndex + 1) != null) {
+      return true;
+    }
+    return false;
+  }
+
+  Widget _buildDefaultBlankPage() {
+    return KumihanDefaultBlankBookPage(
+      title: _engine.headerTitle,
+      theme: widget.theme,
+    );
+  }
+
+  Widget _buildRenderPageWidget(
+    BuildContext context,
+    int renderPageIndex, {
+    required bool recordInteractiveRegions,
+    required bool resetPaintState,
+  }) {
+    if (renderPageIndex == 0 && widget.frontCover != null) {
+      return widget.frontCover!;
+    }
+    if (renderPageIndex == _blankRenderPageIndex) {
+      return widget.blankPage ?? _buildDefaultBlankPage();
+    }
+    if (renderPageIndex == _backCoverRenderPageIndex &&
+        widget.backCover != null) {
+      return widget.backCover!;
+    }
+
+    final documentPageIndex = _documentPageAtRenderIndex(renderPageIndex);
+    if (documentPageIndex == null) {
+      return DecoratedBox(
+        decoration: BoxDecoration(
+          color: widget.theme.paperColor,
+          border: Border.all(color: const Color(0xFFBDB7AA), width: 1.2),
+        ),
+      );
+    }
+
+    return KumihanBookPageSurface(
+      engine: _engine,
+      layout: widget.layout,
+      pageIndex: documentPageIndex,
+      recordInteractiveRegions: recordInteractiveRegions,
+      resetPaintState: resetPaintState,
+      theme: widget.theme,
+      totalPages: _totalPages,
+      spreadMode: widget.spreadMode,
+    );
+  }
+
+  PageDensity _densityForRenderPage(int renderPageIndex) {
+    final pages = _renderPages;
+    if (renderPageIndex < 0 || renderPageIndex >= pages.length) {
+      return PageDensity.soft;
+    }
+    return pages[renderPageIndex].isHard ? PageDensity.hard : PageDensity.soft;
+  }
+
   int _normalizePage(int page, {required int totalPages}) {
     if (totalPages <= 0) {
       return 0;
     }
     final lastPage = math.max(totalPages - 1, 0);
     final clamped = page.clamp(0, lastPage).toInt();
+    if (_isSingleSpread) {
+      return clamped;
+    }
     return clamped & ~1;
   }
 
@@ -203,19 +415,21 @@ class _KumihanBookState extends State<KumihanBook>
 
   @override
   Future<void> nextPage([int? amount]) async {
-    await showPage(_currentPage + 2 * (amount ?? 1));
+    await showPage(_currentPage + _pageStep * (amount ?? 1));
   }
 
   @override
   Future<void> prevPage([int? amount]) async {
-    await showPage(_currentPage - 2 * (amount ?? 1));
+    await showPage(_currentPage - _pageStep * (amount ?? 1));
   }
 
   @override
   Future<void> showPage(int page) async {
     final normalized = _normalizePage(page, totalPages: _totalPages);
     _currentPage = normalized;
-    await _pageFlipController.showRightPage(normalized);
+    await _pageFlipController.showRightPage(
+      _renderIndexForDocumentPage(normalized),
+    );
     await _engine.showPage(normalized);
   }
 
@@ -268,15 +482,18 @@ class _KumihanBookState extends State<KumihanBook>
         _isFlipping = snapshot.isInteracting;
       });
     }
-    if (snapshot.rightPageIndex == _currentPage) {
+    if (!_isContentVisibleAtSpread(snapshot.rightPageIndex)) {
+      _clearSelection(notify: false);
+    }
+
+    final documentPage = _documentPageForRenderSpreadIndex(
+      snapshot.rightPageIndex,
+    );
+    if (documentPage == _currentPage) {
       return;
     }
-    final normalized = _normalizePage(
-      snapshot.rightPageIndex,
-      totalPages: _totalPages,
-    );
-    _currentPage = normalized;
-    unawaited(_engine.showPage(normalized));
+    _currentPage = documentPage;
+    unawaited(_engine.showPage(documentPage));
   }
 
   void _clearSelection({bool notify = true}) {
@@ -583,6 +800,16 @@ class _KumihanBookState extends State<KumihanBook>
   }
 
   List<Rect> _bodyRectsFor(Size pageSize) {
+    if (_isSingleSpread) {
+      final renderer = BookSpreadRenderer(
+        engine: _engine,
+        layout: widget.layout,
+        theme: widget.theme,
+        spreadMode: KumihanSpreadMode.single,
+      );
+      return <Rect>[renderer.resolveBodyRect(pageSize, BookPageSlot.single)];
+    }
+
     final renderer = BookSpreadRenderer(
       engine: _engine,
       layout: widget.layout,
@@ -629,6 +856,12 @@ class _KumihanBookState extends State<KumihanBook>
     );
   }
 
+  Size _interactiveOverlaySizeFor(Size pageSize) {
+    return _isSingleSpread
+        ? Size(pageSize.width, pageSize.height)
+        : Size(pageSize.width * 2, pageSize.height);
+  }
+
   Widget _buildInteractiveLayer(Size pageSize) {
     final bodyRects = _bodyRectsFor(pageSize);
     return Listener(
@@ -663,9 +896,33 @@ class _KumihanBookState extends State<KumihanBook>
                 ),
               ),
             ),
-          _buildSelectionOverlay(Size(pageSize.width * 2, pageSize.height)),
+          _buildSelectionOverlay(_interactiveOverlaySizeFor(pageSize)),
         ],
       ),
+    );
+  }
+
+  Widget? _buildPageFlipOverlay(Size pageSize) {
+    final interactiveLayer = !_isFlipping
+        ? _buildInteractiveLayer(pageSize)
+        : null;
+    final edgeOverlay = _isSingleSpread && widget.singlePageEdge != null
+        ? KumihanSinglePageEdgeOverlay(edge: widget.singlePageEdge!)
+        : null;
+
+    if (interactiveLayer == null && edgeOverlay == null) {
+      return null;
+    }
+    if (interactiveLayer == null) {
+      return edgeOverlay;
+    }
+    if (edgeOverlay == null) {
+      return interactiveLayer;
+    }
+
+    return Stack(
+      fit: StackFit.expand,
+      children: <Widget>[interactiveLayer, edgeOverlay],
     );
   }
 
@@ -697,36 +954,39 @@ class _KumihanBookState extends State<KumihanBook>
               child: Stack(
                 fit: StackFit.expand,
                 children: <Widget>[
+                  if (!_isSingleSpread)
+                    Positioned.fill(
+                      child: widget.desk ?? const KumihanDefaultBookDesk(),
+                    ),
                   PageFlipBook(
                     controller: _pageFlipController,
-                    pageCount: _totalPages,
+                    pageCount: _composedPageCount,
                     pageSize: pageSize,
+                    displayMode: _isSingleSpread
+                        ? PageDisplayMode.singlePage
+                        : PageDisplayMode.doublePage,
+                    pageDensityBuilder: _densityForRenderPage,
                     onSnapshotChanged: _handlePageFlipSnapshotChanged,
                     snapshotPageBuilder: (context, pageIndex) {
-                      return KumihanBookPageSurface(
-                        engine: _engine,
-                        layout: widget.layout,
-                        pageIndex: pageIndex,
+                      return _buildRenderPageWidget(
+                        context,
+                        pageIndex,
                         recordInteractiveRegions: false,
                         resetPaintState: false,
-                        theme: widget.theme,
-                        totalPages: _totalPages,
                       );
                     },
                     pageBuilder: (context, pageIndex) {
-                      return KumihanBookPageSurface(
-                        engine: _engine,
-                        layout: widget.layout,
-                        pageIndex: pageIndex,
+                      final documentPage = _documentPageAtRenderIndex(
+                        pageIndex,
+                      );
+                      return _buildRenderPageWidget(
+                        context,
+                        pageIndex,
                         recordInteractiveRegions: true,
-                        resetPaintState: pageIndex == _currentPage,
-                        theme: widget.theme,
-                        totalPages: _totalPages,
+                        resetPaintState: documentPage == _currentPage,
                       );
                     },
-                    overlay: !_isFlipping
-                        ? _buildInteractiveLayer(pageSize)
-                        : null,
+                    overlay: _buildPageFlipOverlay(pageSize),
                     interactionEnabled: !_showSelectionToolbar,
                   ),
                 ],

@@ -14,6 +14,7 @@ final class PageFlipPainter extends CustomPainter {
     required this.rightPageIndex,
     required this.pageCount,
     required this.pageSize,
+    required this.displayMode,
     required this.scene,
     required this.staticGutterDensity,
     required this.bookColor,
@@ -26,18 +27,23 @@ final class PageFlipPainter extends CustomPainter {
   final int rightPageIndex;
   final int pageCount;
   final Size pageSize;
+  final PageDisplayMode displayMode;
   final FlipScene? scene;
   final PageDensity staticGutterDensity;
   final Color bookColor;
   final Color pageBackgroundColor;
   final Color borderColor;
 
+  bool get _isSinglePage => displayMode == PageDisplayMode.singlePage;
+
   @override
   void paint(Canvas canvas, Size size) {
     final pageWidth = size.width / 2;
     final pageHeight = size.height;
     final currentRightPageIndex = rightPageIndex;
-    final currentLeftPageIndex = rightPageIndex + 1;
+    final currentLeftPageIndex = _isSinglePage
+        ? rightPageIndex
+        : rightPageIndex + 1;
 
     final bookRect = RRect.fromRectAndRadius(
       Offset.zero & size,
@@ -47,12 +53,8 @@ final class PageFlipPainter extends CustomPainter {
     canvas.drawRRect(bookRect, bookPaint);
 
     if (scene != null) {
-      final bottomPageIndex = scene!.direction == FlipDirection.back
-          ? rightPageIndex + 3
-          : rightPageIndex - 2;
-      final flippingPageIndex = scene!.direction == FlipDirection.back
-          ? rightPageIndex + 2
-          : rightPageIndex - 1;
+      final bottomPageIndex = _bottomPageIndexFor(scene!.direction);
+      final flippingPageIndex = _flippingPageIndexFor(scene!.direction);
       final isHard = scene!.density == PageDensity.hard;
 
       if (isHard) {
@@ -70,7 +72,6 @@ final class PageFlipPainter extends CustomPainter {
           pageWidth: pageWidth,
           pageHeight: pageHeight,
           currentLeftPageIndex: currentLeftPageIndex,
-          currentRightPageIndex: currentRightPageIndex,
           scene: scene!,
           isHard: isHard,
         );
@@ -78,15 +79,17 @@ final class PageFlipPainter extends CustomPainter {
           canvas,
           pageWidth: pageWidth,
           pageHeight: pageHeight,
-          currentLeftPageIndex: currentLeftPageIndex,
           currentRightPageIndex: currentRightPageIndex,
           scene: scene!,
           isHard: isHard,
         );
       }
 
-      final bottomImage = _imageForPage(bottomPageIndex);
-      if (bottomPageIndex >= 0 && bottomPageIndex < pageCount) {
+      final bottomImage = bottomPageIndex == null
+          ? null
+          : _imageForPage(bottomPageIndex);
+      if (_isSinglePage ||
+          (bottomPageIndex != null && bottomPageIndex < pageCount)) {
         if (isHard) {
           _drawStaticPage(
             canvas,
@@ -94,17 +97,18 @@ final class PageFlipPainter extends CustomPainter {
                 ? Rect.fromLTWH(pageWidth, 0, pageWidth, pageHeight)
                 : Rect.fromLTWH(0, 0, pageWidth, pageHeight),
             image: bottomImage,
-            pageNumber: bottomPageIndex,
+            pageNumber: bottomPageIndex ?? -1,
             isVisible: true,
           );
         } else {
           _drawBottomPage(
             canvas,
             image: bottomImage,
-            pageIndex: bottomPageIndex,
+            pageIndex: bottomPageIndex ?? -1,
             scene: scene!,
             pageWidth: pageWidth,
             pageHeight: pageHeight,
+            showPageContent: true,
           );
         }
       }
@@ -143,8 +147,12 @@ final class PageFlipPainter extends CustomPainter {
         );
       }
 
-      final flippingImage = _imageForPage(flippingPageIndex);
-      if (flippingPageIndex >= 0 && flippingPageIndex < pageCount) {
+      final flippingImage = flippingPageIndex == null
+          ? null
+          : _imageForPage(flippingPageIndex);
+      if (flippingPageIndex != null &&
+          flippingPageIndex >= 0 &&
+          flippingPageIndex < pageCount) {
         if (isHard) {
           _drawHardPage(
             canvas,
@@ -200,6 +208,28 @@ final class PageFlipPainter extends CustomPainter {
         isVisible: true,
       );
     }
+  }
+
+  int? _bottomPageIndexFor(FlipDirection direction) {
+    if (_isSinglePage) {
+      return direction == FlipDirection.forward
+          ? rightPageIndex
+          : rightPageIndex + 1;
+    }
+    return direction == FlipDirection.back
+        ? rightPageIndex + 3
+        : rightPageIndex - 2;
+  }
+
+  int? _flippingPageIndexFor(FlipDirection direction) {
+    if (_isSinglePage) {
+      return direction == FlipDirection.forward
+          ? rightPageIndex - 1
+          : rightPageIndex;
+    }
+    return direction == FlipDirection.back
+        ? rightPageIndex + 2
+        : rightPageIndex - 1;
   }
 
   void _drawHardBaseStaticPage(
@@ -267,7 +297,6 @@ final class PageFlipPainter extends CustomPainter {
     required double pageWidth,
     required double pageHeight,
     required int currentLeftPageIndex,
-    required int currentRightPageIndex,
     required FlipScene scene,
     required bool isHard,
   }) {
@@ -297,7 +326,6 @@ final class PageFlipPainter extends CustomPainter {
     Canvas canvas, {
     required double pageWidth,
     required double pageHeight,
-    required int currentLeftPageIndex,
     required int currentRightPageIndex,
     required FlipScene scene,
     required bool isHard,
@@ -352,6 +380,7 @@ final class PageFlipPainter extends CustomPainter {
     required FlipScene scene,
     required double pageWidth,
     required double pageHeight,
+    required bool showPageContent,
   }) {
     final pageOrigin = _convertToBookSpace(
       scene.bottomPagePosition,
@@ -377,9 +406,13 @@ final class PageFlipPainter extends CustomPainter {
       pageHeight,
     );
     _drawPageSurface(canvas, rect);
+    if (!showPageContent) {
+      canvas.restore();
+      return;
+    }
     if (image != null) {
       _drawImageIntoRect(canvas, image, rect);
-    } else {
+    } else if (pageIndex >= 0 && pageIndex < pageCount) {
       _drawFallbackPage(canvas, rect, pageIndex + 1);
     }
     canvas.restore();
@@ -416,6 +449,11 @@ final class PageFlipPainter extends CustomPainter {
     final pageRect = Rect.fromLTWH(0, 0, pageWidth, pageHeight);
 
     _drawPageSurface(canvas, pageRect);
+    final showsBackFace = _isSinglePage && _isBackFaceVisible(scene);
+    if (showsBackFace) {
+      canvas.restore();
+      return;
+    }
     if (image != null) {
       _drawImageIntoRect(canvas, image, pageRect);
     } else {
@@ -423,6 +461,8 @@ final class PageFlipPainter extends CustomPainter {
     }
     canvas.restore();
   }
+
+  bool _isBackFaceVisible(FlipScene scene) => scene.angle.abs() > math.pi / 2;
 
   void _drawHardPage(
     Canvas canvas, {
@@ -774,6 +814,7 @@ final class PageFlipPainter extends CustomPainter {
         oldDelegate.rightPageIndex != rightPageIndex ||
         oldDelegate.pageCount != pageCount ||
         oldDelegate.pageSize != pageSize ||
+        oldDelegate.displayMode != displayMode ||
         oldDelegate.scene != scene ||
         oldDelegate.staticGutterDensity != staticGutterDensity ||
         oldDelegate.bookColor != bookColor ||

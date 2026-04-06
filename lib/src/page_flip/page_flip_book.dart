@@ -41,6 +41,7 @@ class PageFlipBook extends StatefulWidget {
     this.snapshotPageBuilder,
     this.controller,
     this.initialRightPageIndex = 0,
+    this.displayMode = PageDisplayMode.doublePage,
     this.flippingTime = const Duration(milliseconds: 1000),
     this.drawShadow = true,
     this.maxShadowOpacity = 0.35,
@@ -59,6 +60,7 @@ class PageFlipBook extends StatefulWidget {
   final Size pageSize;
   final PageFlipController? controller;
   final int initialRightPageIndex;
+  final PageDisplayMode displayMode;
   final Duration flippingTime;
   final bool drawShadow;
   final double maxShadowOpacity;
@@ -129,7 +131,8 @@ class _PageFlipBookState extends State<PageFlipBook>
       widget.controller?.attach(this);
     }
     if (oldWidget.pageCount != widget.pageCount ||
-        oldWidget.pageSize != widget.pageSize) {
+        oldWidget.pageSize != widget.pageSize ||
+        oldWidget.displayMode != widget.displayMode) {
       _disposeSnapshots();
       _rightPageIndex = _normalizeRightPageIndex(_rightPageIndex);
       _resetFlipState();
@@ -146,21 +149,30 @@ class _PageFlipBookState extends State<PageFlipBook>
   }
 
   int get _renderPageCount {
-    if (widget.pageCount.isEven) {
+    if (_isSinglePage || widget.pageCount.isEven) {
       return widget.pageCount;
     }
     return widget.pageCount + 1;
   }
 
+  bool get _isSinglePage => widget.displayMode == PageDisplayMode.singlePage;
+
+  int get _pageTurnStep => _isSinglePage ? 1 : 2;
+
+  int get _maxBasePageIndex =>
+      math.max(0, _renderPageCount - (_isSinglePage ? 1 : 2));
+
   List<int> get _requiredSnapshotIndices {
-    final candidates = <int>{
-      _rightPageIndex - 2,
-      _rightPageIndex - 1,
-      _rightPageIndex,
-      _rightPageIndex + 1,
-      _rightPageIndex + 2,
-      _rightPageIndex + 3,
-    };
+    final candidates = _isSinglePage
+        ? <int>{_rightPageIndex - 1, _rightPageIndex, _rightPageIndex + 1}
+        : <int>{
+            _rightPageIndex - 2,
+            _rightPageIndex - 1,
+            _rightPageIndex,
+            _rightPageIndex + 1,
+            _rightPageIndex + 2,
+            _rightPageIndex + 3,
+          };
     return candidates
         .where((index) => index >= 0 && index < _renderPageCount)
         .toList()
@@ -174,13 +186,18 @@ class _PageFlipBookState extends State<PageFlipBook>
     return <int>{
       if (_rightPageIndex >= 0 && _rightPageIndex < _renderPageCount)
         _rightPageIndex,
-      if (_rightPageIndex + 1 >= 0 && _rightPageIndex + 1 < _renderPageCount)
+      if (!_isSinglePage &&
+          _rightPageIndex + 1 >= 0 &&
+          _rightPageIndex + 1 < _renderPageCount)
         _rightPageIndex + 1,
     };
   }
 
   PageDensity _gutterDensityForSpread(int rightPageIndex) {
-    final visibleIndices = <int>[rightPageIndex, rightPageIndex + 1];
+    final visibleIndices = <int>[
+      rightPageIndex,
+      if (!_isSinglePage) rightPageIndex + 1,
+    ];
     for (final pageIndex in visibleIndices) {
       if (_densityForPage(pageIndex) == PageDensity.hard) {
         return PageDensity.hard;
@@ -191,16 +208,22 @@ class _PageFlipBookState extends State<PageFlipBook>
 
   bool _canFlipFrom(int rightPageIndex, FlipDirection direction) {
     if (direction == FlipDirection.back) {
-      return rightPageIndex + 2 < _renderPageCount;
+      return rightPageIndex + _pageTurnStep < _renderPageCount;
     }
-    return rightPageIndex >= 2;
+    return rightPageIndex >= _pageTurnStep;
   }
 
   int _targetRightPageIndexFor(int rightPageIndex, FlipDirection direction) {
-    final maxRightPageIndex = math.max(0, _renderPageCount - 2);
+    final maxRightPageIndex = _maxBasePageIndex;
     return switch (direction) {
-      FlipDirection.back => (rightPageIndex + 2).clamp(0, maxRightPageIndex),
-      FlipDirection.forward => (rightPageIndex - 2).clamp(0, maxRightPageIndex),
+      FlipDirection.back => (rightPageIndex + _pageTurnStep).clamp(
+        0,
+        maxRightPageIndex,
+      ),
+      FlipDirection.forward => (rightPageIndex - _pageTurnStep).clamp(
+        0,
+        maxRightPageIndex,
+      ),
     };
   }
 
@@ -209,12 +232,16 @@ class _PageFlipBookState extends State<PageFlipBook>
       return PageDensity.hard;
     }
 
-    if (_canFlipFrom(rightPageIndex, FlipDirection.back) &&
-        _gutterDensityForSpread(
-              _targetRightPageIndexFor(rightPageIndex, FlipDirection.back),
-            ) ==
-            PageDensity.hard) {
-      return PageDensity.hard;
+    for (final direction in FlipDirection.values) {
+      if (!_canFlipFrom(rightPageIndex, direction)) {
+        continue;
+      }
+      if (_gutterDensityForSpread(
+            _targetRightPageIndexFor(rightPageIndex, direction),
+          ) ==
+          PageDensity.hard) {
+        return PageDensity.hard;
+      }
     }
 
     return PageDensity.soft;
@@ -234,6 +261,9 @@ class _PageFlipBookState extends State<PageFlipBook>
   PageDensity get _currentGutterDensity {
     final direction = _activeDirection;
     if (_scene != null && direction != null) {
+      if (_scene!.density == PageDensity.hard) {
+        return PageDensity.hard;
+      }
       final sourceDensity = _staticGutterDensity;
       final targetDensity = _animationGutterDensityFor(direction);
       return _scene!.progress < 90 ? sourceDensity : targetDensity;
@@ -245,8 +275,12 @@ class _PageFlipBookState extends State<PageFlipBook>
     if (_renderPageCount <= 0) {
       return 0;
     }
-    final maxRightPageIndex = math.max(0, _renderPageCount - 2);
-    return pageIndex.clamp(0, maxRightPageIndex).toInt() & ~1;
+    final maxRightPageIndex = _maxBasePageIndex;
+    final normalized = pageIndex.clamp(0, maxRightPageIndex).toInt();
+    if (_isSinglePage) {
+      return normalized;
+    }
+    return normalized & ~1;
   }
 
   PageFlipSnapshot _currentSnapshot() {
@@ -268,80 +302,88 @@ class _PageFlipBookState extends State<PageFlipBook>
   Widget build(BuildContext context) {
     _scheduleSnapshotCapture();
 
+    final bookContent = Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: _handlePointerDown,
+      onPointerMove: _handlePointerMove,
+      onPointerUp: _handlePointerUp,
+      onPointerCancel: _handlePointerCancel,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: <Widget>[
+          RepaintBoundary(
+            child: CustomPaint(
+              size: Size(widget.pageSize.width * 2, widget.pageSize.height),
+              painter: PageFlipPainter(
+                pageImages: _pageImages,
+                pageImageVersion: _pageImageVersion,
+                rightPageIndex: _rightPageIndex,
+                pageCount: _renderPageCount,
+                pageSize: widget.pageSize,
+                displayMode: widget.displayMode,
+                scene: _scene,
+                staticGutterDensity: _currentGutterDensity,
+                bookColor: widget.bookColor,
+                pageBackgroundColor: widget.pageBackgroundColor,
+                borderColor: widget.borderColor,
+              ),
+            ),
+          ),
+          ..._buildLivePages(),
+          if (_scene == null)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: CustomPaint(
+                  painter: _BookGutterShadowPainter(
+                    pageWidth: widget.pageSize.width,
+                    density: _currentGutterDensity,
+                  ),
+                ),
+              ),
+            ),
+          if (widget.overlay != null) Positioned.fill(child: widget.overlay!),
+          Positioned(
+            left: -widget.pageSize.width * 8,
+            top: 0,
+            child: IgnorePointer(
+              child: Opacity(
+                opacity: 0.01,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: _requiredSnapshotIndices
+                      .where(
+                        (pageIndex) => !_livePageIndices.contains(pageIndex),
+                      )
+                      .map(_buildSnapshotHost)
+                      .toList(growable: false),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
     return SizedBox(
       width: widget.pageSize.width * 2,
       height: widget.pageSize.height,
-      child: Listener(
-        behavior: HitTestBehavior.translucent,
-        onPointerDown: _handlePointerDown,
-        onPointerMove: _handlePointerMove,
-        onPointerUp: _handlePointerUp,
-        onPointerCancel: _handlePointerCancel,
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: <Widget>[
-            RepaintBoundary(
-              child: CustomPaint(
-                size: Size(widget.pageSize.width * 2, widget.pageSize.height),
-                painter: PageFlipPainter(
-                  pageImages: _pageImages,
-                  pageImageVersion: _pageImageVersion,
-                  rightPageIndex: _rightPageIndex,
-                  pageCount: _renderPageCount,
-                  pageSize: widget.pageSize,
-                  scene: _scene,
-                  staticGutterDensity: _currentGutterDensity,
-                  bookColor: widget.bookColor,
-                  pageBackgroundColor: widget.pageBackgroundColor,
-                  borderColor: widget.borderColor,
-                ),
-              ),
-            ),
-            ..._buildLivePages(),
-            if (_scene == null)
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: CustomPaint(
-                    painter: _BookGutterShadowPainter(
-                      pageWidth: widget.pageSize.width,
-                      density: _currentGutterDensity,
-                    ),
-                  ),
-                ),
-              ),
-            if (widget.overlay != null) Positioned.fill(child: widget.overlay!),
-            Positioned(
-              left: -widget.pageSize.width * 8,
-              top: 0,
-              child: IgnorePointer(
-                child: Opacity(
-                  opacity: 0.01,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: _requiredSnapshotIndices
-                        .where(
-                          (pageIndex) => !_livePageIndices.contains(pageIndex),
-                        )
-                        .map(_buildSnapshotHost)
-                        .toList(growable: false),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
+      child: _isSinglePage
+          ? ClipRect(
+              clipper: _SinglePageViewportClipper(widget.pageSize),
+              child: bookContent,
+            )
+          : bookContent,
     );
   }
 
   @override
   Future<void> nextSpread([int? amount]) async {
-    await showRightPage(_rightPageIndex + 2 * (amount ?? 1));
+    await showRightPage(_rightPageIndex + _pageTurnStep * (amount ?? 1));
   }
 
   @override
   Future<void> prevSpread([int? amount]) async {
-    await showRightPage(_rightPageIndex - 2 * (amount ?? 1));
+    await showRightPage(_rightPageIndex - _pageTurnStep * (amount ?? 1));
   }
 
   @override
@@ -386,12 +428,14 @@ class _PageFlipBookState extends State<PageFlipBook>
     }
 
     return <Widget>[
-      if (_rightPageIndex < _renderPageCount)
+      if (_isSinglePage && _rightPageIndex < _renderPageCount)
+        _buildVisiblePage(pageIndex: _rightPageIndex, left: 0),
+      if (!_isSinglePage && _rightPageIndex < _renderPageCount)
         _buildVisiblePage(
           pageIndex: _rightPageIndex,
           left: widget.pageSize.width,
         ),
-      if (_rightPageIndex + 1 < _renderPageCount)
+      if (!_isSinglePage && _rightPageIndex + 1 < _renderPageCount)
         _buildVisiblePage(pageIndex: _rightPageIndex + 1, left: 0),
     ];
   }
@@ -531,6 +575,9 @@ class _PageFlipBookState extends State<PageFlipBook>
     }
 
     final bookPosition = _clampToBook(event.localPosition);
+    if (!_isInInteractionRegion(bookPosition)) {
+      return;
+    }
     final blockedPageIndex = _interactivePageIndexAt(bookPosition);
     if (blockedPageIndex != null) {
       _blockedPointer = event.pointer;
@@ -578,7 +625,12 @@ class _PageFlipBookState extends State<PageFlipBook>
           !_shouldGrabFromSwipe(bookPosition - touchStartPosition)) {
         return;
       }
-      if (!_startFlip(bookPosition)) {
+      if (!_startFlip(
+        bookPosition,
+        forcedDirection: _directionForSwipeDelta(
+          bookPosition - touchStartPosition,
+        ),
+      )) {
         _clearTouchTracking();
         _notifySnapshotChanged();
         return;
@@ -676,10 +728,10 @@ class _PageFlipBookState extends State<PageFlipBook>
     );
   }
 
-  bool _startFlip(Offset bookPosition) {
+  bool _startFlip(Offset bookPosition, {FlipDirection? forcedDirection}) {
     _clearFlipSceneState();
 
-    final direction = _directionForPoint(bookPosition);
+    final direction = forcedDirection ?? _directionForPoint(bookPosition);
     if (!_canFlip(direction)) {
       return false;
     }
@@ -776,7 +828,10 @@ class _PageFlipBookState extends State<PageFlipBook>
     }
 
     final y = scene.corner == FlipCorner.bottom ? widget.pageSize.height : 0.0;
-    if (scene.pagePosition.dx <= 0) {
+    final turnsPage = _isSinglePage
+        ? _shouldTurnSinglePage(scene)
+        : scene.pagePosition.dx <= 0;
+    if (turnsPage) {
       _animateFlipTo(
         start: scene.pagePosition,
         destination: Offset(-widget.pageSize.width, y),
@@ -834,14 +889,14 @@ class _PageFlipBookState extends State<PageFlipBook>
     if (_animationTurnsPage && _activeDirection != null) {
       setState(() {
         if (_activeDirection == FlipDirection.back) {
-          _rightPageIndex = (_rightPageIndex + 2).clamp(
+          _rightPageIndex = (_rightPageIndex + _pageTurnStep).clamp(
             0,
-            _renderPageCount - 2,
+            _maxBasePageIndex,
           );
         } else {
-          _rightPageIndex = (_rightPageIndex - 2).clamp(
+          _rightPageIndex = (_rightPageIndex - _pageTurnStep).clamp(
             0,
-            _renderPageCount - 2,
+            _maxBasePageIndex,
           );
         }
       });
@@ -867,10 +922,17 @@ class _PageFlipBookState extends State<PageFlipBook>
   }
 
   bool _isInEdgeGrabZone(Offset bookPosition) {
+    if (!_isInInteractionRegion(bookPosition)) {
+      return false;
+    }
     final edgeWidth = (widget.pageSize.width * _edgeGrabWidthRatio).clamp(
       24.0,
       64.0,
     );
+    if (_isSinglePage) {
+      return bookPosition.dx <= edgeWidth ||
+          bookPosition.dx >= widget.pageSize.width - edgeWidth;
+    }
     return bookPosition.dx <= edgeWidth ||
         bookPosition.dx >= widget.pageSize.width * 2 - edgeWidth;
   }
@@ -885,27 +947,68 @@ class _PageFlipBookState extends State<PageFlipBook>
       widget.pageSize.width * _edgeGrabInsetRatio,
       32.0,
     );
-    final x = bookPosition.dx < widget.pageSize.width
-        ? edgeInset
-        : widget.pageSize.width * 2 - edgeInset;
+    final x = _isSinglePage
+        ? (bookPosition.dx < widget.pageSize.width / 2
+              ? edgeInset
+              : widget.pageSize.width - edgeInset)
+        : (bookPosition.dx < widget.pageSize.width
+              ? edgeInset
+              : widget.pageSize.width * 2 - edgeInset);
     return Offset(x, bookPosition.dy);
   }
 
   FlipDirection _directionForPoint(Offset bookPosition) {
-    if (bookPosition.dx < widget.pageSize.width) {
+    final midpoint = _isSinglePage
+        ? widget.pageSize.width / 2
+        : widget.pageSize.width;
+    if (bookPosition.dx < midpoint) {
       return FlipDirection.back;
     }
     return FlipDirection.forward;
   }
 
+  FlipDirection _directionForSwipeDelta(Offset delta) {
+    if (delta.dx >= 0) {
+      return FlipDirection.back;
+    }
+    return FlipDirection.forward;
+  }
+
+  bool _isInInteractionRegion(Offset bookPosition) {
+    return !_isSinglePage || bookPosition.dx <= widget.pageSize.width;
+  }
+
+  bool _shouldTurnSinglePage(FlipScene scene) {
+    final bookPosition = switch (scene.direction) {
+      FlipDirection.forward => Offset(
+        scene.pagePosition.dx + widget.pageSize.width,
+        scene.pagePosition.dy,
+      ),
+      FlipDirection.back => Offset(
+        widget.pageSize.width - scene.pagePosition.dx,
+        scene.pagePosition.dy,
+      ),
+    };
+    final midpoint = widget.pageSize.width / 2;
+    return switch (scene.direction) {
+      FlipDirection.back => bookPosition.dx >= midpoint,
+      FlipDirection.forward => bookPosition.dx <= midpoint,
+    };
+  }
+
   bool _canFlip(FlipDirection direction) {
     if (direction == FlipDirection.back) {
-      return _rightPageIndex + 2 < _renderPageCount;
+      return _rightPageIndex + _pageTurnStep < _renderPageCount;
     }
-    return _rightPageIndex >= 2;
+    return _rightPageIndex >= _pageTurnStep;
   }
 
   int _flippingPageIndexFor(FlipDirection direction) {
+    if (_isSinglePage) {
+      return direction == FlipDirection.forward
+          ? _rightPageIndex - 1
+          : _rightPageIndex;
+    }
     return direction == FlipDirection.back
         ? _rightPageIndex + 2
         : _rightPageIndex - 1;
@@ -921,6 +1024,9 @@ class _PageFlipBookState extends State<PageFlipBook>
   PageDensity _drawingDensityFor(FlipDirection direction) {
     final flippingPageIndex = _flippingPageIndexFor(direction);
     final flippingDensity = _densityForPage(flippingPageIndex);
+    if (_isSinglePage) {
+      return flippingDensity;
+    }
     final neighborIndex = direction == FlipDirection.back
         ? flippingPageIndex - 1
         : flippingPageIndex + 1;
@@ -990,8 +1096,14 @@ class _PageFlipBookState extends State<PageFlipBook>
 
   int? _pageIndexForBookPosition(Offset bookPosition) {
     if (bookPosition.dx < widget.pageSize.width) {
+      if (_isSinglePage) {
+        return _rightPageIndex < _renderPageCount ? _rightPageIndex : null;
+      }
       final leftPageIndex = _rightPageIndex + 1;
       return leftPageIndex < _renderPageCount ? leftPageIndex : null;
+    }
+    if (_isSinglePage) {
+      return null;
     }
     return _rightPageIndex < _renderPageCount ? _rightPageIndex : null;
   }
@@ -1145,5 +1257,27 @@ final class _BookGutterShadowPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _BookGutterShadowPainter oldDelegate) {
     return oldDelegate.pageWidth != pageWidth || oldDelegate.density != density;
+  }
+}
+
+final class _SinglePageViewportClipper extends CustomClipper<Rect> {
+  const _SinglePageViewportClipper(this.pageSize);
+
+  final Size pageSize;
+
+  @override
+  Rect getClip(Size size) {
+    final verticalOverflow = pageSize.height * 0.1;
+    return Rect.fromLTWH(
+      0,
+      -verticalOverflow,
+      pageSize.width,
+      pageSize.height * 1.2,
+    );
+  }
+
+  @override
+  bool shouldReclip(covariant _SinglePageViewportClipper oldClipper) {
+    return oldClipper.pageSize != pageSize;
   }
 }

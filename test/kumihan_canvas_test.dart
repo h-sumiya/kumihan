@@ -809,6 +809,86 @@ void main() {
     },
   );
 
+  testWidgets('kumihan book composes cover and blank pages in double spread', (
+    tester,
+  ) async {
+    final document = const AozoraParser().parse(
+      '甲頁です。\n［＃改ページ］\n乙頁です。\n［＃改ページ］\n丙頁です。',
+    );
+
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: SizedBox(
+          width: 800,
+          height: 600,
+          child: KumihanBook(
+            document: document,
+            frontCover: const ColoredBox(
+              color: Color(0xFF1F3B5C),
+              child: SizedBox.expand(),
+            ),
+            backCover: const ColoredBox(
+              color: Color(0xFF3B1F4A),
+              child: SizedBox.expand(),
+            ),
+            blankPage: const ColoredBox(
+              color: Color(0xFFEEE6D8),
+              child: SizedBox.expand(),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    final pageFlip = tester.widget<PageFlipBook>(find.byType(PageFlipBook));
+    expect(pageFlip.displayMode, PageDisplayMode.doublePage);
+    expect(pageFlip.pageCount, 6);
+    expect(pageFlip.pageDensityBuilder?.call(0), PageDensity.hard);
+    expect(pageFlip.pageDensityBuilder?.call(4), PageDensity.soft);
+    expect(pageFlip.pageDensityBuilder?.call(5), PageDensity.hard);
+    expect(find.byType(KumihanDefaultBookDesk), findsOneWidget);
+  });
+
+  testWidgets(
+    'kumihan book single spread enables edge overlay and skips blank',
+    (tester) async {
+      final document = const AozoraParser().parse(
+        '甲頁です。\n［＃改ページ］\n乙頁です。\n［＃改ページ］\n丙頁です。',
+      );
+
+      await tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: SizedBox(
+            width: 800,
+            height: 600,
+            child: KumihanBook(
+              document: document,
+              spreadMode: KumihanSpreadMode.single,
+              frontCover: const ColoredBox(color: Color(0xFF1F3B5C)),
+              backCover: const ColoredBox(color: Color(0xFF3B1F4A)),
+              blankPage: const ColoredBox(color: Color(0xFFEEE6D8)),
+              singlePageEdge: const SizedBox(width: 8, height: 8),
+            ),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      final pageFlip = tester.widget<PageFlipBook>(find.byType(PageFlipBook));
+      expect(pageFlip.displayMode, PageDisplayMode.singlePage);
+      expect(pageFlip.pageCount, 5);
+      expect(pageFlip.pageDensityBuilder?.call(0), PageDensity.hard);
+      expect(pageFlip.pageDensityBuilder?.call(4), PageDensity.hard);
+      expect(find.byType(KumihanSinglePageEdgeOverlay), findsOneWidget);
+      expect(find.byType(KumihanDefaultBookDesk), findsNothing);
+    },
+  );
+
   testWidgets('kumihan book toolbar tap does not flip pages', (tester) async {
     final document = const AozoraParser().parse(
       '甲頁です。\n［＃改ページ］\n乙頁です。\n［＃改ページ］\n丙頁です。\n［＃改ページ］\n丁頁です。',

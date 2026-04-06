@@ -492,7 +492,10 @@ class BookSpreadRenderer {
         ? _globalBodyRectForSlot(metrics.viewportSize, sourceSlot)
         : metrics.bodyRect;
     final globalHeaderX = switch (spreadMode) {
-      KumihanSpreadMode.single => metrics.topUiPadding.left,
+      KumihanSpreadMode.single => resolvePageMetrics(
+        metrics.viewportSize,
+        BookPageSlot.left,
+      ).topUiPadding.left,
       KumihanSpreadMode.doublePage => resolvePageMetrics(
         metrics.viewportSize,
         BookPageSlot.left,

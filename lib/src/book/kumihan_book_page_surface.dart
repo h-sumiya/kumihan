@@ -17,6 +17,7 @@ class KumihanBookPageSurface extends StatelessWidget {
     required this.resetPaintState,
     required this.theme,
     required this.totalPages,
+    required this.spreadMode,
   });
 
   final KumihanEngine engine;
@@ -26,6 +27,7 @@ class KumihanBookPageSurface extends StatelessWidget {
   final bool resetPaintState;
   final KumihanThemeData theme;
   final int totalPages;
+  final KumihanSpreadMode spreadMode;
 
   @override
   Widget build(BuildContext context) {
@@ -38,6 +40,7 @@ class KumihanBookPageSurface extends StatelessWidget {
         resetPaintState: resetPaintState,
         theme: theme,
         totalPages: totalPages,
+        spreadMode: spreadMode,
       ),
       size: Size.infinite,
     );
@@ -53,6 +56,7 @@ class _KumihanBookPageSurfacePainter extends CustomPainter {
     required this.resetPaintState,
     required this.theme,
     required this.totalPages,
+    required this.spreadMode,
   });
 
   final KumihanEngine engine;
@@ -62,25 +66,37 @@ class _KumihanBookPageSurfacePainter extends CustomPainter {
   final bool resetPaintState;
   final KumihanThemeData theme;
   final int totalPages;
+  final KumihanSpreadMode spreadMode;
 
   @override
   void paint(ui.Canvas canvas, ui.Size size) {
-    final slot = pageIndex.isEven ? BookPageSlot.right : BookPageSlot.left;
-    final currentPage = pageIndex.isEven ? pageIndex : pageIndex - 1;
+    final slot = spreadMode == KumihanSpreadMode.single
+        ? BookPageSlot.single
+        : (pageIndex.isEven ? BookPageSlot.right : BookPageSlot.left);
+    final currentPage = spreadMode == KumihanSpreadMode.single
+        ? pageIndex
+        : (pageIndex.isEven ? pageIndex : pageIndex - 1);
     if (resetPaintState) {
       engine.resetPaintState();
     }
+    final layoutForPainting = spreadMode == KumihanSpreadMode.single
+        ? layout.copyWith(
+            singlePageNumberPosition: KumihanSinglePageNumberPosition.right,
+          )
+        : layout;
     final renderer = BookSpreadRenderer(
       engine: engine,
-      layout: layout,
+      layout: layoutForPainting,
       theme: theme,
-      spreadMode: KumihanSpreadMode.doublePage,
+      spreadMode: spreadMode,
     );
     renderer.paintViewport(
       canvas,
       size,
       viewportSlot: slot,
-      globalViewportOrigin: slot == BookPageSlot.right
+      globalViewportOrigin:
+          spreadMode == KumihanSpreadMode.doublePage &&
+              slot == BookPageSlot.right
           ? Offset(size.width, 0)
           : Offset.zero,
       currentPage: currentPage,
@@ -97,6 +113,7 @@ class _KumihanBookPageSurfacePainter extends CustomPainter {
         oldDelegate.recordInteractiveRegions != recordInteractiveRegions ||
         oldDelegate.resetPaintState != resetPaintState ||
         oldDelegate.theme != theme ||
-        oldDelegate.totalPages != totalPages;
+        oldDelegate.totalPages != totalPages ||
+        oldDelegate.spreadMode != spreadMode;
   }
 }
