@@ -2,7 +2,6 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/painting.dart';
 
-import '../debug/render_trace.dart';
 import 'constants.dart';
 import 'helpers.dart';
 import 'line_breaker.dart';
@@ -22,6 +21,61 @@ class LayoutBlockUserData {
   final List<LayoutRuby> rubies;
 }
 
+enum LayoutAnnotationKind {
+  unsupported,
+  outsideImage,
+  inlineImage,
+  link,
+  ruledLine,
+  tcy,
+  textStyle,
+  warichu,
+  midashi,
+  anchor,
+  kaeritenKunten,
+  inlineStyleDash,
+  inlineStyleSmall,
+  inlineStyleCombined,
+  kaeri,
+  naka,
+  okuri,
+  rightRuby,
+  leftRuby,
+  frame,
+  span,
+  emphasis,
+  noteReference,
+  note,
+}
+
+enum LayoutInlineDecorationKind {
+  rightRuby,
+  leftRuby,
+  kaeri,
+  naka,
+  okuri,
+  referenceNote,
+  annotationNote,
+  rightEmphasis,
+  leftEmphasis,
+}
+
+enum LayoutExtraType {
+  unsupported,
+  frame,
+  outsideImage,
+  inlineImage,
+  link,
+  ruledLine,
+  tcy,
+  textStyle,
+  warichu,
+  noteReference,
+  span,
+  emphasis,
+  note,
+}
+
 class LayoutInsert {
   LayoutInsert({
     required this.startIndex,
@@ -33,7 +87,7 @@ class LayoutInsert {
   final int startIndex;
   final String text;
   LayoutTextLine? tl;
-  final String type;
+  final LayoutInlineDecorationKind type;
 }
 
 class LayoutStyleSpan {
@@ -67,25 +121,29 @@ class LayoutRuby {
   LayoutTextBlock? tb;
   double trackingEnd;
   double trackingStart;
-  final String type;
+  final LayoutInlineDecorationKind type;
 }
 
 class LayoutExtra {
   LayoutExtra({
     required this.type,
+    this.imageHeight,
+    this.imageWidth,
     this.endIndex,
+    this.linkTarget,
     this.ruby,
     this.startIndex,
     this.style,
-    this.userData,
   });
 
   final int? endIndex;
+  final double? imageHeight;
+  final double? imageWidth;
+  final String? linkTarget;
   final String? ruby;
   final int? startIndex;
   final String? style;
-  final String type;
-  final String? userData;
+  final LayoutExtraType type;
 }
 
 const String _sidewaysCloseGlyphs = '$closingBrackets$punctuationMarks・￼゛゜';
@@ -276,9 +334,22 @@ class LayoutAtom {
   }
 }
 
-sealed class LayoutLineMark {
+sealed class LayoutTextLineAttachment {
+  const LayoutTextLineAttachment();
+}
+
+class InlineDecorationAttachment extends LayoutTextLineAttachment {
+  const InlineDecorationAttachment({required this.kind, required this.line});
+
+  final LayoutInlineDecorationKind kind;
+  final LayoutTextLine line;
+}
+
+sealed class LayoutLineMark extends LayoutTextLineAttachment {
   const LayoutLineMark();
 }
+
+enum LayoutNoteMarkerKind { reference, annotation }
 
 class NoteMarker extends LayoutLineMark {
   const NoteMarker({
@@ -287,13 +358,33 @@ class NoteMarker extends LayoutLineMark {
     required this.markType,
     required this.top,
     required this.width,
+    this.kind,
   });
 
   final String annotation;
   final double height;
+  final LayoutNoteMarkerKind? kind;
   final String markType;
   final double top;
   final double width;
+}
+
+enum LayoutSpanMarkerKind {
+  frameStart,
+  frameEnd,
+  frameMiddle,
+  frameBox,
+  rightSolid,
+  rightDouble,
+  rightChain,
+  rightDashed,
+  rightWave,
+  leftSolid,
+  leftDouble,
+  leftChain,
+  leftDashed,
+  leftWave,
+  cancel,
 }
 
 class SpanMarker extends LayoutLineMark {
@@ -303,11 +394,13 @@ class SpanMarker extends LayoutLineMark {
     required this.top,
     this.isEnd,
     this.isStart,
+    this.kind,
   });
 
   final double bottom;
   final bool? isEnd;
   final bool? isStart;
+  final LayoutSpanMarkerKind? kind;
   final String markType;
   final double top;
 }
@@ -315,14 +408,14 @@ class SpanMarker extends LayoutLineMark {
 class LinkMarker extends LayoutLineMark {
   const LinkMarker({
     required this.endAtom,
+    required this.linkTarget,
     required this.startAtom,
-    required this.userData,
   }) : markType = 'リンク';
 
   final int endAtom;
+  final String linkTarget;
   final String markType;
   final int startAtom;
-  final String userData;
 }
 
 class WarichuMarker extends LayoutLineMark {
@@ -330,6 +423,10 @@ class WarichuMarker extends LayoutLineMark {
 
   final LayoutTextLine? lowerLine;
   final LayoutTextLine? upperLine;
+}
+
+class QuoteMarker extends LayoutLineMark {
+  const QuoteMarker();
 }
 
 class LayoutTextLine {
@@ -343,9 +440,15 @@ class LayoutTextLine {
   LayoutTextLine? nextLine;
   double y = 0;
   double x = 0;
+  int? pageIndex;
   Color? color;
-  final Map<String, double> rubyBottom = <String, double>{'ル': 0, 'る': 0};
-  final List<Object> userData = <Object>[];
+  final Map<LayoutInlineDecorationKind, double> rubyBottom =
+      <LayoutInlineDecorationKind, double>{
+        LayoutInlineDecorationKind.rightRuby: 0,
+        LayoutInlineDecorationKind.leftRuby: 0,
+      };
+  final List<LayoutTextLineAttachment> attachments =
+      <LayoutTextLineAttachment>[];
 
   double getAtomY(int atomIndex, {bool includeTrailingTracking = false}) {
     var offset = 0.0;
@@ -376,7 +479,6 @@ class LayoutTextLine {
     double baseX,
     double baseY, {
     bool backPage = false,
-    KumihanRenderCommandSink? traceSink,
   }) {
     final environment = block.environment;
 
@@ -400,18 +502,6 @@ class LayoutTextLine {
         canvas.scale(rect.width / pictureWidth, rect.height / pictureHeight);
         canvas.drawPicture(atom.picture!);
         canvas.restore();
-        traceSink?.call(
-          KumihanRenderCommand(
-            kind: 'picture',
-            translateX: rect.left,
-            translateY: rect.top,
-            width: pictureWidth,
-            height: pictureHeight,
-            scaleX: rect.width / pictureWidth,
-            scaleY: rect.height / pictureHeight,
-            data: <String, Object?>{'atomIndex': index, 'backPage': backPage},
-          ),
-        );
       } else if (atom.image != null) {
         final imageWidth = atom.width!;
         final imageHeight = atom.height!;
@@ -439,18 +529,6 @@ class LayoutTextLine {
           rect,
           paint,
         );
-        traceSink?.call(
-          KumihanRenderCommand(
-            kind: 'image',
-            translateX: rect.left,
-            translateY: rect.top,
-            width: atom.image!.width.toDouble(),
-            height: atom.image!.height.toDouble(),
-            scaleX: rect.width / atom.image!.width,
-            scaleY: rect.height / atom.image!.height,
-            data: <String, Object?>{'atomIndex': index, 'backPage': backPage},
-          ),
-        );
       } else {
         final text = block.getAtomText(index);
         if (text != '￼') {
@@ -467,28 +545,14 @@ class LayoutTextLine {
             }
             canvas.translate(x, translatedY);
             canvas.rotate(0.5 * 3.1415926535897932);
+            if (text == rotatedProlongedSoundMark) {
+              // After the 90-degree rotation, the prolonged sound mark needs
+              // an additional horizontal mirror to preserve its stroke shape.
+              canvas.scale(1, -1);
+            }
             painter.paint(
               canvas,
               const Offset(0, 0) - Offset(0, painter.height / 2),
-            );
-            traceSink?.call(
-              KumihanRenderCommand(
-                kind: 'glyph',
-                text: text,
-                translateX: x,
-                translateY: translatedY,
-                localX: 0,
-                localY: -painter.height / 2,
-                width: painter.width,
-                height: painter.height,
-                rotation: 0.5 * 3.1415926535897932,
-                data: <String, Object?>{
-                  'atomIndex': index,
-                  'backPage': backPage,
-                  'fontSize': fontSize,
-                  'rotated': true,
-                },
-              ),
             );
           } else {
             if (atom.getT()) {
@@ -513,22 +577,6 @@ class LayoutTextLine {
                 y + fontSize / 2 - painter.height / 2,
               ),
             );
-            traceSink?.call(
-              KumihanRenderCommand(
-                kind: 'glyph',
-                text: text,
-                localX: x - painter.width / 2,
-                localY: y + fontSize / 2 - painter.height / 2,
-                width: painter.width,
-                height: painter.height,
-                data: <String, Object?>{
-                  'atomIndex': index,
-                  'backPage': backPage,
-                  'fontSize': fontSize,
-                  'rotated': false,
-                },
-              ),
-            );
           }
           canvas.restore();
         }
@@ -543,7 +591,6 @@ class LayoutTextLine {
     double baseX,
     double baseY, {
     bool backPage = false,
-    KumihanRenderCommandSink? traceSink,
   }) {
     final environment = block.environment;
 
@@ -567,22 +614,6 @@ class LayoutTextLine {
         canvas.scale(rect.width / pictureHeight, rect.height / pictureWidth);
         canvas.drawPicture(atom.picture!);
         canvas.restore();
-        traceSink?.call(
-          KumihanRenderCommand(
-            kind: 'picture',
-            translateX: rect.left,
-            translateY: rect.top,
-            width: pictureHeight,
-            height: pictureWidth,
-            scaleX: rect.width / pictureHeight,
-            scaleY: rect.height / pictureWidth,
-            data: <String, Object?>{
-              'atomIndex': index,
-              'backPage': backPage,
-              'writingMode': 'horizontal',
-            },
-          ),
-        );
       } else if (atom.image != null) {
         final imageHeight = atom.height!;
         final imageWidth = atom.width!;
@@ -610,22 +641,6 @@ class LayoutTextLine {
           rect,
           paint,
         );
-        traceSink?.call(
-          KumihanRenderCommand(
-            kind: 'image',
-            translateX: rect.left,
-            translateY: rect.top,
-            width: atom.image!.width.toDouble(),
-            height: atom.image!.height.toDouble(),
-            scaleX: rect.width / atom.image!.width,
-            scaleY: rect.height / atom.image!.height,
-            data: <String, Object?>{
-              'atomIndex': index,
-              'backPage': backPage,
-              'writingMode': 'horizontal',
-            },
-          ),
-        );
       } else {
         final text = block.getAtomText(index);
         if (text != '￼') {
@@ -639,22 +654,6 @@ class LayoutTextLine {
             x -= 0.26 * fontSize;
           }
           painter.paint(canvas, Offset(x, baseline - painter.height / 2));
-          traceSink?.call(
-            KumihanRenderCommand(
-              kind: 'glyph',
-              text: text,
-              localX: x,
-              localY: baseline - painter.height / 2,
-              width: painter.width,
-              height: painter.height,
-              data: <String, Object?>{
-                'atomIndex': index,
-                'backPage': backPage,
-                'fontSize': fontSize,
-                'writingMode': 'horizontal',
-              },
-            ),
-          );
           canvas.restore();
         }
       }

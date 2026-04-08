@@ -1,0 +1,5 @@
+build/
+flutter_*.log
+*.iml
+example/assets/cover.png
+example/assets/paper_textures/

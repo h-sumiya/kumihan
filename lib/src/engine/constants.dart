@@ -1,7 +1,5 @@
 import 'dart:ui';
 
-import '../kumihan_types.dart';
-
 const String bundledFontPackage = 'kumihan';
 
 const List<String> defaultMinchoFontFamilies = <String>[
@@ -128,19 +126,28 @@ const Map<String, String> accentsTable = <String, String>{
   'u_': 'ū',
 };
 
-typedef CurrentState = String;
+enum EngineWritingDirection { vertical, horizontal }
 
-KumihanSpreadMode getSpreadFromState(CurrentState currentState) {
-  return currentState.endsWith('single')
-      ? KumihanSpreadMode.single
-      : KumihanSpreadMode.doublePage;
+enum EngineSpreadMode { single, doublePage }
+
+class EngineLayoutState {
+  const EngineLayoutState({
+    this.writingDirection = EngineWritingDirection.vertical,
+    this.spreadMode = EngineSpreadMode.single,
+  });
+
+  final EngineWritingDirection writingDirection;
+  final EngineSpreadMode spreadMode;
+
+  bool get isVertical => writingDirection == EngineWritingDirection.vertical;
+
+  bool get isHorizontal =>
+      writingDirection == EngineWritingDirection.horizontal;
+
+  bool get isDoublePage => spreadMode == EngineSpreadMode.doublePage;
 }
 
-KumihanWritingMode getWritingModeFromState(CurrentState currentState) {
-  return currentState.startsWith('h')
-      ? KumihanWritingMode.horizontal
-      : KumihanWritingMode.vertical;
-}
+const EngineLayoutState defaultEngineLayoutState = EngineLayoutState();
 
 double clampDouble(double value, double minimum, double maximum) {
   if (value < minimum) {

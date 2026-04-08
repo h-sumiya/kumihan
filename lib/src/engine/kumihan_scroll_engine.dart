@@ -1,0 +1,1796 @@
+import 'dart:async';
+import 'dart:math' as math;
+import 'dart:ui' as ui;
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart';
+
+import '../ast.dart';
+import '../document.dart';
+import '../kumihan_theme.dart';
+import '../kumihan_types.dart';
+import 'constants.dart';
+import 'document_compiler.dart';
+import 'helpers.dart';
+import 'layout_primitives.dart';
+import 'table_renderer.dart';
+import 'warichu.dart';
+
+part 'kumihan_scroll_renderer.dart';
+
+final RegExp _cjkIdeographPattern = RegExp('[⺀-⻳㐁-䶮一-龻豈-龎仝々〆〇ヶ]');
+
+enum _IndexKind { headingLarge, headingMedium, headingSmall, anchor }
+
+class _IndexEntry {
+  _IndexEntry({
+    required this.endIndex,
+    required this.paragraphNo,
+    required this.startIndex,
+    required this.kind,
+    this.anchorName,
+  });
+
+  final String? anchorName;
+  final int endIndex;
+  final _IndexKind kind;
+  final int paragraphNo;
+  final int startIndex;
+}
+
+class PositionInfo {
+  PositionInfo({
+    required this.leftToRight,
+    required this.length,
+    required this.offset,
+    required this.paragraphNo,
+  });
+
+  bool leftToRight;
+  int length;
+  int offset;
+  int paragraphNo;
+}
+
+class ChapterEntry {
+  ChapterEntry({required this.label, required this.pageNo});
+
+  final String label;
+  final int pageNo;
+}
+
+class ClickableArea {
+  ClickableArea({
+    required this.data,
+    required this.height,
+    required this.type,
+    required this.width,
+    required this.x,
+    required this.y,
+  });
+
+  final String type;
+  final double x;
+  final double y;
+  final double width;
+  final double height;
+  final String data;
+
+  bool hit(double px, double py) {
+    return px >= x && py >= y && px < x + width && py < y + height;
+  }
+}
+
+class LineGroup {
+  LineGroup(this.primary) : lines = <LayoutTextLine>[primary];
+
+  final LayoutTextLine primary;
+  final List<LayoutTextLine> lines;
+  double gapBefore = 0;
+  double xStart = 0;
+  double xEnd = 0;
+
+  double get width => primary.width;
+}
+
+class RendererSettings {
+  const RendererSettings({
+    this.fontSize = 18,
+    this.rubyColor = fontColor,
+    this.smallBouten = true,
+    this.widenLineSpace = false,
+  });
+
+  final double fontSize;
+  final Color rubyColor;
+  final bool smallBouten;
+  final bool widenLineSpace;
+}
+
+typedef KumihanImageLoader = Future<ui.Image?> Function(String path);
+
+class KumihanScrollEngine implements LayoutEnvironment {
+  KumihanScrollEngine({
+    required this.baseUri,
+    this.layout = const KumihanLayoutData(),
+    this.theme = const KumihanThemeData(),
+    required this.onInvalidate,
+    required this.onSnapshot,
+    this.imageLoader,
+  }) {
+    fontColor = theme.textColor;
+    paperColor = theme.paperColor;
+    _updateSizes();
+  }
+
+  final Uri? baseUri;
+  final VoidCallback onInvalidate;
+  final ValueChanged<KumihanScrollSnapshot> onSnapshot;
+  final KumihanImageLoader? imageLoader;
+  KumihanLayoutData layout;
+  KumihanThemeData theme;
+  final RendererSettings _settings = const RendererSettings();
+
+  @override
+  final List<String> gothicFontFamilies = defaultGothicFontFamilies;
+  @override
+  final List<String> fixedGothicFontFamilies = defaultFixedGothicFontFamilies;
+  @override
+  final List<String> fixedMinchoFontFamilies = defaultFixedMinchoFontFamilies;
+  @override
+  final List<String> minchoFontFamilies = defaultMinchoFontFamilies;
+
+  @override
+  late Color fontColor;
+  @override
+  late Color paperColor;
+
+  List<AstCompiledEntry> _entries = const <AstCompiledEntry>[];
+  int _layoutToken = 0;
+  final EngineLayoutState _layoutState = defaultEngineLayoutState;
+  final bool _forceIndent = false;
+  final List<LayoutTextBlock> _blocks = <LayoutTextBlock>[];
+  final List<LineGroup> _lines = <LineGroup>[];
+  final List<_IndexEntry> _indexes = <_IndexEntry>[];
+  final Map<String, ui.Image?> _images = <String, ui.Image?>{};
+  final Map<String, Future<ui.Image?>> _imageTasks =
+      <String, Future<ui.Image?>>{};
+  final Map<AstCompiledTableEntry, RenderedTableBlock> _tables =
+      <AstCompiledTableEntry, RenderedTableBlock>{};
+  List<ClickableArea> _clickable = <ClickableArea>[];
+  List<KumihanSelectableGlyph> _selectableGlyphs = <KumihanSelectableGlyph>[];
+  int _selectableGlyphOrder = 0;
+
+  double _width = 1;
+  double _height = 1;
+  double _fontSize = 18;
+  double _lineSpace = 0;
+  double _pageMarginSide = 0;
+  double _pageMarginTrailing = 0;
+  double _pageMarginTop = 0;
+  double _pageMarginBottom = 0;
+  double _pageWidth = 0;
+  double _pageHeight = 0;
+  double _contentWidth = 1;
+  double _scrollOffset = 0;
+  double _maxScrollOffset = 0;
+  double _pendingGapWidth = 0;
+  int _currentFontType = 0;
+  bool _currentFontBold = false;
+  bool _currentFontItalic = false;
+  double _currentFontSize = 0;
+  String _currentTextRotation = 'v';
+  bool _inCaption = false;
+  bool _inYokogumi = false;
+  double _firstTopMargin = 0;
+  double _restTopMargin = 0;
+  double _bottomMargin = 0;
+  bool _alignBottom = false;
+  bool _frameDrawing = false;
+  bool _quoteDrawing = false;
+  double _frameTop = 0;
+  double _frameBottom = 0;
+
+  final double _fontScaleL = 1.2;
+  final double _fontScaleS = 0.85;
+
+  bool get _hasLayoutContent => _entries.isNotEmpty;
+
+  String get _defaultTextRotation => _layoutState.isHorizontal ? 'h' : 'v';
+
+  KumihanScrollSnapshot get snapshot => KumihanScrollSnapshot(
+    viewportWidth: _width,
+    viewportHeight: _height,
+    scrollOffset: _scrollOffset,
+    maxScrollOffset: _maxScrollOffset,
+    contentWidth: _contentWidth,
+    visibleRange: Rect.fromLTWH(_scrollOffset, 0, _width, _height),
+  );
+
+  List<KumihanSelectableGlyph> get selectableGlyphs =>
+      List<KumihanSelectableGlyph>.unmodifiable(_selectableGlyphs);
+
+  @override
+  MeasuredText layoutText(LayoutAtom atom, String text, Color color) {
+    final painter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: atom.createTextStyle(this, color: color),
+      ),
+      textAlign: TextAlign.left,
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+      textScaler: TextScaler.noScaling,
+    )..layout();
+    final metrics = painter.computeLineMetrics();
+    final line = metrics.isNotEmpty ? metrics.first : null;
+    return MeasuredText(
+      painter: painter,
+      ascent: line?.ascent ?? painter.height,
+      descent: line?.descent ?? 0,
+      width: painter.width,
+    );
+  }
+
+  Future<void> open(Document document) async {
+    final compiled = compileAst(document);
+    _entries = compiled.entries;
+    await _relayout();
+  }
+
+  Future<void> updateLayout(KumihanLayoutData nextLayout) async {
+    if (nextLayout == layout) {
+      return;
+    }
+
+    layout = nextLayout;
+
+    if (_hasLayoutContent) {
+      await _relayout();
+    } else {
+      _updateSizes();
+      _notifySnapshot();
+      onInvalidate();
+    }
+  }
+
+  Future<void> updateTheme(KumihanThemeData nextTheme) async {
+    if (nextTheme == theme) {
+      return;
+    }
+
+    theme = nextTheme;
+    fontColor = theme.textColor;
+    paperColor = theme.paperColor;
+
+    if (_hasLayoutContent) {
+      await _relayout();
+    } else {
+      _notifySnapshot();
+      onInvalidate();
+    }
+  }
+
+  Future<void> resize(double width, double height) async {
+    _width = math.max(1, width.floorToDouble());
+    _height = math.max(1, height.floorToDouble());
+    _updateSizes();
+
+    if (_hasLayoutContent) {
+      await _relayout();
+    } else {
+      _notifySnapshot();
+      onInvalidate();
+    }
+  }
+
+  Future<void> updateScrollOffset(double offset) async {
+    final next = offset.clamp(0.0, _maxScrollOffset).toDouble();
+    if ((_scrollOffset - next).abs() < 0.5) {
+      return;
+    }
+    _scrollOffset = next;
+    _notifySnapshot();
+    onInvalidate();
+  }
+
+  Future<void> _relayout() async {
+    final token = ++_layoutToken;
+
+    _updateSizes();
+    await _ensureImagesLoaded(token);
+    if (token != _layoutToken) {
+      return;
+    }
+
+    _tables.clear();
+    await _ensureTablesPrepared(token);
+    if (token != _layoutToken) {
+      return;
+    }
+
+    _layoutDocument();
+    if (token != _layoutToken) {
+      return;
+    }
+
+    _scrollOffset = _scrollOffset.clamp(0.0, _maxScrollOffset).toDouble();
+    _notifySnapshot();
+    onInvalidate();
+  }
+
+  Future<void> _ensureTablesPrepared(int token) async {
+    final tables = _entries.whereType<AstCompiledTableEntry>().toList();
+    await Future.wait<void>(
+      tables.map((entry) async {
+        if (token != _layoutToken || _tables.containsKey(entry)) {
+          return;
+        }
+        _tables[entry] = await renderTableBlock(
+          table: entry,
+          fontColor: fontColor,
+          fontSize: _fontSize,
+          gothicFontFamilies: gothicFontFamilies,
+          maxHeight: _pageHeight,
+          minchoFontFamilies: minchoFontFamilies,
+          maxWidth: _pageWidth,
+        );
+      }),
+    );
+  }
+
+  Future<void> _ensureImagesLoaded(int token) async {
+    if (imageLoader == null) {
+      return;
+    }
+
+    final paths = <String>{};
+    for (final entry in _entries) {
+      if (entry is! AstCompiledParagraphEntry) {
+        continue;
+      }
+      for (final extra in entry.extras) {
+        if ((extra.kind == AstParagraphExtraKind.inlineImage ||
+                extra.kind == AstParagraphExtraKind.outsideImage) &&
+            extra.imagePath != null &&
+            extra.imagePath!.isNotEmpty) {
+          paths.add(extra.imagePath!);
+        }
+      }
+    }
+
+    await Future.wait<void>(
+      paths.map((path) async {
+        if (token != _layoutToken || _images.containsKey(path)) {
+          return;
+        }
+        final task = _imageTasks.putIfAbsent(path, () async {
+          final image = await imageLoader!.call(_resolveImagePath(path));
+          _images[path] = image;
+          return image;
+        });
+        await task;
+      }),
+    );
+  }
+
+  String _resolveImagePath(String path) {
+    if (path.startsWith('http://') ||
+        path.startsWith('https://') ||
+        path.startsWith('data:') ||
+        path.startsWith('blob:') ||
+        path.startsWith('airzoshiproxy')) {
+      return path;
+    }
+    try {
+      return baseUri?.resolve(path).toString() ?? path;
+    } catch (_) {
+      return path;
+    }
+  }
+
+  void _updateSizes() {
+    _fontSize = layout.fontSize.roundToDouble();
+    _lineSpace = _fontSize * (_settings.widenLineSpace ? 0.8 : 0.63);
+    final customPadding = layout.pagePadding;
+    final leftInset = customPadding?.left ?? 0;
+    final rightInset = customPadding?.right ?? 0;
+    final topInset = customPadding?.top ?? 0;
+    final bottomInset = customPadding?.bottom ?? 0;
+    final minPageWidth = _fontSize * 6;
+    final minPageHeight = _fontSize * 6;
+    final maxHorizontalInset = math.max(_width - minPageWidth, 0.0);
+    final horizontalFactor =
+        leftInset + rightInset > maxHorizontalInset &&
+            leftInset + rightInset > 0
+        ? maxHorizontalInset / (leftInset + rightInset)
+        : 1.0;
+    final maxVerticalInset = math.max(_height - minPageHeight, 0.0);
+    final verticalFactor =
+        topInset + bottomInset > maxVerticalInset && topInset + bottomInset > 0
+        ? maxVerticalInset / (topInset + bottomInset)
+        : 1.0;
+    _pageMarginSide = leftInset * horizontalFactor;
+    _pageMarginTrailing = rightInset * horizontalFactor;
+    _pageMarginTop = topInset * verticalFactor;
+    _pageMarginBottom = bottomInset * verticalFactor;
+    _pageWidth = _width - _pageMarginSide - _pageMarginTrailing;
+    _pageWidth -= (_pageWidth + _lineSpace) % (_fontSize + _lineSpace);
+    _pageHeight = _height - _pageMarginTop - _pageMarginBottom;
+  }
+
+  void _layoutDocument() {
+    _lines.clear();
+    _blocks.clear();
+    _indexes.clear();
+    _clickable = <ClickableArea>[];
+    _selectableGlyphs = <KumihanSelectableGlyph>[];
+    _selectableGlyphOrder = 0;
+    _contentWidth = _width;
+    _pendingGapWidth = 0;
+    _resetParagraphState();
+
+    final pageBlockSize = _pageHeight;
+
+    for (final entry in _entries) {
+      final paragraphNo = _blocks.length;
+
+      if (entry is AstCommandEntry) {
+        _handleAstCommandEntry(entry, pageBlockSize);
+        continue;
+      }
+
+      if (entry is AstCompiledTableEntry) {
+        _layoutPreparedTable(
+          entry,
+          pageBlockSize: pageBlockSize,
+          paragraphNo: paragraphNo,
+        );
+        continue;
+      }
+
+      if (entry is! AstCompiledParagraphEntry) {
+        continue;
+      }
+
+      var paragraph = entry.text;
+      final extras = <AstParagraphExtra>[
+        if (_quoteDrawing && !entry.suppressQuote)
+          const AstParagraphExtra(kind: AstParagraphExtraKind.quote),
+        if (_frameDrawing &&
+            !entry.extras.any(
+              (extra) => extra.kind == AstParagraphExtraKind.frame,
+            ))
+          const AstParagraphExtra(
+            kind: AstParagraphExtraKind.frame,
+            frameKind: AstFrameKind.middle,
+          ),
+        ...entry.extras,
+      ];
+
+      if (paragraph.isEmpty) {
+        paragraph = ' ';
+      }
+
+      final block = LayoutTextBlock(this)
+        ..setText(
+          paragraph,
+          _currentFontSize,
+          _currentFontType,
+          _currentFontBold,
+          _currentFontItalic,
+          _currentTextRotation,
+        )
+        ..userData = LayoutBlockUserData();
+      _blocks.add(block);
+
+      for (final style in entry.styles) {
+        _applyStyle(block, style.startIndex, style.endIndex, style);
+      }
+
+      for (final extra in entry.extras) {
+        if (extra.kind == AstParagraphExtraKind.outsideImage) {
+          _insertImage(
+            block,
+            extra.startIndex ?? 0,
+            extra.imagePath ?? '',
+            0,
+            _currentFontSize,
+          );
+          continue;
+        }
+        if (extra.kind == AstParagraphExtraKind.inlineImage) {
+          _insertImage(
+            block,
+            extra.startIndex ?? 0,
+            extra.imagePath ?? '',
+            extra.imageWidth ?? 0,
+            extra.imageHeight ?? 0,
+          );
+        }
+      }
+
+      if (_inCaption) {
+        _applyStyle(
+          block,
+          0,
+          block.rawtext.length,
+          const AstStyleSpan(
+            startIndex: 0,
+            endIndex: 0,
+            kind: AstStyleKind.caption,
+          ),
+        );
+      }
+      if (_inYokogumi) {
+        _applyStyle(
+          block,
+          0,
+          block.rawtext.length,
+          const AstStyleSpan(
+            startIndex: 0,
+            endIndex: 0,
+            kind: AstStyleKind.yokogumi,
+          ),
+        );
+      }
+      if (_layoutState.isVertical && _currentTextRotation == 'v') {
+        for (final tcy in entry.tcyRanges) {
+          block.setTCY(tcy.startIndex, tcy.endIndex);
+        }
+      }
+
+      _insertTextLine(block, entry.inserts);
+      _adjustRubies(block, entry.rubies, entry.inserts);
+      _layoutPreparedBlock(
+        alignBottom: entry.alignBottom || _alignBottom,
+        block: block,
+        bottomMargin: entry.alignBottom
+            ? entry.bottomMargin * _currentFontSize
+            : _bottomMargin,
+        extras: extras,
+        firstTopMargin: entry.firstTopMargin > 0
+            ? entry.firstTopMargin * _currentFontSize
+            : _firstTopMargin,
+        inserts: entry.inserts,
+        nonBreak: entry.nonBreak,
+        pageBlockSize: pageBlockSize,
+        paragraphNo: paragraphNo,
+        restTopMargin: entry.restTopMargin > 0
+            ? entry.restTopMargin * _currentFontSize
+            : _restTopMargin,
+        rubies: entry.rubies,
+        chapterIndexes: entry.chapterIndexes,
+      );
+    }
+
+    _finalizeScrollGeometry();
+  }
+
+  void _layoutPreparedBlock({
+    required bool alignBottom,
+    required LayoutTextBlock block,
+    required double bottomMargin,
+    required List<AstParagraphExtra> extras,
+    required List<AstChapterIndex> chapterIndexes,
+    required double firstTopMargin,
+    required List<AstInlineInsert> inserts,
+    required bool nonBreak,
+    required double pageBlockSize,
+    required int paragraphNo,
+    required double restTopMargin,
+    required List<AstRubySpan> rubies,
+  }) {
+    var initialTop = firstTopMargin;
+    if (_forceIndent &&
+        initialTop == _firstTopMargin &&
+        block.rawtext.isNotEmpty &&
+        !'　（〔［｛〈《「『【｟〘〖​‌⁠￼'.contains(charAt(block.rawtext, 0))) {
+      initialTop += block.atom.first.getFontSize();
+    }
+
+    var availableHeight = pageBlockSize - initialTop - bottomMargin;
+    if (availableHeight < _fontSize) {
+      availableHeight = _fontSize;
+      initialTop = math.max(pageBlockSize - bottomMargin - availableHeight, 0);
+    }
+
+    var line = block.createTextLine(null, availableHeight, true);
+    if (line == null) {
+      return;
+    }
+
+    line.y = alignBottom
+        ? initialTop + availableHeight - line.textWidth
+        : initialTop;
+
+    _pushLine(line, nonBreak);
+
+    var nextTop = restTopMargin;
+    availableHeight = pageBlockSize - nextTop - bottomMargin;
+    if (availableHeight < _fontSize) {
+      availableHeight = _fontSize;
+      nextTop = math.max(pageBlockSize - bottomMargin - availableHeight, 0);
+    }
+
+    while ((line = block.createTextLine(line, availableHeight, true)) != null) {
+      line!.y = nextTop;
+      _pushLine(line, false);
+      availableHeight = pageBlockSize - nextTop - bottomMargin;
+    }
+
+    for (final chapter in chapterIndexes) {
+      _indexes.add(
+        _IndexEntry(
+          endIndex: chapter.endIndex,
+          kind: switch (chapter.kind) {
+            AstChapterKind.large => _IndexKind.headingLarge,
+            AstChapterKind.medium => _IndexKind.headingMedium,
+            AstChapterKind.small => _IndexKind.headingSmall,
+            AstChapterKind.anchor => _IndexKind.anchor,
+          },
+          paragraphNo: paragraphNo,
+          startIndex: chapter.startIndex,
+          anchorName: chapter.anchorName,
+        ),
+      );
+    }
+    _attachParagraphDecorations(block, inserts, rubies, extras, paragraphNo);
+  }
+
+  void _layoutPreparedTable(
+    AstCompiledTableEntry entry, {
+    required double pageBlockSize,
+    required int paragraphNo,
+  }) {
+    final rendered = _tables[entry];
+    if (rendered == null) {
+      return;
+    }
+
+    final block = LayoutTextBlock(this)
+      ..setText(
+        '￼',
+        _currentFontSize,
+        _currentFontType,
+        _currentFontBold,
+        _currentFontItalic,
+        _currentTextRotation,
+      )
+      ..userData = LayoutBlockUserData();
+    if (block.atom.isEmpty) {
+      return;
+    }
+
+    final atom = block.atom.first;
+    atom
+      ..picture = rendered.picture
+      ..width = rendered.width
+      ..height = rendered.height
+      ..tracking = 0;
+
+    _blocks.add(block);
+    _layoutPreparedBlock(
+      alignBottom: _alignBottom,
+      block: block,
+      bottomMargin: _bottomMargin,
+      extras: const <AstParagraphExtra>[],
+      firstTopMargin: _firstTopMargin,
+      inserts: const <AstInlineInsert>[],
+      nonBreak: false,
+      pageBlockSize: pageBlockSize,
+      paragraphNo: paragraphNo,
+      restTopMargin: _restTopMargin,
+      rubies: const <AstRubySpan>[],
+      chapterIndexes: const <AstChapterIndex>[],
+    );
+  }
+
+  void _resetParagraphState() {
+    _currentFontType = 0;
+    _currentFontBold = false;
+    _currentFontItalic = false;
+    _currentFontSize = _fontSize;
+    _currentTextRotation = _defaultTextRotation;
+    _inCaption = false;
+    _inYokogumi = false;
+    _firstTopMargin = 0;
+    _restTopMargin = 0;
+    _bottomMargin = 0;
+    _alignBottom = false;
+    _frameDrawing = false;
+    _quoteDrawing = false;
+    _frameTop = 0;
+    _frameBottom = 0;
+  }
+
+  void _handleAstCommandEntry(AstCommandEntry entry, double pageBlockSize) {
+    switch (entry.kind) {
+      case AstCommandKind.indentStart:
+        _firstTopMargin = entry.indentLine * _currentFontSize;
+        _restTopMargin =
+            (entry.indentHanging ?? entry.indentLine) * _currentFontSize;
+      case AstCommandKind.indentEnd:
+        _firstTopMargin = 0;
+        _restTopMargin = 0;
+      case AstCommandKind.quoteStart:
+        _quoteDrawing = true;
+        _firstTopMargin = math.max(_firstTopMargin, _currentFontSize);
+        _restTopMargin = math.max(_restTopMargin, _currentFontSize);
+      case AstCommandKind.quoteEnd:
+        _quoteDrawing = false;
+        _firstTopMargin = 0;
+        _restTopMargin = 0;
+      case AstCommandKind.bottomAlignStart:
+        _bottomMargin = entry.bottomAlignKind == AstBottomAlignKind.bottom
+            ? 0
+            : entry.bottomAlignOffset * _currentFontSize;
+        _alignBottom = true;
+      case AstCommandKind.bottomAlignEnd:
+        _bottomMargin = 0;
+        _alignBottom = false;
+      case AstCommandKind.jizumeStart:
+        final width = entry.jizumeWidth ?? 0;
+        if (_alignBottom) {
+          _firstTopMargin = math.max(
+            pageBlockSize - _bottomMargin - width * _currentFontSize,
+            0,
+          );
+          _restTopMargin = _firstTopMargin;
+        } else {
+          _bottomMargin = math.max(
+            pageBlockSize - _firstTopMargin - width * _currentFontSize,
+            0,
+          );
+        }
+      case AstCommandKind.jizumeEnd:
+        if (_alignBottom) {
+          _firstTopMargin = 0;
+          _restTopMargin = 0;
+        } else {
+          _bottomMargin = 0;
+        }
+      case AstCommandKind.boldStart:
+        _currentFontType = 2;
+      case AstCommandKind.boldEnd:
+        _currentFontType = 0;
+      case AstCommandKind.italicStart:
+        _currentFontItalic = true;
+      case AstCommandKind.italicEnd:
+        _currentFontItalic = false;
+      case AstCommandKind.captionStart:
+        _inCaption = true;
+      case AstCommandKind.captionEnd:
+        _inCaption = false;
+      case AstCommandKind.yokogumiStart:
+        _inYokogumi = true;
+        _currentTextRotation = 'h';
+      case AstCommandKind.yokogumiEnd:
+        _inYokogumi = false;
+        _currentTextRotation = _defaultTextRotation;
+      case AstCommandKind.headingStart:
+        _currentFontType = 2;
+        _currentFontSize = switch (entry.headingLevel) {
+          AstHeadingLevel.large => _fontSize * _fontScaleL * _fontScaleL,
+          AstHeadingLevel.medium => _fontSize * _fontScaleL,
+          _ => _fontSize,
+        };
+      case AstCommandKind.headingEnd:
+        _currentFontSize = _fontSize;
+        _currentFontType = 0;
+      case AstCommandKind.fontScaleStart:
+        final steps = entry.fontScaleSteps ?? 0;
+        _currentFontSize =
+            entry.fontScaleDirection == AstFontScaleDirection.larger
+            ? _fontSize * math.pow(_fontScaleL, steps)
+            : _fontSize * math.pow(_fontScaleS, steps);
+      case AstCommandKind.fontScaleEnd:
+        _currentFontSize = _fontSize;
+      case AstCommandKind.frameStart:
+        _frameDrawing = true;
+        _frameTop = math.min(_firstTopMargin, _restTopMargin);
+        _frameBottom = pageBlockSize - _bottomMargin;
+        _firstTopMargin += _fontSize;
+        _restTopMargin += _fontSize;
+        _bottomMargin += _fontSize;
+      case AstCommandKind.frameEnd:
+        _firstTopMargin = math.max(_firstTopMargin - _fontSize, 0);
+        _restTopMargin = math.max(_restTopMargin - _fontSize, 0);
+        _bottomMargin = math.max(_bottomMargin - _fontSize, 0);
+        _frameDrawing = false;
+      case AstCommandKind.pageBreak:
+        _pendingGapWidth += switch (entry.pageBreakKind) {
+          AstPageBreakKind.kaicho ||
+          AstPageBreakKind.kaimihiraki => _pageWidth * 2,
+          AstPageBreakKind.kaidan ||
+          AstPageBreakKind.kaipage ||
+          null => _pageWidth,
+        };
+      case AstCommandKind.pageCenter:
+        _pendingGapWidth += (_pageWidth - _fontSize).clamp(0.0, _pageWidth);
+    }
+  }
+
+  void _pushLine(LayoutTextLine line, bool nonBreak) {
+    if (nonBreak && _lines.isNotEmpty) {
+      final previous = _lines.last;
+      final baseLine = previous.primary;
+      if (line.y > baseLine.y + baseLine.textWidth) {
+        previous.lines.add(line);
+      } else {
+        final group = LineGroup(line)..gapBefore = _pendingGapWidth;
+        _lines.add(group);
+        _pendingGapWidth = 0;
+      }
+    } else {
+      final group = LineGroup(line)..gapBefore = _pendingGapWidth;
+      _lines.add(group);
+      _pendingGapWidth = 0;
+    }
+  }
+
+  void _attachParagraphDecorations(
+    LayoutTextBlock block,
+    List<AstInlineInsert> inserts,
+    List<AstRubySpan> rubies,
+    List<AstParagraphExtra> extras,
+    int paragraphNo,
+  ) {
+    for (final insert in inserts) {
+      final line = block.getTextLineAtCharIndex(insert.startIndex);
+      if (line == null || insert.tl == null) {
+        continue;
+      }
+      final atomIndex = block.getAtomIndexAt(insert.startIndex);
+      insert.tl!.y = line.y + line.getAtomY(atomIndex);
+      line.attachments.add(
+        InlineDecorationAttachment(kind: insert.type, line: insert.tl!),
+      );
+    }
+
+    for (final ruby in rubies) {
+      final initialLine = block.getTextLineAtCharIndex(ruby.startIndex);
+      if (initialLine == null) {
+        continue;
+      }
+      LayoutTextLine line = initialLine;
+
+      final startAtom = block.getAtomIndexAt(ruby.startIndex);
+      final startY =
+          line.y + line.getAtomY(startAtom, includeTrailingTracking: true);
+      final endAtom = block.getAtomIndexAt(ruby.endIndex);
+      final endY = endAtom > line.end
+          ? line.y + line.textWidth
+          : line.y + line.getAtomY(endAtom);
+      var segmentHeight =
+          endY -
+          startY -
+          _inlineInsertExtentInRange(
+            block,
+            inserts,
+            ruby.startIndex,
+            math.min(ruby.endIndex, _lineEndOffset(block, line)),
+          );
+      final rubyBlock = ruby.tb!;
+      var rubyLine = endAtom > line.end
+          ? rubyBlock.createTextLine(null, segmentHeight + ruby.trackingStart)
+          : rubyBlock.createTextLine();
+
+      if (rubyLine == null) {
+        continue;
+      }
+
+      rubyLine.attachments.clear();
+      var offset = (rubyLine.textWidth - segmentHeight) / 2;
+      rubyLine.y = startY - offset;
+
+      if (offset > 0) {
+        if (ruby.trackingStart == 0 && ruby.trackingEnd != 0) {
+          rubyLine.y += math.max(
+            line.y + line.getAtomY(startAtom) - rubyLine.y,
+            math.max(line.rubyBottom[ruby.type] ?? 0, 0) - rubyLine.y,
+          );
+        } else if (ruby.trackingStart != 0 && ruby.trackingEnd == 0) {
+          rubyLine.y = line.y + line.getAtomY(startAtom) - ruby.trackingStart;
+        }
+      }
+
+      line.attachments.add(
+        InlineDecorationAttachment(kind: ruby.type, line: rubyLine),
+      );
+      line.rubyBottom[ruby.type] = math.max(
+        line.rubyBottom[ruby.type] ?? 0,
+        rubyLine.y + rubyLine.textWidth,
+      );
+
+      while (endAtom > line.end) {
+        final nextLine = line.nextLine;
+        if (nextLine == null) {
+          break;
+        }
+        line = nextLine;
+
+        segmentHeight = endAtom > line.end
+            ? line.textWidth
+            : line.getAtomY(endAtom);
+        segmentHeight -= _inlineInsertExtentInRange(
+          block,
+          inserts,
+          line.start < block.atom.length
+              ? block.atom[line.start].index
+              : block.rawtext.length,
+          math.min(ruby.endIndex, _lineEndOffset(block, line)),
+        );
+        rubyLine = endAtom > line.end
+            ? rubyBlock.createTextLine(rubyLine, segmentHeight)
+            : rubyBlock.createTextLine(rubyLine);
+        if (rubyLine == null) {
+          break;
+        }
+
+        rubyLine.attachments.clear();
+        offset = (rubyLine.textWidth - segmentHeight) / 2;
+        rubyLine.y = line.y - offset;
+        line.attachments.add(
+          InlineDecorationAttachment(kind: ruby.type, line: rubyLine),
+        );
+        line.rubyBottom[ruby.type] = math.max(
+          line.rubyBottom[ruby.type] ?? 0,
+          rubyLine.y + rubyLine.textWidth,
+        );
+      }
+    }
+
+    for (final extra in extras) {
+      if (extra.kind == AstParagraphExtraKind.warichu) {
+        _attachWarichu(block, extra);
+      } else if (extra.kind == AstParagraphExtraKind.noteReference) {
+        final startIndex = extra.startIndex ?? 0;
+        final line = block.getTextLineAtCharIndex(startIndex);
+        if (line == null) {
+          continue;
+        }
+
+        final markerBlock = LayoutTextBlock(this)
+          ..setText(
+            '＊',
+            _fontSize / 2,
+            0,
+            false,
+            false,
+            _defaultTextRotation,
+          );
+        final markerLine = markerBlock.createTextLine()!;
+        final atomIndex = block.getAtomIndexAt(startIndex);
+        markerLine.color = const Color(0xff008800);
+        markerLine.attachments.clear();
+        markerLine.y =
+            line.y +
+            line.getAtomY(atomIndex) +
+            block.getAtomHeight(atomIndex) -
+            0.4 * line.width;
+        line.attachments.add(
+          InlineDecorationAttachment(
+            kind: LayoutInlineDecorationKind.referenceNote,
+            line: markerLine,
+          ),
+        );
+        line.attachments.add(
+          NoteMarker(
+            annotation: extra.noteText ?? '',
+            height: markerLine.textWidth,
+            kind: LayoutNoteMarkerKind.reference,
+            markType: '※',
+            top: markerLine.y,
+            width: markerLine.width,
+          ),
+        );
+      } else if (extra.kind == AstParagraphExtraKind.span ||
+          extra.kind == AstParagraphExtraKind.ruledLine ||
+          extra.kind == AstParagraphExtraKind.link) {
+        final startIndex = extra.startIndex ?? 0;
+        final endIndex = (extra.endIndex ?? 1) - 1;
+        var startLine = block.getTextLineAtCharIndex(startIndex);
+        final endLine = block.getTextLineAtCharIndex(math.max(endIndex, 0));
+        if (startLine == null || endLine == null) {
+          continue;
+        }
+
+        final startAtom = block.getAtomIndexAt(startIndex);
+        var top =
+            startLine.y +
+            startLine.getAtomY(
+              startAtom,
+              includeTrailingTracking:
+                  extra.kind == AstParagraphExtraKind.ruledLine,
+            );
+        final endAtom = block.getAtomIndexAt(endIndex);
+        final bottom =
+            endLine.y +
+            endLine.getAtomY(
+              endAtom,
+              includeTrailingTracking:
+                  extra.kind == AstParagraphExtraKind.ruledLine,
+            ) +
+            block.getAtomHeight(endAtom);
+
+        if (extra.kind == AstParagraphExtraKind.link) {
+          final linkColor = (extra.linkTarget?.startsWith('#') ?? false)
+              ? theme.internalLinkColor
+              : theme.linkColor;
+          for (var index = startAtom; index <= endAtom; index += 1) {
+            block.atom[index].color = linkColor;
+          }
+          final linkEnd = block.getAtomIndexAt(extra.endIndex ?? 0);
+          LayoutTextLine? currentLine = startLine;
+          var currentStart = startAtom;
+          while (currentLine != null) {
+            currentLine.attachments.add(
+              LinkMarker(
+                endAtom: math.min(linkEnd, currentLine.end),
+                startAtom: currentStart,
+                linkTarget: extra.linkTarget ?? '',
+              ),
+            );
+            if (linkEnd <= currentLine.end) {
+              break;
+            }
+            currentLine = currentLine.nextLine;
+            currentStart = currentLine?.start ?? 0;
+          }
+          continue;
+        }
+
+        LayoutTextLine? currentLine = startLine;
+        var isStart = true;
+        while (currentLine != null && !identical(currentLine, endLine)) {
+          currentLine.attachments.add(
+            SpanMarker(
+              bottom: currentLine.y + currentLine.textWidth,
+              kind: _spanMarkerKind(extra),
+              isEnd: false,
+              isStart: isStart,
+              markType: '',
+              top: top,
+            ),
+          );
+          isStart = false;
+          currentLine = currentLine.nextLine;
+          top = currentLine?.y ?? 0;
+        }
+
+        currentLine?.attachments.add(
+          SpanMarker(
+            bottom: bottom,
+            kind: _spanMarkerKind(extra),
+            isEnd: true,
+            isStart: isStart,
+            markType: '',
+            top: top,
+          ),
+        );
+      } else if (extra.kind == AstParagraphExtraKind.frame) {
+        var line = block.textLine;
+        while (line != null) {
+          line.attachments.add(
+            SpanMarker(
+              bottom: _frameBottom,
+              kind: _spanMarkerKind(extra),
+              markType: '',
+              top: _frameTop,
+            ),
+          );
+          line = line.nextLine;
+        }
+      } else if (extra.kind == AstParagraphExtraKind.emphasis) {
+        final emphasisChar = switch (extra.emphasisKind) {
+          AstEmphasisKind.whiteSesame => '﹆',
+          AstEmphasisKind.blackCircle => '⬤',
+          AstEmphasisKind.whiteCircle => '○',
+          AstEmphasisKind.blackTriangle => '▲',
+          AstEmphasisKind.whiteTriangle => '△',
+          AstEmphasisKind.bullseye => '◎',
+          AstEmphasisKind.fisheye => '◉',
+          AstEmphasisKind.saltire => '❌',
+          _ => '﹅',
+        };
+        final size =
+            ((emphasisChar != '﹅' && emphasisChar != '﹆') ||
+                _settings.smallBouten)
+            ? 0.48 * _fontSize
+            : _fontSize;
+
+        for (
+          var index = extra.startIndex ?? 0;
+          index < (extra.endIndex ?? 0);
+          index += 1
+        ) {
+          final line = block.getTextLineAtCharIndex(index);
+          if (line == null) {
+            continue;
+          }
+          final markerBlock = LayoutTextBlock(this)
+            ..setText(
+              emphasisChar,
+              size,
+              0,
+              false,
+              false,
+              _defaultTextRotation,
+            );
+          final markerLine = markerBlock.createTextLine()!;
+          final atomIndex = block.getAtomIndexAt(index);
+          markerLine.attachments.clear();
+          markerLine.y =
+              line.y +
+              line.getAtomY(atomIndex) +
+              (block.getAtomHeight(atomIndex) - markerLine.textWidth) / 2;
+          line.attachments.add(
+            InlineDecorationAttachment(
+              kind: (extra.rightSide ?? true)
+                  ? LayoutInlineDecorationKind.rightEmphasis
+                  : LayoutInlineDecorationKind.leftEmphasis,
+              line: markerLine,
+            ),
+          );
+        }
+      } else if (extra.kind == AstParagraphExtraKind.note) {
+        final endIndex = (extra.endIndex ?? 0) - 1;
+        final line = block.getTextLineAtCharIndex(endIndex < 0 ? 0 : endIndex);
+        if (line == null) {
+          continue;
+        }
+
+        final markerBlock = LayoutTextBlock(this)
+          ..setText(
+            '＊',
+            _fontSize / 2,
+            0,
+            false,
+            false,
+            _defaultTextRotation,
+          );
+        final markerLine = markerBlock.createTextLine()!;
+        markerLine.color = const Color(0xffff0000);
+        markerLine.attachments.clear();
+
+        if (endIndex >= 0) {
+          final atomIndex = block.getAtomIndexAt(endIndex);
+          markerLine.y =
+              line.y +
+              line.getAtomY(atomIndex) +
+              block.getAtomHeight(atomIndex) -
+              0.4 * line.width;
+        } else {
+          markerLine.y = line.y - 0.4 * line.width;
+        }
+
+        line.attachments.add(
+          InlineDecorationAttachment(
+            kind: LayoutInlineDecorationKind.annotationNote,
+            line: markerLine,
+          ),
+        );
+        line.attachments.add(
+          NoteMarker(
+            annotation: extra.noteText ?? '',
+            height: markerLine.textWidth,
+            kind: LayoutNoteMarkerKind.annotation,
+            markType: '注',
+            top: markerLine.y,
+            width: markerLine.width,
+          ),
+        );
+      } else if (extra.kind == AstParagraphExtraKind.quote) {
+        var line = block.textLine;
+        while (line != null) {
+          line.attachments.add(const QuoteMarker());
+          line = line.nextLine;
+        }
+      }
+    }
+  }
+
+  void _insertImage(
+    LayoutTextBlock block,
+    int offset,
+    String path,
+    double width,
+    double height,
+  ) {
+    final image = _images[path];
+    if (image == null) {
+      return;
+    }
+
+    var imageWidth = width;
+    var imageHeight = height;
+
+    if (imageWidth <= 0 && imageHeight <= 0) {
+      imageWidth = image.width.toDouble();
+      imageHeight = image.height.toDouble();
+    } else if (imageWidth <= 0) {
+      imageWidth = (imageHeight * image.width) / image.height;
+    } else {
+      imageHeight = (imageWidth * image.height) / image.width;
+    }
+
+    final fittedWidth = math.min(
+      math.min((imageWidth * _pageHeight) / imageHeight, imageWidth),
+      _pageWidth,
+    );
+    final fittedHeight = math.min(
+      math.min((imageHeight * _pageWidth) / imageWidth, imageHeight),
+      _pageHeight,
+    );
+    final atomIndex = block.getAtomIndexAt(offset);
+    if (atomIndex >= block.atom.length) {
+      return;
+    }
+
+    final atom = block.atom[atomIndex];
+    if (_layoutState.isVertical) {
+      atom.width = fittedWidth.floorToDouble();
+      atom.height = fittedHeight.floorToDouble();
+    } else {
+      atom.width = fittedHeight.floorToDouble();
+      atom.height = fittedWidth.floorToDouble();
+    }
+    atom.image = image;
+  }
+
+  void _insertTextLine(LayoutTextBlock block, List<AstInlineInsert> inserts) {
+    for (final insert in inserts) {
+      final atomIndex = block.splitAtom(insert.startIndex);
+      block.splitAtom(insert.startIndex + 1);
+      if (atomIndex >= block.atom.length) {
+        continue;
+      }
+      final atom = block.atom[atomIndex];
+      final fontSize = atom.getFontSize();
+      final markerBlock = LayoutTextBlock(this)
+        ..setText(
+          insert.text,
+          fontSize / 2,
+          0,
+          false,
+          false,
+          _defaultTextRotation,
+        );
+      if (insert.type == LayoutInlineDecorationKind.kaeri) {
+        if (insert.text == '一レ') {
+          markerBlock.splitAtom(1);
+          markerBlock.atom[1].tracking = -0.27 * fontSize;
+        } else if (charAt(insert.text, 1) == 'レ') {
+          markerBlock.atom[0].tracking = -0.1 * fontSize;
+        }
+      }
+      final markerLine = markerBlock.createTextLine()!;
+      markerLine.attachments.clear();
+      insert.tl = markerLine;
+      if (block.getAtomHeight(atomIndex, includeTracking: true) <
+          markerLine.textWidth) {
+        atom.tracking = markerLine.textWidth;
+      }
+    }
+  }
+
+  void _applyStyle(
+    LayoutTextBlock block,
+    int startIndex,
+    int endIndex,
+    AstStyleSpan style,
+  ) {
+    if (endIndex <= math.max(startIndex, 0)) {
+      return;
+    }
+
+    final start = block.splitAtom(startIndex < 0 ? 0 : startIndex);
+    final end = block.splitAtom(endIndex);
+    final atoms = block.atom;
+
+    switch (style.kind) {
+      case AstStyleKind.headingLarge:
+        for (var index = start; index < end; index += 1) {
+          atoms[index]
+            ..setFontSize(_fontSize * _fontScaleL * _fontScaleL)
+            ..setFontGothic();
+        }
+      case AstStyleKind.headingMedium:
+        for (var index = start; index < end; index += 1) {
+          atoms[index]
+            ..setFontSize(_fontSize * _fontScaleL)
+            ..setFontGothic();
+        }
+      case AstStyleKind.headingSmall:
+      case AstStyleKind.bold:
+        for (var index = start; index < end; index += 1) {
+          atoms[index].setFontGothic();
+        }
+      case AstStyleKind.italic:
+        for (var index = start; index < end; index += 1) {
+          atoms[index].setFontItalic();
+        }
+      case AstStyleKind.textColor:
+        final colorValue = style.colorValue;
+        if (colorValue == null) {
+          return;
+        }
+        final color = Color(colorValue);
+        for (var index = start; index < end; index += 1) {
+          atoms[index].color = color;
+        }
+      case AstStyleKind.caption:
+        for (var index = start; index < end; index += 1) {
+          atoms[index].color = theme.captionColor;
+        }
+      case AstStyleKind.yokogumi:
+        for (var index = start; index < end; index += 1) {
+          atoms[index].setRotated();
+        }
+      case AstStyleKind.kaeri:
+        for (var index = start; index < end; index += 1) {
+          atoms[index].offsetX = -atoms[index].getFontSize() / 8;
+        }
+      case AstStyleKind.okuri:
+        for (var index = start; index < end; index += 1) {
+          atoms[index].offsetX = atoms[index].getFontSize() / 8;
+        }
+      case AstStyleKind.lineRightSmall:
+      case AstStyleKind.superscript:
+        final size = 0.6 * _currentFontSize;
+        final offset = 0.2 * _currentFontSize;
+        for (var index = start; index < end; index += 1) {
+          atoms[index]
+            ..setFontSize(size)
+            ..offsetX = offset;
+        }
+      case AstStyleKind.lineLeftSmall:
+      case AstStyleKind.subscript:
+        final size = 0.6 * _currentFontSize;
+        final offset = -0.2 * _currentFontSize;
+        for (var index = start; index < end; index += 1) {
+          atoms[index]
+            ..setFontSize(size)
+            ..offsetX = offset;
+        }
+      case AstStyleKind.warichuPlaceholder:
+        final size = 0.5 * _currentFontSize;
+        for (var index = start; index < end; index += 1) {
+          atoms[index]
+            ..setFontSize(size)
+            ..color = const Color(0x00000000);
+        }
+      case AstStyleKind.warichuBracket:
+        final advance = 0.5 * _currentFontSize;
+        for (var index = start; index < end; index += 1) {
+          final text = block.getAtomText(index);
+          atoms[index]
+            ..height = advance
+            ..offsetY = openingBrackets.contains(text) ? -advance : 0;
+        }
+      case AstStyleKind.fontScale:
+        var value = style.fontScaleSteps ?? 0;
+        if (value > 5) {
+          value = 5;
+        }
+        final size = style.fontScaleDirection == AstFontScaleDirection.larger
+            ? _fontSize * math.pow(_fontScaleL, value)
+            : _fontSize * math.pow(_fontScaleS, value);
+        for (var index = start; index < end; index += 1) {
+          atoms[index].setFontSize(size.toDouble());
+        }
+    }
+  }
+
+  void _adjustRubies(
+    LayoutTextBlock block,
+    List<AstRubySpan> rubies,
+    List<AstInlineInsert> inserts,
+  ) {
+    final line = block.createTextLine();
+    if (line == null) {
+      return;
+    }
+
+    for (final ruby in rubies) {
+      final start = block.splitAtom(ruby.startIndex);
+      final end = block.splitAtom(ruby.endIndex);
+      final startY = line.getAtomY(start, includeTrailingTracking: true);
+      final insertCount = _inlineInsertCountInRange(
+        inserts,
+        ruby.startIndex,
+        ruby.endIndex,
+      );
+      final segmentHeight =
+          line.getAtomY(end) -
+          startY -
+          _inlineInsertExtentInRange(
+            block,
+            inserts,
+            ruby.startIndex,
+            ruby.endIndex,
+          );
+      final rubyBlock = LayoutTextBlock(this)
+        ..setText(
+          ruby.ruby,
+          _fontSize / 2,
+          0,
+          false,
+          false,
+          _defaultTextRotation,
+        );
+      for (final span in ruby.spans) {
+        _applyStyle(rubyBlock, span.startIndex, span.endIndex, span);
+      }
+      ruby
+        ..tb = rubyBlock
+        ..trackingStart = 0
+        ..trackingEnd = 0;
+
+      var overflow = rubyBlock.createTextLine()!.textWidth - segmentHeight;
+      if (overflow > 0) {
+        var startPadding = 0.0;
+        var endPadding = 0.0;
+
+        if (start > 0) {
+          final overlapsStart = rubies.any(
+            (candidate) =>
+                candidate.type == ruby.type &&
+                candidate.startIndex < ruby.startIndex &&
+                candidate.endIndex >= ruby.startIndex,
+          );
+          final previousText = block.getAtomText(start - 1);
+          if (!overlapsStart &&
+              !_cjkIdeographPattern.hasMatch(
+                charAt(previousText, previousText.length - 1),
+              )) {
+            startPadding = _fontSize / 2;
+          }
+        }
+
+        final overlapsEnd = rubies.any(
+          (candidate) =>
+              candidate.type == ruby.type &&
+              candidate.startIndex <= ruby.endIndex &&
+              candidate.endIndex > ruby.endIndex,
+        );
+        if (!overlapsEnd && end < block.atom.length) {
+          final nextText = block.getAtomText(end);
+          if (!_cjkIdeographPattern.hasMatch(charAt(nextText, 0))) {
+            endPadding = _fontSize / 2;
+          }
+        }
+
+        overflow -= startPadding + endPadding;
+        if (overflow > 0) {
+          final visibleAtomCount = math.max(end - start + 1 - insertCount, 1);
+          final tracking = overflow / visibleAtomCount;
+          for (
+            var index = math.min(end, block.atom.length - 1);
+            index >= start;
+            index -= 1
+          ) {
+            block.atom[index].tracking += tracking;
+          }
+        }
+
+        ruby
+          ..trackingStart = startPadding
+          ..trackingEnd = endPadding;
+      } else if (overflow + _fontSize / 2 < 0 && ruby.tb!.atom.length > 1) {
+        final tracking =
+            -(overflow + _fontSize / 2) / (ruby.tb!.atom.length - 1);
+        for (var index = ruby.tb!.atom.length - 1; index > 0; index -= 1) {
+          ruby.tb!.atom[index].tracking = tracking;
+        }
+      }
+    }
+  }
+
+  void _attachWarichu(LayoutTextBlock block, AstParagraphExtra extra) {
+    final body = extra.warichuText ?? '';
+    final rows = splitWarichuText(body);
+    final startIndex = extra.startIndex ?? 0;
+    final endIndex = extra.endIndex ?? startIndex;
+    final innerStart = startIndex + 1;
+    final innerEnd = math.max(innerStart, endIndex - 1);
+    if ((rows.upper.isEmpty && rows.lower.isEmpty) || innerEnd <= innerStart) {
+      return;
+    }
+
+    var upperConsumed = 0;
+    var lowerConsumed = 0;
+    var line = block.getTextLineAtCharIndex(innerStart);
+    while (line != null &&
+        (upperConsumed < rows.upper.length ||
+            lowerConsumed < rows.lower.length)) {
+      final lineStartOffset = block.atom[line.start].index;
+      final lineEndOffset = _lineEndOffset(block, line);
+      final segmentStart = math.max(innerStart, lineStartOffset);
+      final segmentEnd = math.min(innerEnd, lineEndOffset);
+
+      if (segmentEnd > segmentStart) {
+        final segmentUnits = segmentEnd - segmentStart;
+        final upperEnd = math.min(
+          rows.upper.length,
+          upperConsumed + segmentUnits,
+        );
+        final lowerEnd = math.min(
+          rows.lower.length,
+          lowerConsumed + segmentUnits,
+        );
+        final upperText = rows.upper.substring(upperConsumed, upperEnd);
+        final lowerText = rows.lower.substring(lowerConsumed, lowerEnd);
+        upperConsumed = upperEnd;
+        lowerConsumed = lowerEnd;
+
+        final upperLine = _buildWarichuLine(
+          upperText,
+          segmentUnits * _currentFontSize / 2,
+        );
+        final lowerLine = _buildWarichuLine(
+          lowerText,
+          segmentUnits * _currentFontSize / 2,
+        );
+
+        final startAtom = block.getAtomIndexAt(segmentStart);
+        final endAtom = block.getAtomIndexAt(segmentEnd);
+        final segmentTop = line.y + line.getAtomY(startAtom);
+        final segmentBottom = line.y + line.getAtomY(endAtom);
+        final segmentExtent = segmentBottom - segmentTop;
+
+        if (upperLine != null) {
+          upperLine.y =
+              segmentTop + _warichuRowOffset(upperLine, segmentExtent);
+        }
+        if (lowerLine != null) {
+          lowerLine.y =
+              segmentTop + _warichuRowOffset(lowerLine, segmentExtent);
+        }
+
+        line.attachments.add(
+          WarichuMarker(lowerLine: lowerLine, upperLine: upperLine),
+        );
+      }
+
+      if (segmentEnd >= innerEnd) {
+        break;
+      }
+      line = line.nextLine;
+    }
+  }
+
+  LayoutTextLine? _buildWarichuLine(String text, double extent) {
+    if (text.isEmpty) {
+      return null;
+    }
+
+    final block = LayoutTextBlock(this)
+      ..setText(
+        text,
+        _currentFontSize / 2,
+        _currentFontType,
+        _currentFontBold,
+        _currentFontItalic,
+        _currentTextRotation,
+      );
+    var line = block.createTextLine();
+    if (line == null) {
+      return null;
+    }
+
+    if (block.atom.length > 1) {
+      final tracking = (extent - line.textWidth) / (block.atom.length - 1);
+      if (tracking != 0) {
+        for (var index = block.atom.length - 1; index > 0; index -= 1) {
+          block.atom[index].tracking = tracking;
+        }
+        line = block.createTextLine();
+      }
+    }
+
+    return line;
+  }
+
+  int _lineEndOffset(LayoutTextBlock block, LayoutTextLine line) {
+    return line.end < block.atom.length
+        ? block.atom[line.end].index
+        : block.rawtext.length;
+  }
+
+  int _inlineInsertCountInRange(
+    List<AstInlineInsert> inserts,
+    int startOffset,
+    int endOffset,
+  ) {
+    return inserts
+        .where(
+          (insert) =>
+              insert.startIndex >= startOffset && insert.startIndex < endOffset,
+        )
+        .length;
+  }
+
+  double _inlineInsertExtentInRange(
+    LayoutTextBlock block,
+    List<AstInlineInsert> inserts,
+    int startOffset,
+    int endOffset,
+  ) {
+    var extent = 0.0;
+    for (final insert in inserts) {
+      if (insert.startIndex < startOffset || insert.startIndex >= endOffset) {
+        continue;
+      }
+      final atomIndex = block.getAtomIndexAt(insert.startIndex);
+      extent += block.getAtomHeight(atomIndex, includeTracking: true);
+    }
+    return extent;
+  }
+
+  LayoutSpanMarkerKind _spanMarkerKind(AstParagraphExtra extra) {
+    if (extra.kind == AstParagraphExtraKind.frame) {
+      return switch (extra.frameKind) {
+        AstFrameKind.start => LayoutSpanMarkerKind.frameStart,
+        AstFrameKind.end => LayoutSpanMarkerKind.frameEnd,
+        _ => LayoutSpanMarkerKind.frameMiddle,
+      };
+    }
+    if (extra.ruledLineKind == AstRuledLineKind.frameBox) {
+      return LayoutSpanMarkerKind.frameBox;
+    }
+    if (extra.ruledLineKind == AstRuledLineKind.cancel) {
+      return LayoutSpanMarkerKind.cancel;
+    }
+    final right = extra.rightSide ?? true;
+    return switch ((right, extra.ruledLineKind)) {
+      (true, AstRuledLineKind.doubleLine) => LayoutSpanMarkerKind.rightDouble,
+      (true, AstRuledLineKind.chain) => LayoutSpanMarkerKind.rightChain,
+      (true, AstRuledLineKind.dashed) => LayoutSpanMarkerKind.rightDashed,
+      (true, AstRuledLineKind.wave) => LayoutSpanMarkerKind.rightWave,
+      (true, _) => LayoutSpanMarkerKind.rightSolid,
+      (false, AstRuledLineKind.doubleLine) => LayoutSpanMarkerKind.leftDouble,
+      (false, AstRuledLineKind.chain) => LayoutSpanMarkerKind.leftChain,
+      (false, AstRuledLineKind.dashed) => LayoutSpanMarkerKind.leftDashed,
+      (false, AstRuledLineKind.wave) => LayoutSpanMarkerKind.leftWave,
+      (false, _) => LayoutSpanMarkerKind.leftSolid,
+    };
+  }
+
+  double _warichuRowOffset(LayoutTextLine line, double segmentExtent) {
+    final slack = segmentExtent - line.textWidth;
+    return slack > 0 ? slack / 2 : 0;
+  }
+
+  void _finalizeScrollGeometry() {
+    if (_lines.isEmpty) {
+      _contentWidth = _width;
+      _maxScrollOffset = 0;
+      return;
+    }
+
+    var usedWidth = 0.0;
+    for (var index = 0; index < _lines.length; index += 1) {
+      final group = _lines[index];
+      usedWidth += group.gapBefore + group.width;
+      if (index < _lines.length - 1) {
+        usedWidth += _lineSpace;
+      }
+    }
+
+    final contentLeadingInset = _layoutState.isVertical
+        ? _pageMarginSide
+        : _pageMarginTop;
+    final contentTrailingInset = _layoutState.isVertical
+        ? _pageMarginTrailing
+        : _pageMarginBottom;
+    _contentWidth = math.max(
+      _width,
+      usedWidth + contentLeadingInset + contentTrailingInset,
+    );
+    _maxScrollOffset = math.max(_contentWidth - _width, 0);
+
+    var cursor = _contentWidth - contentLeadingInset - contentTrailingInset;
+    for (final group in _lines) {
+      cursor -= group.gapBefore;
+      group.xStart = cursor - group.width;
+      group.xEnd = cursor;
+      cursor = group.xStart - _lineSpace;
+    }
+  }
+
+  void _notifySnapshot() {
+    onSnapshot(snapshot);
+  }
+
+  void paint(ui.Canvas canvas) {
+    if (_width <= 0 || _height <= 0 || _pageWidth <= 0 || _pageHeight <= 0) {
+      return;
+    }
+
+    _clickable = <ClickableArea>[];
+    _selectableGlyphs = <KumihanSelectableGlyph>[];
+    _selectableGlyphOrder = 0;
+    _drawPaperSurface(canvas, Rect.fromLTWH(0, 0, _contentWidth, _height));
+    _paintVisibleRange(canvas);
+  }
+
+  void _drawPaperSurface(ui.Canvas canvas, Rect rect) {
+    canvas.drawRect(rect, Paint()..color = paperColor);
+  }
+
+  void _drawWavyLine(
+    ui.Canvas canvas,
+    Paint paint,
+    double x,
+    double top,
+    double bottom,
+  ) {
+    canvas.save();
+    canvas.clipRect(Rect.fromLTRB(x - 100, top, x + 100, bottom));
+    final path = Path()..moveTo(x, top);
+    const wave = 3.0;
+    var count = 0;
+    for (
+      var position = top;
+      position < bottom;
+      position += 2 * wave, count += 1
+    ) {
+      if (count.isOdd) {
+        path.quadraticBezierTo(
+          x - wave,
+          position + wave,
+          x,
+          position + 2 * wave,
+        );
+      } else {
+        path.quadraticBezierTo(
+          x + wave,
+          position + wave,
+          x,
+          position + 2 * wave,
+        );
+      }
+    }
+    canvas.drawPath(path, paint);
+    canvas.restore();
+  }
+
+  void _drawWavyLineYoko(
+    ui.Canvas canvas,
+    Paint paint,
+    double y,
+    double left,
+    double right,
+  ) {
+    canvas.save();
+    canvas.clipRect(Rect.fromLTRB(left, y - 100, right, y + 100));
+    final path = Path()..moveTo(left, y);
+    const wave = 3.0;
+    var count = 0;
+    for (
+      var position = left;
+      position < right;
+      position += 2 * wave, count += 1
+    ) {
+      if (count.isOdd) {
+        path.quadraticBezierTo(
+          position + wave,
+          y - wave,
+          position + 2 * wave,
+          y,
+        );
+      } else {
+        path.quadraticBezierTo(
+          position + wave,
+          y + wave,
+          position + 2 * wave,
+          y,
+        );
+      }
+    }
+    canvas.drawPath(path, paint);
+    canvas.restore();
+  }
+}

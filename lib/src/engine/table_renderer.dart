@@ -3,8 +3,9 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/painting.dart';
 
-import '../kumihan_document.dart';
+import '../ast.dart';
 import 'constants.dart';
+import 'document_compiler.dart';
 
 class RenderedTableBlock {
   const RenderedTableBlock({
@@ -19,7 +20,7 @@ class RenderedTableBlock {
 }
 
 Future<RenderedTableBlock> renderTableBlock({
-  required KumihanTableBlock block,
+  required AstCompiledTableEntry table,
   required Color fontColor,
   required double fontSize,
   required List<String> gothicFontFamilies,
@@ -27,7 +28,7 @@ Future<RenderedTableBlock> renderTableBlock({
   required List<String> minchoFontFamilies,
   required double maxWidth,
 }) async {
-  final normalizedRows = _normalizeRows(block.rows);
+  final normalizedRows = _normalizeRows(table.rows);
   final columnCount = normalizedRows.isEmpty ? 0 : normalizedRows.first.length;
   if (columnCount == 0) {
     return _renderFallbackBlock(
@@ -37,8 +38,8 @@ Future<RenderedTableBlock> renderTableBlock({
     );
   }
 
-  final bodyRows = block.headerRowCount < normalizedRows.length
-      ? normalizedRows.length - block.headerRowCount
+  final bodyRows = table.headerRowCount < normalizedRows.length
+      ? normalizedRows.length - table.headerRowCount
       : normalizedRows.length;
   final maxTextLength = _maxTextLength(normalizedRows);
   final minimumColumnWidth = math.max(
@@ -55,7 +56,7 @@ Future<RenderedTableBlock> renderTableBlock({
   final plan = preferStacked
       ? _buildStackedPlan(
           rows: normalizedRows,
-          headerRowCount: block.headerRowCount,
+          headerRowCount: table.headerRowCount,
           fontColor: fontColor,
           fontSize: fontSize,
           gothicFontFamilies: gothicFontFamilies,
@@ -64,7 +65,7 @@ Future<RenderedTableBlock> renderTableBlock({
         )
       : _buildGridPlan(
           rows: normalizedRows,
-          headerRowCount: block.headerRowCount,
+          headerRowCount: table.headerRowCount,
           fontColor: fontColor,
           fontSize: fontSize,
           gothicFontFamilies: gothicFontFamilies,
@@ -118,9 +119,11 @@ Future<RenderedTableBlock> _renderFallbackBlock({
   return RenderedTableBlock(height: height, picture: picture, width: width);
 }
 
-List<List<KumihanTableCell>> _normalizeRows(List<List<KumihanTableCell>> rows) {
+List<List<AstCompiledTableCell>> _normalizeRows(
+  List<List<AstCompiledTableCell>> rows,
+) {
   if (rows.isEmpty) {
-    return const <List<KumihanTableCell>>[];
+    return const <List<AstCompiledTableCell>>[];
   }
 
   var columnCount = 0;
@@ -130,21 +133,24 @@ List<List<KumihanTableCell>> _normalizeRows(List<List<KumihanTableCell>> rows) {
     }
   }
   if (columnCount <= 0) {
-    return const <List<KumihanTableCell>>[];
+    return const <List<AstCompiledTableCell>>[];
   }
 
   return rows
       .map(
-        (row) => <KumihanTableCell>[
+        (row) => <AstCompiledTableCell>[
           ...row,
           for (var index = row.length; index < columnCount; index += 1)
-            const KumihanTableCell(text: ''),
+            const AstCompiledTableCell(
+              text: '',
+              alignment: AstTableAlignment.start,
+            ),
         ],
       )
       .toList(growable: false);
 }
 
-int _maxTextLength(List<List<KumihanTableCell>> rows) {
+int _maxTextLength(List<List<AstCompiledTableCell>> rows) {
   var maxLength = 0;
   for (final row in rows) {
     for (final cell in row) {
@@ -200,13 +206,13 @@ TextPainter _createPainter(
   )..layout(maxWidth: math.max(maxWidth, 1));
 }
 
-TextAlign _textAlignForCell(KumihanTableAlignment alignment) {
+TextAlign _textAlignForCell(AstTableAlignment alignment) {
   switch (alignment) {
-    case KumihanTableAlignment.center:
+    case AstTableAlignment.center:
       return TextAlign.center;
-    case KumihanTableAlignment.end:
+    case AstTableAlignment.end:
       return TextAlign.right;
-    case KumihanTableAlignment.start:
+    case AstTableAlignment.start:
       return TextAlign.left;
   }
 }
@@ -218,7 +224,7 @@ _RenderedTablePlan _buildGridPlan({
   required int headerRowCount,
   required List<String> minchoFontFamilies,
   required double minimumColumnWidth,
-  required List<List<KumihanTableCell>> rows,
+  required List<List<AstCompiledTableCell>> rows,
   required double width,
 }) {
   final columnCount = rows.first.length;
@@ -359,10 +365,10 @@ _RenderedTablePlan _buildGridPlan({
           final cellY = y + (rowHeight - painter.height) / 2;
           final alignment = rows[rowIndex][column].alignment;
           final offsetX = switch (alignment) {
-            KumihanTableAlignment.center =>
+            AstTableAlignment.center =>
               cellX + (innerWidth - painter.width) / 2,
-            KumihanTableAlignment.end => cellX + innerWidth - painter.width,
-            KumihanTableAlignment.start => cellX,
+            AstTableAlignment.end => cellX + innerWidth - painter.width,
+            AstTableAlignment.start => cellX,
           };
           painter.paint(canvas, Offset(offsetX, cellY));
 
@@ -392,7 +398,7 @@ _RenderedTablePlan _buildStackedPlan({
   required List<String> gothicFontFamilies,
   required int headerRowCount,
   required List<String> minchoFontFamilies,
-  required List<List<KumihanTableCell>> rows,
+  required List<List<AstCompiledTableCell>> rows,
   required double width,
 }) {
   const border = 1.0;
@@ -477,10 +483,10 @@ _RenderedTablePlan _buildStackedPlan({
           innerPadding;
       pairLayouts.add(
         _StackedPairLayout(
+          alignment: row[column].alignment,
           height: pairHeight,
           labelPainter: labelPainter,
           valuePainter: valuePainter,
-          alignment: row[column].alignment,
         ),
       );
       cardHeight += pairHeight + border;
@@ -532,11 +538,11 @@ _RenderedTablePlan _buildStackedPlan({
 
           final contentWidth = math.max(cardWidth - outerPadding * 2, 1.0);
           final valueX = switch (pair.alignment) {
-            KumihanTableAlignment.center =>
+            AstTableAlignment.center =>
               outerPadding + (contentWidth - pair.valuePainter.width) / 2,
-            KumihanTableAlignment.end =>
+            AstTableAlignment.end =>
               outerPadding + contentWidth - pair.valuePainter.width,
-            KumihanTableAlignment.start => outerPadding,
+            AstTableAlignment.start => outerPadding,
           };
           pair.valuePainter.paint(
             canvas,
@@ -591,7 +597,7 @@ class _StackedPairLayout {
     required this.valuePainter,
   });
 
-  final KumihanTableAlignment alignment;
+  final AstTableAlignment alignment;
   final double height;
   final TextPainter labelPainter;
   final TextPainter valuePainter;

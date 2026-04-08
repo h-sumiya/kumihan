@@ -8,7 +8,6 @@ const Color defaultKumihanTextColor = engine.fontColor;
 const Color defaultKumihanCaptionColor = engine.captionColor;
 const Color defaultKumihanLinkColor = Color(0xff3559d9);
 const Color defaultKumihanInternalLinkColor = Color(0xff1d8a56);
-
 const Object _unsetPaperTexture = Object();
 
 @immutable
