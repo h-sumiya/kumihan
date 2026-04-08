@@ -64,6 +64,7 @@ class PageFlipBook extends StatefulWidget {
     this.flippingTime = const Duration(milliseconds: 1000),
     this.tapFlipTime,
     this.drawShadow = true,
+    this.disableGutterShadow = false,
     this.maxShadowOpacity = 0.35,
     this.bookColor = const Color(0xFFD7C8AE),
     this.pageBackgroundColor = const Color(0xFFFCFBF7),
@@ -86,6 +87,7 @@ class PageFlipBook extends StatefulWidget {
   final Duration flippingTime;
   final Duration? tapFlipTime;
   final bool drawShadow;
+  final bool disableGutterShadow;
   final double maxShadowOpacity;
   final Color bookColor;
   final Color pageBackgroundColor;
@@ -166,6 +168,11 @@ class _PageFlipBookState extends State<PageFlipBook>
       _notifySnapshotChanged();
     }
     if (oldWidget.pageTurnAnimationEnabled != widget.pageTurnAnimationEnabled) {
+      _disposeSnapshots();
+      _resetFlipState();
+      _notifySnapshotChanged();
+    }
+    if (oldWidget.disableGutterShadow != widget.disableGutterShadow) {
       _disposeSnapshots();
       _resetFlipState();
       _notifySnapshotChanged();
@@ -363,6 +370,7 @@ class _PageFlipBookState extends State<PageFlipBook>
                   displayMode: widget.displayMode,
                   scene: _scene,
                   staticGutterDensity: _currentGutterDensity,
+                  disableGutterShadow: widget.disableGutterShadow,
                   bookColor: widget.bookColor,
                   pageBackgroundColor: widget.pageBackgroundColor,
                   borderColor: widget.borderColor,
@@ -370,7 +378,7 @@ class _PageFlipBookState extends State<PageFlipBook>
               ),
             ),
             ..._buildLivePages(),
-            if (_scene == null)
+            if (_scene == null && !widget.disableGutterShadow)
               Positioned.fill(
                 child: IgnorePointer(
                   child: CustomPaint(
@@ -861,7 +869,7 @@ class _PageFlipBookState extends State<PageFlipBook>
   }
 
   bool _shouldComposeFlippingBackfaceImage(FlipDirection direction) {
-    if (_isSinglePage || !widget.drawShadow) {
+    if (_isSinglePage || !widget.drawShadow || widget.disableGutterShadow) {
       return false;
     }
     if (_drawingDensityFor(direction) == PageDensity.hard) {
@@ -952,12 +960,14 @@ class _PageFlipBookState extends State<PageFlipBook>
     if (direction == FlipDirection.back) {
       canvas.translate(-pageWidth, 0);
     }
-    paintBookGutterShadow(
-      canvas,
-      size: Size(pageWidth * 2, pageHeight),
-      pageWidth: pageWidth,
-      density: PageDensity.soft,
-    );
+    if (!widget.disableGutterShadow) {
+      paintBookGutterShadow(
+        canvas,
+        size: Size(pageWidth * 2, pageHeight),
+        pageWidth: pageWidth,
+        density: PageDensity.soft,
+      );
+    }
     canvas.restore();
 
     final picture = recorder.endRecording();

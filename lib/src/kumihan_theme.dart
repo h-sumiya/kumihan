@@ -21,6 +21,7 @@ class KumihanThemeData {
     this.paperTexture,
     this.paperTextureOpacity = 0.18,
     this.backPageOpacity = 0.08,
+    this.disableGutterShadow = false,
     Color? rubyColor,
   }) : rubyColor = rubyColor ?? textColor;
 
@@ -33,6 +34,7 @@ class KumihanThemeData {
   final ImageProvider<Object>? paperTexture;
   final double paperTextureOpacity;
   final double backPageOpacity;
+  final bool disableGutterShadow;
 
   bool get isDark => paperColor.computeLuminance() < 0.35;
 
@@ -46,6 +48,7 @@ class KumihanThemeData {
     Object? paperTexture = _unsetPaperTexture,
     double? paperTextureOpacity,
     double? backPageOpacity,
+    bool? disableGutterShadow,
   }) {
     return KumihanThemeData(
       paperColor: paperColor ?? this.paperColor,
@@ -59,6 +62,7 @@ class KumihanThemeData {
           : paperTexture as ImageProvider<Object>?,
       paperTextureOpacity: paperTextureOpacity ?? this.paperTextureOpacity,
       backPageOpacity: backPageOpacity ?? this.backPageOpacity,
+      disableGutterShadow: disableGutterShadow ?? this.disableGutterShadow,
     );
   }
 
@@ -73,7 +77,8 @@ class KumihanThemeData {
         other.internalLinkColor == internalLinkColor &&
         other.paperTexture == paperTexture &&
         other.paperTextureOpacity == paperTextureOpacity &&
-        other.backPageOpacity == backPageOpacity;
+        other.backPageOpacity == backPageOpacity &&
+        other.disableGutterShadow == disableGutterShadow;
   }
 
   @override
@@ -87,5 +92,6 @@ class KumihanThemeData {
     paperTexture,
     paperTextureOpacity,
     backPageOpacity,
+    disableGutterShadow,
   );
 }

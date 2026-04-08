@@ -1,3 +1,8 @@
+## 1.0.1
+
+- Add `disableGutterShadow` to `KumihanThemeData` and apply it to book and page-flip rendering.
+- Update the example app and widget tests to cover disabling the gutter shadow.
+
 ## 1.0.0
 
 - Replace the original `KumihanCanvas`-centered API with a `Document`/AST model and dedicated reader widgets.

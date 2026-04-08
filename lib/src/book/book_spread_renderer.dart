@@ -375,6 +375,7 @@ class BookSpreadRenderer {
     required BookPageSlot viewportSlot,
   }) {
     if (!drawGutterShadow ||
+        theme.disableGutterShadow ||
         spreadMode != KumihanSpreadMode.doublePage ||
         viewportSlot == BookPageSlot.single) {
       return;

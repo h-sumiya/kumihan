@@ -1029,6 +1029,7 @@ void main() {
         pageBackgroundColor: Color(0xfff7efd9),
         borderColor: Color(0xff8a735c),
       );
+      const theme = KumihanThemeData(disableGutterShadow: true);
       const autoPageFlipDuration = Duration(milliseconds: 420);
       const pageTurnAnimationEnabled = false;
 
@@ -1040,6 +1041,7 @@ void main() {
             height: 600,
             child: KumihanBook(
               document: Document(<Object>['本文です。']),
+              theme: theme,
               bookTheme: bookTheme,
               autoPageFlipDuration: autoPageFlipDuration,
               pageTurnAnimationEnabled: pageTurnAnimationEnabled,
@@ -1054,6 +1056,7 @@ void main() {
       expect(pageFlip.bookColor, bookTheme.bookColor);
       expect(pageFlip.pageBackgroundColor, bookTheme.pageBackgroundColor);
       expect(pageFlip.borderColor, bookTheme.borderColor);
+      expect(pageFlip.disableGutterShadow, isTrue);
       expect(pageFlip.tapFlipTime, autoPageFlipDuration);
       expect(pageFlip.pageTurnAnimationEnabled, pageTurnAnimationEnabled);
     },

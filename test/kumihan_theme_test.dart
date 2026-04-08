@@ -32,6 +32,15 @@ void main() {
     expect(left, isNot(right));
   });
 
+  test('KumihanThemeData copyWith keeps disableGutterShadow', () {
+    const theme = KumihanThemeData(disableGutterShadow: true);
+
+    final updated = theme.copyWith(backPageOpacity: 0.12);
+
+    expect(updated.disableGutterShadow, isTrue);
+    expect(updated.backPageOpacity, 0.12);
+  });
+
   test('KumihanBookThemeData applies only book overrides to base theme', () {
     const baseTheme = KumihanThemeData(
       paperColor: Color(0xfffff0dd),

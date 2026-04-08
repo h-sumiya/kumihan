@@ -1041,6 +1041,7 @@ class _KumihanBookState extends State<KumihanBook>
                     bookColor: widget.bookTheme.bookColor,
                     pageBackgroundColor: widget.bookTheme.pageBackgroundColor,
                     borderColor: widget.bookTheme.borderColor,
+                    disableGutterShadow: _effectiveTheme.disableGutterShadow,
                     pageTurnAnimationEnabled: widget.pageTurnAnimationEnabled,
                     pageDensityBuilder: _densityForRenderPage,
                     onSnapshotChanged: _handlePageFlipSnapshotChanged,

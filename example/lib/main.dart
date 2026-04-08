@@ -44,6 +44,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
   KumihanSpreadMode _bookSpreadMode = KumihanSpreadMode.doublePage;
   int? _maxPages;
   bool _bookPageTurnAnimationEnabled = true;
+  bool _disableBookGutterShadow = false;
   bool _selectable = true;
   KumihanPagedSnapshot _pagedSnapshot = const KumihanPagedSnapshot(
     currentPage: 0,
@@ -176,6 +177,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
     final delta = _scrollSnapshot.viewportWidth * 0.9 * direction;
     await _scrollController.scrollBy(delta);
   }
+
+  KumihanThemeData get _readerTheme =>
+      KumihanThemeData(disableGutterShadow: _disableBookGutterShadow);
 
   Widget _buildFrontCover() {
     return DecoratedBox(
@@ -413,6 +417,21 @@ class _ReaderScreenState extends State<ReaderScreen> {
                         ),
                       ],
                     ),
+                    const SizedBox(width: 8),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        const Text('中央影を無効化'),
+                        Switch(
+                          value: _disableBookGutterShadow,
+                          onChanged: (value) {
+                            setState(() {
+                              _disableBookGutterShadow = value;
+                            });
+                          },
+                        ),
+                      ],
+                    ),
                   ],
                   if (_viewMode == ReaderViewMode.book ||
                       _viewMode == ReaderViewMode.paged) ...<Widget>[
@@ -478,6 +497,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                       ReaderViewMode.book => KumihanBook(
                         document: _document!,
                         controller: _pagedController,
+                        theme: _readerTheme,
                         baseUri: _documentBaseUri,
                         imageLoader: _loadImage,
                         maxPages: _maxPages,
@@ -498,6 +518,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                       ReaderViewMode.paged => KumihanPagedView(
                         document: _document!,
                         controller: _pagedController,
+                        theme: _readerTheme,
                         baseUri: _documentBaseUri,
                         imageLoader: _loadImage,
                         maxPages: _maxPages,
@@ -516,6 +537,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                       ),
                       ReaderViewMode.singlePage => KumihanSinglePageView(
                         document: _document!,
+                        theme: _readerTheme,
                         baseUri: _documentBaseUri,
                         imageLoader: _loadImage,
                         layout: const KumihanLayoutData(
@@ -534,6 +556,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                       ReaderViewMode.scroll => KumihanScrollView(
                         document: _document!,
                         controller: _scrollController,
+                        theme: _readerTheme,
                         baseUri: _documentBaseUri,
                         imageLoader: _loadImage,
                         layout: const KumihanLayoutData(

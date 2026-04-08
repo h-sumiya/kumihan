@@ -19,6 +19,7 @@ final class PageFlipPainter extends CustomPainter {
     required this.displayMode,
     required this.scene,
     required this.staticGutterDensity,
+    required this.disableGutterShadow,
     required this.bookColor,
     required this.pageBackgroundColor,
     required this.borderColor,
@@ -34,6 +35,7 @@ final class PageFlipPainter extends CustomPainter {
   final PageDisplayMode displayMode;
   final FlipScene? scene;
   final PageDensity staticGutterDensity;
+  final bool disableGutterShadow;
   final Color bookColor;
   final Color pageBackgroundColor;
   final Color borderColor;
@@ -117,12 +119,14 @@ final class PageFlipPainter extends CustomPainter {
         }
       }
 
-      _drawBookShadow(
-        canvas,
-        size: size,
-        pageWidth: pageWidth,
-        density: staticGutterDensity,
-      );
+      if (!disableGutterShadow) {
+        _drawBookShadow(
+          canvas,
+          size: size,
+          pageWidth: pageWidth,
+          density: staticGutterDensity,
+        );
+      }
 
       final shadow = scene!.shadow;
       if (shadow != null && isHard) {
@@ -834,6 +838,7 @@ final class PageFlipPainter extends CustomPainter {
         oldDelegate.displayMode != displayMode ||
         oldDelegate.scene != scene ||
         oldDelegate.staticGutterDensity != staticGutterDensity ||
+        oldDelegate.disableGutterShadow != disableGutterShadow ||
         oldDelegate.bookColor != bookColor ||
         oldDelegate.pageBackgroundColor != pageBackgroundColor ||
         oldDelegate.borderColor != borderColor;

@@ -1,6 +1,6 @@
 name: kumihan
 description: "Flutter canvas widget for vertical Japanese book rendering."
-version: 1.0.0
+version: 1.0.1
 repository: "https://github.com/h-sumiya/kumihan"
 
 environment:
