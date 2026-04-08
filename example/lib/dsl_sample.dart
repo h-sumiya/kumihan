@@ -51,8 +51,6 @@ Document buildDslSampleDocument() {
       ],
     ),
     const Br(),
-    const Text(value: 'サンプルは example 内でべた書きしています。'),
-    const Br(),
     const BottomAlign.block(
       children: [
         Text(
