@@ -338,119 +338,128 @@ class _ReaderScreenState extends State<ReaderScreen> {
         children: <Widget>[
           Padding(
             padding: const EdgeInsets.all(12),
-            child: Row(
-              children: <Widget>[
-                ElevatedButton(
-                  onPressed: _pickFile,
-                  child: const Text('ファイルを選択'),
-                ),
-                const SizedBox(width: 8),
-                OutlinedButton(
-                  onPressed: _loadDslSample,
-                  child: const Text('DSL'),
-                ),
-                const SizedBox(width: 12),
-                SegmentedButton<ReaderViewMode>(
-                  segments: const <ButtonSegment<ReaderViewMode>>[
-                    ButtonSegment(
-                      value: ReaderViewMode.book,
-                      label: Text('Book'),
-                    ),
-                    ButtonSegment(
-                      value: ReaderViewMode.paged,
-                      label: Text('Paged'),
-                    ),
-                    ButtonSegment(
-                      value: ReaderViewMode.singlePage,
-                      label: Text('Single'),
-                    ),
-                    ButtonSegment(
-                      value: ReaderViewMode.scroll,
-                      label: Text('Scroll'),
-                    ),
-                  ],
-                  selected: <ReaderViewMode>{_viewMode},
-                  onSelectionChanged: (selection) {
-                    setState(() {
-                      _viewMode = selection.first;
-                    });
-                  },
-                ),
-                if (_viewMode == ReaderViewMode.book) ...<Widget>[
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: <Widget>[
+                  ElevatedButton(
+                    onPressed: _pickFile,
+                    child: const Text('ファイルを選択'),
+                  ),
                   const SizedBox(width: 8),
-                  SegmentedButton<KumihanSpreadMode>(
-                    segments: const <ButtonSegment<KumihanSpreadMode>>[
+                  OutlinedButton(
+                    onPressed: _loadDslSample,
+                    child: const Text('DSL'),
+                  ),
+                  const SizedBox(width: 12),
+                  SegmentedButton<ReaderViewMode>(
+                    segments: const <ButtonSegment<ReaderViewMode>>[
                       ButtonSegment(
-                        value: KumihanSpreadMode.doublePage,
-                        label: Text('見開き'),
+                        value: ReaderViewMode.book,
+                        label: Text('Book'),
                       ),
                       ButtonSegment(
-                        value: KumihanSpreadMode.single,
-                        label: Text('シングル'),
+                        value: ReaderViewMode.paged,
+                        label: Text('Paged'),
+                      ),
+                      ButtonSegment(
+                        value: ReaderViewMode.singlePage,
+                        label: Text('Single'),
+                      ),
+                      ButtonSegment(
+                        value: ReaderViewMode.scroll,
+                        label: Text('Scroll'),
                       ),
                     ],
-                    selected: <KumihanSpreadMode>{_bookSpreadMode},
+                    selected: <ReaderViewMode>{_viewMode},
                     onSelectionChanged: (selection) {
                       setState(() {
-                        _bookSpreadMode = selection.first;
+                        _viewMode = selection.first;
                       });
                     },
                   ),
-                  const SizedBox(width: 8),
+                  if (_viewMode == ReaderViewMode.book) ...<Widget>[
+                    const SizedBox(width: 8),
+                    SegmentedButton<KumihanSpreadMode>(
+                      segments: const <ButtonSegment<KumihanSpreadMode>>[
+                        ButtonSegment(
+                          value: KumihanSpreadMode.doublePage,
+                          label: Text('見開き'),
+                        ),
+                        ButtonSegment(
+                          value: KumihanSpreadMode.single,
+                          label: Text('シングル'),
+                        ),
+                      ],
+                      selected: <KumihanSpreadMode>{_bookSpreadMode},
+                      onSelectionChanged: (selection) {
+                        setState(() {
+                          _bookSpreadMode = selection.first;
+                        });
+                      },
+                    ),
+                    const SizedBox(width: 8),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        const Text('アニメーション'),
+                        Switch(
+                          value: _bookPageTurnAnimationEnabled,
+                          onChanged: (value) {
+                            setState(() {
+                              _bookPageTurnAnimationEnabled = value;
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                  ],
+                  if (_viewMode == ReaderViewMode.book ||
+                      _viewMode == ReaderViewMode.paged) ...<Widget>[
+                    const SizedBox(width: 8),
+                    DropdownButton<int?>(
+                      value: _maxPages,
+                      hint: const Text('Max pages'),
+                      items: const <DropdownMenuItem<int?>>[
+                        DropdownMenuItem<int?>(
+                          value: null,
+                          child: Text('Max: all'),
+                        ),
+                        DropdownMenuItem<int?>(value: 1, child: Text('Max: 1')),
+                        DropdownMenuItem<int?>(value: 3, child: Text('Max: 3')),
+                      ],
+                      onChanged: (value) {
+                        setState(() {
+                          _maxPages = value;
+                        });
+                      },
+                    ),
+                  ],
+                  const SizedBox(width: 12),
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
-                      const Text('アニメーション'),
+                      const Text('文字選択'),
                       Switch(
-                        value: _bookPageTurnAnimationEnabled,
+                        value: _selectable,
                         onChanged: (value) {
                           setState(() {
-                            _bookPageTurnAnimationEnabled = value;
+                            _selectable = value;
                           });
                         },
                       ),
                     ],
                   ),
-                ],
-                if (_viewMode == ReaderViewMode.book ||
-                    _viewMode == ReaderViewMode.paged) ...<Widget>[
-                  const SizedBox(width: 8),
-                  DropdownButton<int?>(
-                    value: _maxPages,
-                    hint: const Text('Max pages'),
-                    items: const <DropdownMenuItem<int?>>[
-                      DropdownMenuItem<int?>(
-                        value: null,
-                        child: Text('Max: all'),
-                      ),
-                      DropdownMenuItem<int?>(value: 1, child: Text('Max: 1')),
-                      DropdownMenuItem<int?>(value: 3, child: Text('Max: 3')),
-                    ],
-                    onChanged: (value) {
-                      setState(() {
-                        _maxPages = value;
-                      });
-                    },
+                  const SizedBox(width: 12),
+                  SizedBox(
+                    width: 220,
+                    child: Text(
+                      _fileName ?? '未選択',
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 ],
-                const SizedBox(width: 12),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    const Text('文字選択'),
-                    Switch(
-                      value: _selectable,
-                      onChanged: (value) {
-                        setState(() {
-                          _selectable = value;
-                        });
-                      },
-                    ),
-                  ],
-                ),
-                const SizedBox(width: 12),
-                Expanded(child: Text(_fileName ?? '未選択')),
-              ],
+              ),
             ),
           ),
           const SizedBox(height: 12),
