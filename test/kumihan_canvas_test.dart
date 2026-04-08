@@ -34,6 +34,62 @@ void main() {
     expect(controller.snapshot.currentPage, 0);
   });
 
+  testWidgets('paged canvas maxPages truncates pagination', (tester) async {
+    final controller = KumihanController();
+
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: SizedBox(
+          width: 400,
+          height: 600,
+          child: KumihanPagedCanvas(
+            document: Document(<Object>[
+              List<String>.filled(400, '本文です。').join(),
+            ]),
+            controller: controller,
+            maxPages: 1,
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(controller.snapshot.totalPages, 1);
+    expect(controller.snapshot.currentPage, 0);
+  });
+
+  testWidgets('single page canvas reports a single page snapshot', (
+    tester,
+  ) async {
+    KumihanPagedSnapshot? snapshot;
+
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: SizedBox(
+          width: 400,
+          height: 600,
+          child: KumihanSinglePageCanvas(
+            document: Document(<Object>[
+              List<String>.filled(400, '本文です。').join(),
+            ]),
+            onSnapshotChanged: (value) {
+              snapshot = value;
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(snapshot, isNotNull);
+    expect(snapshot!.totalPages, 1);
+    expect(snapshot!.currentPage, 0);
+  });
+
   testWidgets('scroll canvas exposes continuous offset and scrollbar', (
     tester,
   ) async {
@@ -179,6 +235,29 @@ void main() {
     expect(bounds.top, greaterThanOrEqualTo(32));
     expect(bounds.right, lessThanOrEqualTo(400 - 16 + 0.001));
     expect(bounds.bottom, lessThanOrEqualTo(600 - 20 + 0.001));
+  });
+
+  test('engine maxPages truncates extra pages', () async {
+    final engine = KumihanEngine(
+      baseUri: null,
+      initialPage: 0,
+      maxPages: 1,
+      onInvalidate: () {},
+      onSnapshot: (_) {},
+    );
+
+    await engine.resize(400, 600);
+    await engine.open(
+      Document(<Object>[List<String>.filled(400, '本文です。').join()]),
+    );
+
+    final recorder = PictureRecorder();
+    final canvas = Canvas(recorder);
+    engine.paint(canvas);
+    recorder.endRecording();
+
+    expect(engine.snapshot.totalPages, 1);
+    expect(engine.selectableGlyphs, isNotEmpty);
   });
 
   test(
@@ -910,6 +989,36 @@ void main() {
     expect(pageFlip.pageDensityBuilder?.call(6), PageDensity.hard);
     expect(pageFlip.pageDensityBuilder?.call(7), PageDensity.soft);
     expect(find.byType(KumihanDefaultBookDesk), findsOneWidget);
+  });
+
+  testWidgets('kumihan book maxPages truncates content pagination', (
+    tester,
+  ) async {
+    final controller = KumihanPagedController();
+
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: SizedBox(
+          width: 800,
+          height: 600,
+          child: KumihanBook(
+            document: Document(<Object>[
+              List<String>.filled(400, '本文です。').join(),
+            ]),
+            controller: controller,
+            maxPages: 1,
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(controller.snapshot.totalPages, 1);
+    expect(controller.snapshot.currentPage, 0);
+    final pageFlip = tester.widget<PageFlipBook>(find.byType(PageFlipBook));
+    expect(pageFlip.pageCount, 2);
   });
 
   testWidgets('kumihan book starts from front-cover spread in double mode', (

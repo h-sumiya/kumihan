@@ -54,6 +54,7 @@ class KumihanBook extends StatefulWidget {
     this.baseUri,
     this.imageLoader,
     this.initialPage = 0,
+    this.maxPages,
     this.spreadMode = KumihanSpreadMode.doublePage,
     this.layout = const KumihanBookLayoutData(),
     this.theme = const KumihanThemeData(),
@@ -65,13 +66,14 @@ class KumihanBook extends StatefulWidget {
     this.desk,
     this.blankPage,
     this.singlePageEdge,
-  });
+  }) : assert(maxPages == null || maxPages > 0);
 
   final Document document;
   final KumihanPagedController? controller;
   final Uri? baseUri;
   final KumihanImageLoader? imageLoader;
   final int initialPage;
+  final int? maxPages;
   final KumihanSpreadMode spreadMode;
   final KumihanBookLayoutData layout;
   final KumihanThemeData theme;
@@ -126,7 +128,8 @@ class _KumihanBookState extends State<KumihanBook>
 
     if (oldWidget.baseUri != widget.baseUri ||
         oldWidget.imageLoader != widget.imageLoader ||
-        oldWidget.initialPage != widget.initialPage) {
+        oldWidget.initialPage != widget.initialPage ||
+        oldWidget.maxPages != widget.maxPages) {
       _clearSelection();
       oldWidget.controller?.detach(this);
       _currentPage = _normalizePage(
@@ -190,6 +193,7 @@ class _KumihanBookState extends State<KumihanBook>
       baseUri: widget.baseUri,
       imageLoader: widget.imageLoader,
       initialPage: _currentPage,
+      maxPages: widget.maxPages,
       layout: _engineLayout(widget.layout),
       theme: widget.theme,
       onInvalidate: () {

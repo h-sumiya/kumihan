@@ -12,7 +12,7 @@ void main() {
   runApp(const KumihanExampleApp());
 }
 
-enum ReaderViewMode { book, paged, scroll }
+enum ReaderViewMode { book, paged, singlePage, scroll }
 
 class KumihanExampleApp extends StatelessWidget {
   const KumihanExampleApp({super.key});
@@ -42,6 +42,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
   Document? _document;
   ReaderViewMode _viewMode = ReaderViewMode.paged;
   KumihanSpreadMode _bookSpreadMode = KumihanSpreadMode.doublePage;
+  int? _maxPages;
   bool _selectable = true;
   KumihanPagedSnapshot _pagedSnapshot = const KumihanPagedSnapshot(
     currentPage: 0,
@@ -151,7 +152,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
     _loadDocument(fileName: 'DSLサンプル', document: buildDslSampleDocument());
   }
 
-  bool get _canNavigate => _pagedSnapshot.totalPages > 0;
+  bool get _canNavigate =>
+      _viewMode != ReaderViewMode.singlePage && _pagedSnapshot.totalPages > 0;
 
   Future<void> _jumpToPage() async {
     final requested = int.tryParse(_pageController.text);
@@ -285,6 +287,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
     final modeLabel = switch (_viewMode) {
       ReaderViewMode.book => 'Book',
       ReaderViewMode.paged => 'Page',
+      ReaderViewMode.singlePage => 'Single',
       ReaderViewMode.scroll => 'Scroll',
     };
 
@@ -357,6 +360,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
                       label: Text('Paged'),
                     ),
                     ButtonSegment(
+                      value: ReaderViewMode.singlePage,
+                      label: Text('Single'),
+                    ),
+                    ButtonSegment(
                       value: ReaderViewMode.scroll,
                       label: Text('Scroll'),
                     ),
@@ -385,6 +392,27 @@ class _ReaderScreenState extends State<ReaderScreen> {
                     onSelectionChanged: (selection) {
                       setState(() {
                         _bookSpreadMode = selection.first;
+                      });
+                    },
+                  ),
+                ],
+                if (_viewMode == ReaderViewMode.book ||
+                    _viewMode == ReaderViewMode.paged) ...<Widget>[
+                  const SizedBox(width: 8),
+                  DropdownButton<int?>(
+                    value: _maxPages,
+                    hint: const Text('Max pages'),
+                    items: const <DropdownMenuItem<int?>>[
+                      DropdownMenuItem<int?>(
+                        value: null,
+                        child: Text('Max: all'),
+                      ),
+                      DropdownMenuItem<int?>(value: 1, child: Text('Max: 1')),
+                      DropdownMenuItem<int?>(value: 3, child: Text('Max: 3')),
+                    ],
+                    onChanged: (value) {
+                      setState(() {
+                        _maxPages = value;
                       });
                     },
                   ),
@@ -427,6 +455,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                         controller: _pagedController,
                         baseUri: _documentBaseUri,
                         imageLoader: _loadImage,
+                        maxPages: _maxPages,
                         spreadMode: _bookSpreadMode,
                         frontCover: _buildFrontCover(),
                         backCover: _buildBackCover(),
@@ -443,6 +472,24 @@ class _ReaderScreenState extends State<ReaderScreen> {
                       ReaderViewMode.paged => KumihanPagedCanvas(
                         document: _document!,
                         controller: _pagedController,
+                        baseUri: _documentBaseUri,
+                        imageLoader: _loadImage,
+                        maxPages: _maxPages,
+                        layout: const KumihanLayoutData(
+                          fontSize: 18,
+                          pagePadding: EdgeInsets.all(16),
+                        ),
+                        selectable: _selectable,
+                        onSnapshotChanged: (snapshot) {
+                          setState(() {
+                            _pagedSnapshot = snapshot;
+                            _pageController.text =
+                                '${snapshot.currentPage + 1}';
+                          });
+                        },
+                      ),
+                      ReaderViewMode.singlePage => KumihanSinglePageCanvas(
+                        document: _document!,
                         baseUri: _documentBaseUri,
                         imageLoader: _loadImage,
                         layout: const KumihanLayoutData(

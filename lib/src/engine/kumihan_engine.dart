@@ -124,6 +124,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
   KumihanEngine({
     required this.baseUri,
     required int initialPage,
+    this.maxPages,
     this.layout = const KumihanLayoutData(),
     this.theme = const KumihanThemeData(),
     required this.onInvalidate,
@@ -136,6 +137,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
          offset: 0,
          paragraphNo: 0,
        ) {
+    assert(maxPages == null || maxPages! > 0);
     fontColor = theme.textColor;
     paperColor = theme.paperColor;
     _updateSizes();
@@ -146,6 +148,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
   final ValueChanged<KumihanSnapshot> onSnapshot;
   final KumihanImageLoader? imageLoader;
   final int _initialPage;
+  final int? maxPages;
   KumihanLayoutData layout;
   KumihanThemeData theme;
   final RendererSettings _settings = const RendererSettings();
@@ -213,6 +216,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
   bool _quoteDrawing = false;
   double _frameTop = 0;
   double _frameBottom = 0;
+  bool _layoutTruncated = false;
 
   final double _fontScaleL = 1.2;
   final double _fontScaleS = 0.85;
@@ -228,6 +232,11 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
   int _internalToDocumentPageNo(int pageNo) => pageNo - 1;
 
   String get _defaultTextRotation => _layoutState.isHorizontal ? 'h' : 'v';
+
+  bool get _hasPageLimit => maxPages != null;
+
+  bool get _canStartAdditionalPage =>
+      !_hasPageLimit || (_pages.length - 1) < maxPages!;
 
   @override
   KumihanSnapshot get snapshot => KumihanSnapshot(
@@ -580,12 +589,16 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
     _selectableGlyphOrder = 0;
     _currentPageWidth = -_lineSpace;
     _currentPageNo = -1;
+    _layoutTruncated = false;
     _resetParagraphState();
 
     final pageInlineSize = _pageWidth;
     final pageBlockSize = _pageHeight;
 
     for (final entry in _entries) {
+      if (_layoutTruncated) {
+        break;
+      }
       final paragraphNo = _blocks.length;
 
       if (entry is AstCommandEntry) {
@@ -767,7 +780,9 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
         ? initialTop + availableHeight - line.textWidth
         : initialTop;
 
-    _pushLine(line, pageInlineSize, nonBreak);
+    if (!_pushLine(line, pageInlineSize, nonBreak)) {
+      return;
+    }
     line.pageIndex ??= _pages.length - 1;
     _updateCurrentPageForPosition(paragraphNo, block, line);
 
@@ -780,7 +795,9 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
 
     while ((line = block.createTextLine(line, availableHeight, true)) != null) {
       line!.y = nextTop;
-      _pushLine(line, pageInlineSize, false);
+      if (!_pushLine(line, pageInlineSize, false)) {
+        break;
+      }
       line.pageIndex = _pages.length - 1;
       _updateCurrentPageForPosition(paragraphNo, block, line);
       availableHeight = pageBlockSize - nextTop - bottomMargin;
@@ -973,21 +990,31 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
           case AstPageBreakKind.kaidan:
           case AstPageBreakKind.kaipage:
             if (!pageEmpty) {
-              _pages.add(PageInfo(line: _lines.length));
+              if (!_tryStartPage(line: _lines.length)) {
+                break;
+              }
             }
           case AstPageBreakKind.kaicho:
             if (_pages.length.isOdd) {
-              _pages.add(PageInfo(line: _lines.length));
+              if (!_tryStartPage(line: _lines.length)) {
+                break;
+              }
             } else if (!pageEmpty) {
-              _pages.add(PageInfo(line: _lines.length));
-              _pages.add(PageInfo(line: _lines.length));
+              if (!_tryStartPage(line: _lines.length) ||
+                  !_tryStartPage(line: _lines.length)) {
+                break;
+              }
             }
           case AstPageBreakKind.kaimihiraki:
             if (_pages.length.isEven) {
-              _pages.add(PageInfo(line: _lines.length));
+              if (!_tryStartPage(line: _lines.length)) {
+                break;
+              }
             } else if (!pageEmpty) {
-              _pages.add(PageInfo(line: _lines.length));
-              _pages.add(PageInfo(line: _lines.length));
+              if (!_tryStartPage(line: _lines.length) ||
+                  !_tryStartPage(line: _lines.length)) {
+                break;
+              }
             }
           case null:
             break;
@@ -1000,32 +1027,56 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
             centering: true,
           );
         } else {
-          _pages.add(PageInfo(line: _lines.length, centering: true));
+          if (!_tryStartPage(line: _lines.length, centering: true)) {
+            break;
+          }
         }
         _currentPageWidth = -_lineSpace;
     }
   }
 
-  void _pushLine(LayoutTextLine line, double pageInlineSize, bool nonBreak) {
+  bool _tryStartPage({
+    required int line,
+    bool centering = false,
+    bool usesFullPageAlignment = false,
+  }) {
+    if (!_canStartAdditionalPage) {
+      _layoutTruncated = true;
+      return false;
+    }
+    _pages.add(
+      PageInfo(
+        line: line,
+        centering: centering,
+        usesFullPageAlignment: usesFullPageAlignment,
+      ),
+    );
+    return true;
+  }
+
+  bool _pushLine(LayoutTextLine line, double pageInlineSize, bool nonBreak) {
     if (nonBreak && _lines.isNotEmpty) {
       final previous = _lines.last;
       final baseLine = previous.primary;
       if (line.y > baseLine.y + baseLine.textWidth) {
         previous.lines.add(line);
-      } else {
-        _lines.add(LineGroup(line));
-        _currentPageWidth += line.width + _lineSpace;
+        return true;
       }
-    } else {
-      _lines.add(LineGroup(line));
-      _currentPageWidth += line.width + _lineSpace;
     }
+
+    _lines.add(LineGroup(line));
+    _currentPageWidth += line.width + _lineSpace;
 
     if (_currentPageWidth > pageInlineSize) {
       _markLastPageAsFull();
-      _pages.add(PageInfo(line: _lines.length - 1));
+      if (!_tryStartPage(line: _lines.length - 1)) {
+        _lines.removeLast();
+        _currentPageWidth -= line.width + _lineSpace;
+        return false;
+      }
       _currentPageWidth = line.width;
     }
+    return true;
   }
 
   void _updateCurrentPageForPosition(
@@ -1166,14 +1217,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
         }
 
         final markerBlock = LayoutTextBlock(this)
-          ..setText(
-            '＊',
-            _fontSize / 2,
-            0,
-            false,
-            false,
-            _defaultTextRotation,
-          );
+          ..setText('＊', _fontSize / 2, 0, false, false, _defaultTextRotation);
         final markerLine = markerBlock.createTextLine()!;
         final atomIndex = block.getAtomIndexAt(startIndex);
         markerLine.color = const Color(0xff008800);
@@ -1323,15 +1367,9 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
           if (line == null) {
             continue;
           }
-          final markerBlock = LayoutTextBlock(this)
-            ..setText(
-              emphasisChar,
-              size,
-              0,
-              false,
-              false,
-              _defaultTextRotation,
-            );
+          final markerBlock = LayoutTextBlock(
+            this,
+          )..setText(emphasisChar, size, 0, false, false, _defaultTextRotation);
           final markerLine = markerBlock.createTextLine()!;
           final atomIndex = block.getAtomIndexAt(index);
           markerLine.attachments.clear();
@@ -1356,14 +1394,7 @@ class KumihanEngine implements LayoutEnvironment, KumihanViewport {
         }
 
         final markerBlock = LayoutTextBlock(this)
-          ..setText(
-            '＊',
-            _fontSize / 2,
-            0,
-            false,
-            false,
-            _defaultTextRotation,
-          );
+          ..setText('＊', _fontSize / 2, 0, false, false, _defaultTextRotation);
         final markerLine = markerBlock.createTextLine()!;
         markerLine.color = const Color(0xffff0000);
         markerLine.attachments.clear();

@@ -19,17 +19,19 @@ class KumihanPagedCanvas extends StatefulWidget {
     this.baseUri,
     this.imageLoader,
     this.initialPage = 0,
+    this.maxPages,
     this.layout = const KumihanLayoutData(),
     this.theme = const KumihanThemeData(),
     this.selectable = true,
     this.onSnapshotChanged,
-  });
+  }) : assert(maxPages == null || maxPages > 0);
 
   final Document document;
   final KumihanPagedController? controller;
   final Uri? baseUri;
   final KumihanImageLoader? imageLoader;
   final int initialPage;
+  final int? maxPages;
   final KumihanLayoutData layout;
   final KumihanThemeData theme;
   final bool selectable;
@@ -68,6 +70,7 @@ class _KumihanPagedCanvasState extends State<KumihanPagedCanvas> {
 
     final settingsChanged =
         oldWidget.initialPage != widget.initialPage ||
+        oldWidget.maxPages != widget.maxPages ||
         oldWidget.baseUri != widget.baseUri ||
         oldWidget.imageLoader != widget.imageLoader;
 
@@ -114,6 +117,7 @@ class _KumihanPagedCanvasState extends State<KumihanPagedCanvas> {
       baseUri: widget.baseUri,
       imageLoader: widget.imageLoader,
       initialPage: widget.initialPage,
+      maxPages: widget.maxPages,
       layout: widget.layout,
       theme: widget.theme,
       onInvalidate: () {
