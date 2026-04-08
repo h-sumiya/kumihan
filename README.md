@@ -285,9 +285,8 @@ const AozoraParser().parse(aozoraText)
 
 ## インストール
 
-```yaml
-dependencies:
-  kumihan: ^0.0.1
+```bash
+flutter pub add kumihan
 ```
 
 ## 対応フォーマット
