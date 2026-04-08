@@ -194,6 +194,78 @@ void main() {
     expect(state.debugRightPageIndex, 1);
   });
 
+  testWidgets('custom tap action resolver can swap tap directions', (
+    tester,
+  ) async {
+    final pages = List<Widget>.generate(
+      5,
+      (index) => Center(
+        child: Text('Page ${index + 1}', textDirection: TextDirection.ltr),
+      ),
+    );
+
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: Center(
+          child: PageFlipBook(
+            pageCount: pages.length,
+            pageSize: const Size(240, 360),
+            displayMode: PageDisplayMode.singlePage,
+            tapActionResolver: (width, height, x, y) {
+              return x < width / 2
+                  ? PageFlipTapAction.back
+                  : PageFlipTapAction.next;
+            },
+            pageBuilder: (context, index) => pages[index],
+          ),
+        ),
+      ),
+    );
+
+    final book = find.byType(PageFlipBook);
+    final state = tester.state(book) as dynamic;
+
+    await tester.tapAt(tester.getCenter(book) + const Offset(40, 0));
+    await tester.pumpAndSettle();
+
+    expect(state.debugRightPageIndex, 1);
+  });
+
+  testWidgets('custom tap action resolver can disable tap flipping', (
+    tester,
+  ) async {
+    final pages = List<Widget>.generate(
+      5,
+      (index) => Center(
+        child: Text('Page ${index + 1}', textDirection: TextDirection.ltr),
+      ),
+    );
+
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: Center(
+          child: PageFlipBook(
+            pageCount: pages.length,
+            pageSize: const Size(240, 360),
+            displayMode: PageDisplayMode.singlePage,
+            tapActionResolver: (width, height, x, y) => null,
+            pageBuilder: (context, index) => pages[index],
+          ),
+        ),
+      ),
+    );
+
+    final book = find.byType(PageFlipBook);
+    final state = tester.state(book) as dynamic;
+
+    await tester.tapAt(tester.getCenter(book) + const Offset(-40, 0));
+    await tester.pumpAndSettle();
+
+    expect(state.debugRightPageIndex, 0);
+  });
+
   testWidgets('single page backward grip flips to previous page', (
     tester,
   ) async {
@@ -237,6 +309,46 @@ void main() {
 
     await gesture.up();
     await tester.pump();
+  });
+
+  testWidgets('kumihan book forwards tap action resolver to page flip book', (
+    tester,
+  ) async {
+    final controller = KumihanPagedController();
+
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: SizedBox(
+          width: 720,
+          height: 560,
+          child: KumihanBook(
+            controller: controller,
+            spreadMode: KumihanSpreadMode.single,
+            tapActionResolver: (width, height, x, y) {
+              return x < width / 2
+                  ? PageFlipTapAction.back
+                  : PageFlipTapAction.next;
+            },
+            document: const AozoraParser().parse(
+              '一頁目です。'
+              '\n［＃改ページ］\n二頁目です。'
+              '\n［＃改ページ］\n三頁目です。',
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    final book = find.byType(PageFlipBook);
+    final rect = tester.getRect(book);
+
+    await tester.tapAt(Offset(rect.center.dx + rect.width / 4, rect.center.dy));
+    await tester.pumpAndSettle();
+
+    expect(controller.snapshot.currentPage, 1);
   });
 
   testWidgets(

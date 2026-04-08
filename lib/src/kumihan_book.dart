@@ -69,6 +69,7 @@ class KumihanBook extends StatefulWidget {
     this.desk,
     this.blankPage,
     this.singlePageEdge,
+    this.tapActionResolver = defaultPageFlipTapActionResolver,
   }) : assert(maxPages == null || maxPages > 0);
 
   final Document document;
@@ -90,6 +91,7 @@ class KumihanBook extends StatefulWidget {
   final Widget? desk;
   final Widget? blankPage;
   final Widget? singlePageEdge;
+  final PageFlipTapActionResolver tapActionResolver;
 
   @override
   State<KumihanBook> createState() => _KumihanBookState();
@@ -1060,6 +1062,7 @@ class _KumihanBookState extends State<KumihanBook>
                     },
                     overlay: _buildPageFlipOverlay(pageSize),
                     interactionEnabled: !_showSelectionToolbar,
+                    tapActionResolver: widget.tapActionResolver,
                   ),
                 ],
               ),

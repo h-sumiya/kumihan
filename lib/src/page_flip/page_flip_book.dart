@@ -32,6 +32,25 @@ final class _PageFlipActionRegionMarker {
   const _PageFlipActionRegionMarker();
 }
 
+enum PageFlipTapAction { back, next }
+
+typedef PageFlipTapActionResolver =
+    PageFlipTapAction? Function(
+      double width,
+      double height,
+      double x,
+      double y,
+    );
+
+PageFlipTapAction? defaultPageFlipTapActionResolver(
+  double width,
+  double height,
+  double x,
+  double y,
+) {
+  return x < width / 2 ? PageFlipTapAction.next : PageFlipTapAction.back;
+}
+
 class PageFlipBook extends StatefulWidget {
   const PageFlipBook({
     super.key,
@@ -53,6 +72,7 @@ class PageFlipBook extends StatefulWidget {
     this.onSnapshotChanged,
     this.overlay,
     this.interactionEnabled = true,
+    this.tapActionResolver = defaultPageFlipTapActionResolver,
   });
 
   final int pageCount;
@@ -73,6 +93,7 @@ class PageFlipBook extends StatefulWidget {
   final ValueChanged<PageFlipSnapshot>? onSnapshotChanged;
   final Widget? overlay;
   final bool interactionEnabled;
+  final PageFlipTapActionResolver tapActionResolver;
 
   @override
   State<PageFlipBook> createState() => _PageFlipBookState();
@@ -738,7 +759,20 @@ class _PageFlipBookState extends State<PageFlipBook>
       return;
     }
 
-    if (!_startFlip(position)) {
+    final action = widget.tapActionResolver(
+      _tapRegionWidth,
+      widget.pageSize.height,
+      position.dx,
+      position.dy,
+    );
+    if (action == null) {
+      return;
+    }
+
+    if (!_startFlip(
+      position,
+      forcedDirection: _directionForTapAction(action),
+    )) {
       return;
     }
 
@@ -1099,6 +1133,9 @@ class _PageFlipBookState extends State<PageFlipBook>
     return Offset(x, bookPosition.dy);
   }
 
+  double get _tapRegionWidth =>
+      _isSinglePage ? widget.pageSize.width : widget.pageSize.width * 2;
+
   FlipDirection _directionForPoint(Offset bookPosition) {
     final midpoint = _isSinglePage
         ? widget.pageSize.width / 2
@@ -1107,6 +1144,13 @@ class _PageFlipBookState extends State<PageFlipBook>
       return FlipDirection.back;
     }
     return FlipDirection.forward;
+  }
+
+  FlipDirection _directionForTapAction(PageFlipTapAction action) {
+    return switch (action) {
+      PageFlipTapAction.next => FlipDirection.back,
+      PageFlipTapAction.back => FlipDirection.forward,
+    };
   }
 
   FlipDirection _directionForSwipeDelta(Offset delta) {
