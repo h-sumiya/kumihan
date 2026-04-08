@@ -266,6 +266,57 @@ void main() {
     expect(state.debugRightPageIndex, 0);
   });
 
+  testWidgets(
+    'page turn animation can be disabled while keeping instant tap and swipe navigation',
+    (tester) async {
+      final pages = List<Widget>.generate(
+        6,
+        (index) => Center(
+          child: Text('Page ${index + 1}', textDirection: TextDirection.ltr),
+        ),
+      );
+
+      await tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: Center(
+            child: PageFlipBook(
+              pageCount: pages.length,
+              pageSize: const Size(240, 360),
+              displayMode: PageDisplayMode.singlePage,
+              pageTurnAnimationEnabled: false,
+              pageBuilder: (context, index) => pages[index],
+            ),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      final book = find.byType(PageFlipBook);
+      final state = tester.state(book) as dynamic;
+      expect(state.debugPageImageVersion, 0);
+
+      await tester.tapAt(tester.getCenter(book) + const Offset(-40, 0));
+      await tester.pump();
+
+      expect(state.debugRightPageIndex, 1);
+      expect(state.debugIsDragging, isFalse);
+      expect(state.debugPageImageVersion, 0);
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(book) + const Offset(-20, 0),
+      );
+      await gesture.moveBy(const Offset(80, 0));
+      await tester.pump();
+      await gesture.up();
+      await tester.pump();
+
+      expect(state.debugRightPageIndex, 2);
+      expect(state.debugIsDragging, isFalse);
+    },
+  );
+
   testWidgets('single page backward grip flips to previous page', (
     tester,
   ) async {

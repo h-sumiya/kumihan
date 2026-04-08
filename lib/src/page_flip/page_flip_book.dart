@@ -72,6 +72,7 @@ class PageFlipBook extends StatefulWidget {
     this.onSnapshotChanged,
     this.overlay,
     this.interactionEnabled = true,
+    this.pageTurnAnimationEnabled = true,
     this.tapActionResolver = defaultPageFlipTapActionResolver,
   });
 
@@ -93,6 +94,7 @@ class PageFlipBook extends StatefulWidget {
   final ValueChanged<PageFlipSnapshot>? onSnapshotChanged;
   final Widget? overlay;
   final bool interactionEnabled;
+  final bool pageTurnAnimationEnabled;
   final PageFlipTapActionResolver tapActionResolver;
 
   @override
@@ -160,6 +162,11 @@ class _PageFlipBookState extends State<PageFlipBook>
         oldWidget.displayMode != widget.displayMode) {
       _disposeSnapshots();
       _rightPageIndex = _normalizeRightPageIndex(_rightPageIndex);
+      _resetFlipState();
+      _notifySnapshotChanged();
+    }
+    if (oldWidget.pageTurnAnimationEnabled != widget.pageTurnAnimationEnabled) {
+      _disposeSnapshots();
       _resetFlipState();
       _notifySnapshotChanged();
     }
@@ -375,24 +382,26 @@ class _PageFlipBookState extends State<PageFlipBook>
                 ),
               ),
             if (widget.overlay != null) Positioned.fill(child: widget.overlay!),
-            Positioned(
-              left: -widget.pageSize.width * 8,
-              top: 0,
-              child: IgnorePointer(
-                child: Opacity(
-                  opacity: 0.01,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: _requiredSnapshotIndices
-                        .where(
-                          (pageIndex) => !_livePageIndices.contains(pageIndex),
-                        )
-                        .map(_buildSnapshotHost)
-                        .toList(growable: false),
+            if (widget.pageTurnAnimationEnabled)
+              Positioned(
+                left: -widget.pageSize.width * 8,
+                top: 0,
+                child: IgnorePointer(
+                  child: Opacity(
+                    opacity: 0.01,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: _requiredSnapshotIndices
+                          .where(
+                            (pageIndex) =>
+                                !_livePageIndices.contains(pageIndex),
+                          )
+                          .map(_buildSnapshotHost)
+                          .toList(growable: false),
+                    ),
                   ),
                 ),
               ),
-            ),
           ],
         ),
       ),
@@ -557,6 +566,7 @@ class _PageFlipBookState extends State<PageFlipBook>
   }
 
   bool get _shouldCaptureSnapshots =>
+      widget.pageTurnAnimationEnabled &&
       mounted &&
       _scene == null &&
       !_animationController.isAnimating &&
@@ -641,9 +651,11 @@ class _PageFlipBookState extends State<PageFlipBook>
     _touchStartTimestamp = event.timeStamp;
     _isUserTouch = true;
     _isDragging = false;
-    _notifySnapshotChanged();
+    if (widget.pageTurnAnimationEnabled) {
+      _notifySnapshotChanged();
+    }
 
-    if (!_isInEdgeGrabZone(bookPosition)) {
+    if (!widget.pageTurnAnimationEnabled || !_isInEdgeGrabZone(bookPosition)) {
       return;
     }
 
@@ -672,6 +684,18 @@ class _PageFlipBookState extends State<PageFlipBook>
 
     final bookPosition = _clampToBook(event.localPosition);
     final touchStartPosition = _touchStartPosition;
+    if (!widget.pageTurnAnimationEnabled) {
+      if (touchStartPosition == null ||
+          !_shouldGrabFromSwipe(bookPosition - touchStartPosition)) {
+        return;
+      }
+      final direction = _directionForSwipeDelta(
+        bookPosition - touchStartPosition,
+      );
+      _clearTouchTracking();
+      _jumpToDirection(direction);
+      return;
+    }
     if (!_isDragging) {
       if (touchStartPosition == null ||
           !_shouldGrabFromSwipe(bookPosition - touchStartPosition)) {
@@ -712,7 +736,9 @@ class _PageFlipBookState extends State<PageFlipBook>
     final bookPosition = _clampToBook(event.localPosition);
 
     _clearTouchTracking();
-    _notifySnapshotChanged();
+    if (widget.pageTurnAnimationEnabled) {
+      _notifySnapshotChanged();
+    }
 
     if (wasDragging) {
       _settleFlip();
@@ -747,7 +773,9 @@ class _PageFlipBookState extends State<PageFlipBook>
 
     final wasDragging = _isDragging;
     _clearTouchTracking();
-    _notifySnapshotChanged();
+    if (widget.pageTurnAnimationEnabled) {
+      _notifySnapshotChanged();
+    }
     if (!wasDragging) {
       return;
     }
@@ -766,6 +794,11 @@ class _PageFlipBookState extends State<PageFlipBook>
       position.dy,
     );
     if (action == null) {
+      return;
+    }
+
+    if (!widget.pageTurnAnimationEnabled) {
+      _jumpToDirection(_directionForTapAction(action));
       return;
     }
 
@@ -814,6 +847,16 @@ class _PageFlipBookState extends State<PageFlipBook>
     );
     _prepareFlippingBackfaceImage(direction);
     _notifySnapshotChanged();
+    return true;
+  }
+
+  bool _jumpToDirection(FlipDirection direction) {
+    if (!_canFlip(direction)) {
+      return false;
+    }
+    unawaited(
+      showRightPage(_targetRightPageIndexFor(_rightPageIndex, direction)),
+    );
     return true;
   }
 

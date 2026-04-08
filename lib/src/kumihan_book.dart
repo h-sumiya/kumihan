@@ -61,6 +61,7 @@ class KumihanBook extends StatefulWidget {
     this.theme = const KumihanThemeData(),
     this.bookTheme = const KumihanBookThemeData(),
     this.autoPageFlipDuration = const Duration(milliseconds: 1000),
+    this.pageTurnAnimationEnabled = true,
     this.selectable = true,
     this.onLinkTap,
     this.onSnapshotChanged,
@@ -83,6 +84,7 @@ class KumihanBook extends StatefulWidget {
   final KumihanThemeData theme;
   final KumihanBookThemeData bookTheme;
   final Duration autoPageFlipDuration;
+  final bool pageTurnAnimationEnabled;
   final bool selectable;
   final ValueChanged<String>? onLinkTap;
   final ValueChanged<KumihanPagedSnapshot>? onSnapshotChanged;
@@ -1039,6 +1041,7 @@ class _KumihanBookState extends State<KumihanBook>
                     bookColor: widget.bookTheme.bookColor,
                     pageBackgroundColor: widget.bookTheme.pageBackgroundColor,
                     borderColor: widget.bookTheme.borderColor,
+                    pageTurnAnimationEnabled: widget.pageTurnAnimationEnabled,
                     pageDensityBuilder: _densityForRenderPage,
                     onSnapshotChanged: _handlePageFlipSnapshotChanged,
                     snapshotPageBuilder: (context, pageIndex) {

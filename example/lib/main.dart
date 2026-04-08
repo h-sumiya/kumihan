@@ -43,6 +43,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
   ReaderViewMode _viewMode = ReaderViewMode.paged;
   KumihanSpreadMode _bookSpreadMode = KumihanSpreadMode.doublePage;
   int? _maxPages;
+  bool _bookPageTurnAnimationEnabled = true;
   bool _selectable = true;
   KumihanPagedSnapshot _pagedSnapshot = const KumihanPagedSnapshot(
     currentPage: 0,
@@ -395,6 +396,21 @@ class _ReaderScreenState extends State<ReaderScreen> {
                       });
                     },
                   ),
+                  const SizedBox(width: 8),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      const Text('アニメーション'),
+                      Switch(
+                        value: _bookPageTurnAnimationEnabled,
+                        onChanged: (value) {
+                          setState(() {
+                            _bookPageTurnAnimationEnabled = value;
+                          });
+                        },
+                      ),
+                    ],
+                  ),
                 ],
                 if (_viewMode == ReaderViewMode.book ||
                     _viewMode == ReaderViewMode.paged) ...<Widget>[
@@ -457,6 +473,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                         imageLoader: _loadImage,
                         maxPages: _maxPages,
                         spreadMode: _bookSpreadMode,
+                        pageTurnAnimationEnabled: _bookPageTurnAnimationEnabled,
                         frontCover: _buildFrontCover(),
                         backCover: _buildBackCover(),
                         layout: _bookLayout,
