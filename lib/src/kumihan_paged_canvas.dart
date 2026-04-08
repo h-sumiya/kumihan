@@ -16,6 +16,7 @@ class KumihanPagedCanvas extends StatefulWidget {
     super.key,
     required this.document,
     this.controller,
+    this.baseUri,
     this.imageLoader,
     this.initialPage = 0,
     this.layout = const KumihanLayoutData(),
@@ -26,6 +27,7 @@ class KumihanPagedCanvas extends StatefulWidget {
 
   final Document document;
   final KumihanPagedController? controller;
+  final Uri? baseUri;
   final KumihanImageLoader? imageLoader;
   final int initialPage;
   final KumihanLayoutData layout;
@@ -66,6 +68,7 @@ class _KumihanPagedCanvasState extends State<KumihanPagedCanvas> {
 
     final settingsChanged =
         oldWidget.initialPage != widget.initialPage ||
+        oldWidget.baseUri != widget.baseUri ||
         oldWidget.imageLoader != widget.imageLoader;
 
     if (settingsChanged) {
@@ -108,7 +111,7 @@ class _KumihanPagedCanvasState extends State<KumihanPagedCanvas> {
 
   KumihanEngine _createEngine() {
     return KumihanEngine(
-      baseUri: null,
+      baseUri: widget.baseUri,
       imageLoader: widget.imageLoader,
       initialPage: widget.initialPage,
       layout: widget.layout,

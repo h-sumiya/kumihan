@@ -17,6 +17,7 @@ class KumihanBookCanvas extends StatefulWidget {
     super.key,
     required this.document,
     this.controller,
+    this.baseUri,
     this.imageLoader,
     this.initialPage = 0,
     this.spreadMode = KumihanSpreadMode.doublePage,
@@ -28,6 +29,7 @@ class KumihanBookCanvas extends StatefulWidget {
 
   final Document document;
   final KumihanPagedController? controller;
+  final Uri? baseUri;
   final KumihanImageLoader? imageLoader;
   final int initialPage;
   final KumihanSpreadMode spreadMode;
@@ -72,7 +74,8 @@ class _KumihanBookCanvasState extends State<KumihanBookCanvas>
       widget.controller?.attach(this);
     }
 
-    if (oldWidget.imageLoader != widget.imageLoader ||
+    if (oldWidget.baseUri != widget.baseUri ||
+        oldWidget.imageLoader != widget.imageLoader ||
         oldWidget.initialPage != widget.initialPage) {
       _clearSelection();
       oldWidget.controller?.detach(this);
@@ -124,7 +127,7 @@ class _KumihanBookCanvasState extends State<KumihanBookCanvas>
 
   KumihanEngine _createEngine() {
     return KumihanEngine(
-      baseUri: null,
+      baseUri: widget.baseUri,
       imageLoader: widget.imageLoader,
       initialPage: _currentPage,
       layout: _engineLayout(widget.layout),

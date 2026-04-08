@@ -16,6 +16,7 @@ class KumihanScrollCanvas extends StatefulWidget {
     super.key,
     required this.document,
     this.controller,
+    this.baseUri,
     this.imageLoader,
     this.layout = const KumihanLayoutData(),
     this.theme = const KumihanThemeData(),
@@ -25,6 +26,7 @@ class KumihanScrollCanvas extends StatefulWidget {
 
   final Document document;
   final KumihanScrollController? controller;
+  final Uri? baseUri;
   final KumihanImageLoader? imageLoader;
   final KumihanLayoutData layout;
   final KumihanThemeData theme;
@@ -67,7 +69,8 @@ class _KumihanScrollCanvasState extends State<KumihanScrollCanvas>
       widget.controller?.attach(this);
     }
 
-    if (oldWidget.imageLoader != widget.imageLoader) {
+    if (oldWidget.baseUri != widget.baseUri ||
+        oldWidget.imageLoader != widget.imageLoader) {
       _clearSelection();
       oldWidget.controller?.detach(this);
       _engine = _createEngine();
@@ -114,7 +117,7 @@ class _KumihanScrollCanvasState extends State<KumihanScrollCanvas>
 
   KumihanScrollEngine _createEngine() {
     return KumihanScrollEngine(
-      baseUri: null,
+      baseUri: widget.baseUri,
       imageLoader: widget.imageLoader,
       layout: widget.layout,
       theme: widget.theme,

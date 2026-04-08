@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui';
+import 'dart:ui' as ui;
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -61,6 +62,64 @@ void main() {
       controller.snapshot.scrollOffset,
       closeTo(controller.snapshot.maxScrollOffset, 1),
     );
+  });
+
+  testWidgets('paged canvas resolves relative image paths against baseUri', (
+    tester,
+  ) async {
+    final loadedPaths = <String>[];
+
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: SizedBox(
+          width: 400,
+          height: 600,
+          child: KumihanPagedCanvas(
+            document: const MarkdownParser().parse('![image](cover.png)'),
+            baseUri: Uri.parse('file:///books/sample.md'),
+            imageLoader: (path) async {
+              loadedPaths.add(path);
+              return _createTestImage();
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(loadedPaths, contains('file:///books/cover.png'));
+  });
+
+  testWidgets('scroll canvas keeps absolute image URLs unchanged', (
+    tester,
+  ) async {
+    final loadedPaths = <String>[];
+
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: SizedBox(
+          width: 400,
+          height: 600,
+          child: KumihanScrollCanvas(
+            document: const MarkdownParser().parse(
+              '![image](https://example.com/cover.png)',
+            ),
+            baseUri: Uri.parse('file:///books/sample.md'),
+            imageLoader: (path) async {
+              loadedPaths.add(path);
+              return _createTestImage();
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(loadedPaths, contains('https://example.com/cover.png'));
   });
 
   test('selectable text contains only body text without ruby', () async {
@@ -1285,6 +1344,16 @@ void main() {
 
     expect(find.text('コピー'), findsNothing);
   });
+}
+
+Future<ui.Image> _createTestImage() async {
+  final recorder = PictureRecorder();
+  final canvas = Canvas(recorder);
+  canvas.drawRect(
+    const Rect.fromLTWH(0, 0, 1, 1),
+    Paint()..color = const Color(0xffffffff),
+  );
+  return recorder.endRecording().toImage(1, 1);
 }
 
 Future<void> _longPressCanvas(

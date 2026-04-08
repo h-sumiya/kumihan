@@ -1,8 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:kumihan/kumihan.dart' hide Text;
 import 'package:kumihan_example/dsl_sample.dart';
 
@@ -36,6 +38,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
   );
 
   String? _fileName;
+  Uri? _documentBaseUri;
   Document? _document;
   ReaderViewMode _viewMode = ReaderViewMode.paged;
   KumihanSpreadMode _bookSpreadMode = KumihanSpreadMode.doublePage;
@@ -90,6 +93,27 @@ class _ReaderScreenState extends State<ReaderScreen> {
     });
   }
 
+  Future<ui.Image?> _loadImage(String source) async {
+    try {
+      final uri = Uri.tryParse(source);
+      late final Uint8List bytes;
+      if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
+        final data = await NetworkAssetBundle(uri).load(source);
+        bytes = data.buffer.asUint8List();
+      } else {
+        final filePath = uri != null && uri.scheme == 'file'
+            ? uri.toFilePath()
+            : source;
+        bytes = await File(filePath).readAsBytes();
+      }
+      final codec = await ui.instantiateImageCodec(bytes);
+      final frame = await codec.getNextFrame();
+      return frame.image;
+    } catch (_) {
+      return null;
+    }
+  }
+
   @override
   void dispose() {
     _pagedController.dispose();
@@ -113,6 +137,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
     final bytes = file.bytes ?? await File(file.path!).readAsBytes();
     final text = utf8.decode(bytes, allowMalformed: true);
     final lowerName = file.name.toLowerCase();
+    _documentBaseUri = file.path == null ? null : Uri.file(file.path!);
     _loadDocument(
       fileName: file.name,
       document: lowerName.endsWith('.md') || lowerName.endsWith('.markdown')
@@ -122,6 +147,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
   }
 
   void _loadDslSample() {
+    _documentBaseUri = null;
     _loadDocument(fileName: 'DSLサンプル', document: buildDslSampleDocument());
   }
 
@@ -399,6 +425,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
                       ReaderViewMode.book => KumihanBook(
                         document: _document!,
                         controller: _pagedController,
+                        baseUri: _documentBaseUri,
+                        imageLoader: _loadImage,
                         spreadMode: _bookSpreadMode,
                         frontCover: _buildFrontCover(),
                         backCover: _buildBackCover(),
@@ -415,6 +443,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
                       ReaderViewMode.paged => KumihanPagedCanvas(
                         document: _document!,
                         controller: _pagedController,
+                        baseUri: _documentBaseUri,
+                        imageLoader: _loadImage,
                         layout: const KumihanLayoutData(
                           fontSize: 18,
                           pagePadding: EdgeInsets.all(16),
@@ -431,6 +461,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
                       ReaderViewMode.scroll => KumihanScrollCanvas(
                         document: _document!,
                         controller: _scrollController,
+                        baseUri: _documentBaseUri,
+                        imageLoader: _loadImage,
                         layout: const KumihanLayoutData(
                           fontSize: 18,
                           pagePadding: EdgeInsets.all(16),
