@@ -10,6 +10,7 @@ import 'book/kumihan_book_page_surface.dart';
 import 'document.dart';
 import 'engine/kumihan_engine.dart';
 import 'kumihan_paged_controller.dart';
+import 'kumihan_book_theme.dart';
 import 'kumihan_theme.dart';
 import 'kumihan_types.dart';
 import 'page_flip/page_flip_book.dart';
@@ -58,6 +59,8 @@ class KumihanBook extends StatefulWidget {
     this.spreadMode = KumihanSpreadMode.doublePage,
     this.layout = const KumihanBookLayoutData(),
     this.theme = const KumihanThemeData(),
+    this.bookTheme = const KumihanBookThemeData(),
+    this.autoPageFlipDuration = const Duration(milliseconds: 1000),
     this.selectable = true,
     this.onLinkTap,
     this.onSnapshotChanged,
@@ -77,6 +80,8 @@ class KumihanBook extends StatefulWidget {
   final KumihanSpreadMode spreadMode;
   final KumihanBookLayoutData layout;
   final KumihanThemeData theme;
+  final KumihanBookThemeData bookTheme;
+  final Duration autoPageFlipDuration;
   final bool selectable;
   final ValueChanged<String>? onLinkTap;
   final ValueChanged<KumihanPagedSnapshot>? onSnapshotChanged;
@@ -106,6 +111,9 @@ class _KumihanBookState extends State<KumihanBook>
   bool _selectionMode = false;
   bool _showSelectionToolbar = false;
   Offset? _selectionEndPosition;
+
+  KumihanThemeData get _effectiveTheme =>
+      widget.bookTheme.applyTo(widget.theme);
 
   @override
   void initState() {
@@ -150,9 +158,10 @@ class _KumihanBookState extends State<KumihanBook>
       unawaited(_engine.updateLayout(_engineLayout(widget.layout)));
     }
 
-    if (oldWidget.theme != widget.theme) {
+    final oldEffectiveTheme = oldWidget.bookTheme.applyTo(oldWidget.theme);
+    if (oldEffectiveTheme != _effectiveTheme) {
       _clearSelection();
-      unawaited(_engine.updateTheme(widget.theme));
+      unawaited(_engine.updateTheme(_effectiveTheme));
     }
 
     if (!identical(oldWidget.document, widget.document)) {
@@ -195,7 +204,7 @@ class _KumihanBookState extends State<KumihanBook>
       initialPage: _currentPage,
       maxPages: widget.maxPages,
       layout: _engineLayout(widget.layout),
-      theme: widget.theme,
+      theme: _effectiveTheme,
       onInvalidate: () {
         if (!mounted) {
           return;
@@ -375,7 +384,8 @@ class _KumihanBookState extends State<KumihanBook>
   Widget _buildDefaultBlankPage() {
     return KumihanDefaultBlankBookPage(
       title: _engine.headerTitle,
-      theme: widget.theme,
+      theme: _effectiveTheme,
+      borderColor: widget.bookTheme.borderColor,
     );
   }
 
@@ -413,8 +423,8 @@ class _KumihanBookState extends State<KumihanBook>
     if (documentPageIndex == null) {
       return DecoratedBox(
         decoration: BoxDecoration(
-          color: widget.theme.paperColor,
-          border: Border.all(color: const Color(0xFFBDB7AA), width: 1.2),
+          color: _effectiveTheme.paperColor,
+          border: Border.all(color: widget.bookTheme.borderColor, width: 1.2),
         ),
       );
     }
@@ -425,7 +435,7 @@ class _KumihanBookState extends State<KumihanBook>
       pageIndex: documentPageIndex,
       recordInteractiveRegions: recordInteractiveRegions,
       resetPaintState: resetPaintState,
-      theme: widget.theme,
+      theme: _effectiveTheme,
       totalPages: _totalPages,
       spreadMode: widget.spreadMode,
     );
@@ -862,7 +872,7 @@ class _KumihanBookState extends State<KumihanBook>
       final renderer = BookSpreadRenderer(
         engine: _engine,
         layout: widget.layout,
-        theme: widget.theme,
+        theme: _effectiveTheme,
         spreadMode: KumihanSpreadMode.single,
       );
       return <Rect>[renderer.resolveBodyRect(pageSize, BookPageSlot.single)];
@@ -871,7 +881,7 @@ class _KumihanBookState extends State<KumihanBook>
     final renderer = BookSpreadRenderer(
       engine: _engine,
       layout: widget.layout,
-      theme: widget.theme,
+      theme: _effectiveTheme,
       spreadMode: KumihanSpreadMode.doublePage,
     );
     final leftRect = renderer.resolveBodyRect(pageSize, BookPageSlot.left);
@@ -995,7 +1005,7 @@ class _KumihanBookState extends State<KumihanBook>
         final renderer = BookSpreadRenderer(
           engine: _engine,
           layout: widget.layout,
-          theme: widget.theme,
+          theme: _effectiveTheme,
           spreadMode: widget.spreadMode,
         );
         final enginePageSize = renderer.resolvePageSize(availableSize);
@@ -1023,6 +1033,10 @@ class _KumihanBookState extends State<KumihanBook>
                     displayMode: _isSingleSpread
                         ? PageDisplayMode.singlePage
                         : PageDisplayMode.doublePage,
+                    tapFlipTime: widget.autoPageFlipDuration,
+                    bookColor: widget.bookTheme.bookColor,
+                    pageBackgroundColor: widget.bookTheme.pageBackgroundColor,
+                    borderColor: widget.bookTheme.borderColor,
                     pageDensityBuilder: _densityForRenderPage,
                     onSnapshotChanged: _handlePageFlipSnapshotChanged,
                     snapshotPageBuilder: (context, pageIndex) {

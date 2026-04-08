@@ -8,6 +8,7 @@ import 'package:flutter/widgets.dart';
 import 'book/book_spread_renderer.dart';
 import 'document.dart';
 import 'engine/kumihan_engine.dart';
+import 'kumihan_book_theme.dart';
 import 'kumihan_paged_controller.dart';
 import 'kumihan_theme.dart';
 import 'kumihan_types.dart';
@@ -24,6 +25,7 @@ class KumihanBookCanvas extends StatefulWidget {
     this.spreadMode = KumihanSpreadMode.doublePage,
     this.layout = const KumihanBookLayoutData(),
     this.theme = const KumihanThemeData(),
+    this.bookTheme = const KumihanBookThemeData(),
     this.selectable = true,
     this.onSnapshotChanged,
   }) : assert(maxPages == null || maxPages > 0);
@@ -37,6 +39,7 @@ class KumihanBookCanvas extends StatefulWidget {
   final KumihanSpreadMode spreadMode;
   final KumihanBookLayoutData layout;
   final KumihanThemeData theme;
+  final KumihanBookThemeData bookTheme;
   final bool selectable;
   final ValueChanged<KumihanPagedSnapshot>? onSnapshotChanged;
 
@@ -56,6 +59,9 @@ class _KumihanBookCanvasState extends State<KumihanBookCanvas>
   bool _selectionMode = false;
   bool _showSelectionToolbar = false;
   Offset? _selectionEndPosition;
+
+  KumihanThemeData get _effectiveTheme =>
+      widget.bookTheme.applyTo(widget.theme);
 
   @override
   void initState() {
@@ -100,9 +106,10 @@ class _KumihanBookCanvasState extends State<KumihanBookCanvas>
       unawaited(_engine.updateLayout(_engineLayout(widget.layout)));
     }
 
-    if (oldWidget.theme != widget.theme) {
+    final oldEffectiveTheme = oldWidget.bookTheme.applyTo(oldWidget.theme);
+    if (oldEffectiveTheme != _effectiveTheme) {
       _clearSelection();
-      unawaited(_engine.updateTheme(widget.theme));
+      unawaited(_engine.updateTheme(_effectiveTheme));
     }
 
     if (!identical(oldWidget.document, widget.document)) {
@@ -135,7 +142,7 @@ class _KumihanBookCanvasState extends State<KumihanBookCanvas>
       initialPage: _currentPage,
       maxPages: widget.maxPages,
       layout: _engineLayout(widget.layout),
-      theme: widget.theme,
+      theme: _effectiveTheme,
       onInvalidate: () {
         if (!mounted) {
           return;
@@ -548,7 +555,7 @@ class _KumihanBookCanvasState extends State<KumihanBookCanvas>
         final renderer = BookSpreadRenderer(
           engine: _engine,
           layout: widget.layout,
-          theme: widget.theme,
+          theme: _effectiveTheme,
           spreadMode: widget.spreadMode,
         );
         _scheduleResize(renderer.resolvePageSize(size));
@@ -569,7 +576,7 @@ class _KumihanBookCanvasState extends State<KumihanBookCanvas>
                             resetPaintState: true,
                             slot: BookPageSlot.right,
                             spreadMode: widget.spreadMode,
-                            theme: widget.theme,
+                            theme: _effectiveTheme,
                             totalPages: _totalPages,
                           ),
                         ),
@@ -586,7 +593,7 @@ class _KumihanBookCanvasState extends State<KumihanBookCanvas>
                             resetPaintState: false,
                             slot: BookPageSlot.left,
                             spreadMode: widget.spreadMode,
-                            theme: widget.theme,
+                            theme: _effectiveTheme,
                             totalPages: _totalPages,
                           ),
                         ),
@@ -603,7 +610,7 @@ class _KumihanBookCanvasState extends State<KumihanBookCanvas>
                     resetPaintState: true,
                     slot: BookPageSlot.single,
                     spreadMode: widget.spreadMode,
-                    theme: widget.theme,
+                    theme: _effectiveTheme,
                     totalPages: _totalPages,
                   ),
                 ),

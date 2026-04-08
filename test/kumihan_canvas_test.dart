@@ -1021,6 +1021,40 @@ void main() {
     expect(pageFlip.pageCount, 2);
   });
 
+  testWidgets('kumihan book forwards book theme and tap flip duration', (
+    tester,
+  ) async {
+    const bookTheme = KumihanBookThemeData(
+      bookColor: Color(0xff6d4c32),
+      pageBackgroundColor: Color(0xfff7efd9),
+      borderColor: Color(0xff8a735c),
+    );
+    const autoPageFlipDuration = Duration(milliseconds: 420);
+
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: SizedBox(
+          width: 800,
+          height: 600,
+          child: KumihanBook(
+            document: Document(<Object>['本文です。']),
+            bookTheme: bookTheme,
+            autoPageFlipDuration: autoPageFlipDuration,
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    final pageFlip = tester.widget<PageFlipBook>(find.byType(PageFlipBook));
+    expect(pageFlip.bookColor, bookTheme.bookColor);
+    expect(pageFlip.pageBackgroundColor, bookTheme.pageBackgroundColor);
+    expect(pageFlip.borderColor, bookTheme.borderColor);
+    expect(pageFlip.tapFlipTime, autoPageFlipDuration);
+  });
+
   testWidgets('kumihan book starts from front-cover spread in double mode', (
     tester,
   ) async {

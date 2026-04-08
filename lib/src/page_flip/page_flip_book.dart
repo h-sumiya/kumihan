@@ -43,6 +43,7 @@ class PageFlipBook extends StatefulWidget {
     this.initialRightPageIndex = 0,
     this.displayMode = PageDisplayMode.doublePage,
     this.flippingTime = const Duration(milliseconds: 1000),
+    this.tapFlipTime,
     this.drawShadow = true,
     this.maxShadowOpacity = 0.35,
     this.bookColor = const Color(0xFFD7C8AE),
@@ -62,6 +63,7 @@ class PageFlipBook extends StatefulWidget {
   final int initialRightPageIndex;
   final PageDisplayMode displayMode;
   final Duration flippingTime;
+  final Duration? tapFlipTime;
   final bool drawShadow;
   final double maxShadowOpacity;
   final Color bookColor;
@@ -754,6 +756,7 @@ class _PageFlipBookState extends State<PageFlipBook>
       start: start,
       destination: Offset(-widget.pageSize.width, yDest),
       turnsPage: true,
+      durationOverride: widget.tapFlipTime,
     );
   }
 
@@ -987,6 +990,7 @@ class _PageFlipBookState extends State<PageFlipBook>
     required Offset start,
     required Offset destination,
     required bool turnsPage,
+    Duration? durationOverride,
   }) {
     _animationController.stop();
     _animationStart = start;
@@ -997,9 +1001,10 @@ class _PageFlipBookState extends State<PageFlipBook>
       (start.dx - destination.dx).abs(),
       (start.dy - destination.dy).abs(),
     );
+    final baseDuration = durationOverride ?? widget.flippingTime;
     final duration = pathLength >= 1000
-        ? widget.flippingTime
-        : widget.flippingTime * (pathLength / 1000);
+        ? baseDuration
+        : baseDuration * (pathLength / 1000);
 
     _animationController.duration = duration;
     _animationController.forward(from: 0);

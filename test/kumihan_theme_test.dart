@@ -32,6 +32,23 @@ void main() {
     expect(left, isNot(right));
   });
 
+  test('KumihanBookThemeData applies only book overrides to base theme', () {
+    const baseTheme = KumihanThemeData(
+      paperColor: Color(0xfffff0dd),
+      backPageOpacity: 0.04,
+    );
+    const bookTheme = KumihanBookThemeData(
+      backPageOpacity: 0.18,
+      borderColor: Color(0xff998877),
+    );
+
+    final applied = bookTheme.applyTo(baseTheme);
+
+    expect(applied.paperColor, const Color(0xfffff0dd));
+    expect(applied.backPageOpacity, 0.18);
+    expect(bookTheme.borderColor, const Color(0xff998877));
+  });
+
   test('KumihanLayoutData equality includes pagePadding', () {
     const left = KumihanLayoutData(
       pagePadding: EdgeInsets.symmetric(horizontal: 16),

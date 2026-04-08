@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/widgets.dart';
 
 import '../engine/constants.dart';
+import '../kumihan_book_theme.dart';
 import '../kumihan_theme.dart';
 
 class KumihanDefaultBookDesk extends StatelessWidget {
@@ -28,10 +29,12 @@ class KumihanDefaultBlankBookPage extends StatelessWidget {
     super.key,
     required this.title,
     required this.theme,
+    this.borderColor = defaultKumihanBookBorderColor,
   });
 
   final String title;
   final KumihanThemeData theme;
+  final Color borderColor;
 
   @override
   Widget build(BuildContext context) {
@@ -39,7 +42,7 @@ class KumihanDefaultBlankBookPage extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: theme.paperColor,
-        border: Border.all(color: const Color(0xFFBDB7AA), width: 1.2),
+        border: Border.all(color: borderColor, width: 1.2),
       ),
       child: Center(
         child: Padding(

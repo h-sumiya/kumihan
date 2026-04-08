@@ -9,6 +9,7 @@ export 'src/engine/kumihan_engine.dart';
 export 'src/engine/kumihan_scroll_engine.dart' show KumihanScrollEngine;
 export 'src/kumihan_book.dart';
 export 'src/kumihan_book_canvas.dart';
+export 'src/kumihan_book_theme.dart';
 export 'src/kumihan_controller.dart';
 export 'src/kumihan_page_paint_context.dart';
 export 'src/kumihan_paged_canvas.dart';
