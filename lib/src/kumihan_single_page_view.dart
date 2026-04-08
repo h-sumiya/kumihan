@@ -2,12 +2,12 @@ import 'package:flutter/widgets.dart';
 
 import 'document.dart';
 import 'engine/kumihan_engine.dart';
-import 'kumihan_paged_canvas.dart';
+import 'kumihan_paged_view.dart';
 import 'kumihan_theme.dart';
 import 'kumihan_types.dart';
 
-class KumihanSinglePageCanvas extends StatelessWidget {
-  const KumihanSinglePageCanvas({
+class KumihanSinglePageView extends StatelessWidget {
+  const KumihanSinglePageView({
     super.key,
     required this.document,
     this.baseUri,
@@ -28,7 +28,7 @@ class KumihanSinglePageCanvas extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return KumihanPagedCanvas(
+    return KumihanPagedView(
       document: document,
       baseUri: baseUri,
       imageLoader: imageLoader,

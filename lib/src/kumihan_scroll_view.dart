@@ -11,8 +11,8 @@ import 'kumihan_scroll_controller.dart';
 import 'kumihan_theme.dart';
 import 'kumihan_types.dart';
 
-class KumihanScrollCanvas extends StatefulWidget {
-  const KumihanScrollCanvas({
+class KumihanScrollView extends StatefulWidget {
+  const KumihanScrollView({
     super.key,
     required this.document,
     this.controller,
@@ -34,10 +34,10 @@ class KumihanScrollCanvas extends StatefulWidget {
   final ValueChanged<KumihanScrollSnapshot>? onSnapshotChanged;
 
   @override
-  State<KumihanScrollCanvas> createState() => _KumihanScrollCanvasState();
+  State<KumihanScrollView> createState() => _KumihanScrollViewState();
 }
 
-class _KumihanScrollCanvasState extends State<KumihanScrollCanvas>
+class _KumihanScrollViewState extends State<KumihanScrollView>
     implements KumihanScrollViewport {
   late KumihanScrollEngine _engine;
   late ScrollController _scrollController;
@@ -61,7 +61,7 @@ class _KumihanScrollCanvasState extends State<KumihanScrollCanvas>
   }
 
   @override
-  void didUpdateWidget(covariant KumihanScrollCanvas oldWidget) {
+  void didUpdateWidget(covariant KumihanScrollView oldWidget) {
     super.didUpdateWidget(oldWidget);
 
     if (!identical(oldWidget.controller, widget.controller)) {

@@ -18,7 +18,7 @@ void main() {
         child: SizedBox(
           width: 400,
           height: 600,
-          child: KumihanPagedCanvas(
+          child: KumihanPagedView(
             document: const AozoraParser().parse(
               '［＃１字下げ］表示サンプルです。\n［＃改ページ］\n次のページです。',
             ),
@@ -43,7 +43,7 @@ void main() {
         child: SizedBox(
           width: 400,
           height: 600,
-          child: KumihanPagedCanvas(
+          child: KumihanPagedView(
             document: Document(<Object>[
               List<String>.filled(400, '本文です。').join(),
             ]),
@@ -71,7 +71,7 @@ void main() {
         child: SizedBox(
           width: 400,
           height: 600,
-          child: KumihanSinglePageCanvas(
+          child: KumihanSinglePageView(
             document: Document(<Object>[
               List<String>.filled(400, '本文です。').join(),
             ]),
@@ -101,7 +101,7 @@ void main() {
         child: SizedBox(
           width: 400,
           height: 600,
-          child: KumihanScrollCanvas(
+          child: KumihanScrollView(
             document: const AozoraParser().parse('最初の本文です。\n［＃改ページ］\n次の本文です。'),
             controller: controller,
           ),
@@ -131,7 +131,7 @@ void main() {
         child: SizedBox(
           width: 400,
           height: 600,
-          child: KumihanPagedCanvas(
+          child: KumihanPagedView(
             document: const MarkdownParser().parse('![image](cover.png)'),
             baseUri: Uri.parse('file:///books/sample.md'),
             imageLoader: (path) async {
@@ -159,7 +159,7 @@ void main() {
         child: SizedBox(
           width: 400,
           height: 600,
-          child: KumihanScrollCanvas(
+          child: KumihanScrollView(
             document: const MarkdownParser().parse(
               '![image](https://example.com/cover.png)',
             ),
@@ -490,7 +490,7 @@ void main() {
         child: SizedBox(
           width: 800,
           height: 600,
-          child: KumihanBookCanvas(
+          child: KumihanBookView(
             document: const AozoraParser().parse(
               '一頁目です。\n［＃改ページ］\n二頁目です。\n［＃改ページ］\n三頁目です。\n［＃改ページ］\n四頁目です。',
             ),
@@ -520,7 +520,7 @@ void main() {
         child: SizedBox(
           width: 800,
           height: 600,
-          child: KumihanBookCanvas(document: Document(<Object>['本文です。'])),
+          child: KumihanBookView(document: Document(<Object>['本文です。'])),
         ),
       ),
     );
@@ -529,7 +529,7 @@ void main() {
 
     final paints = tester.widgetList<CustomPaint>(
       find.descendant(
-        of: find.byType(KumihanBookCanvas),
+        of: find.byType(KumihanBookView),
         matching: find.byType(CustomPaint),
       ),
     );
@@ -540,7 +540,7 @@ void main() {
 
     expect(
       find.descendant(
-        of: find.byType(KumihanBookCanvas),
+        of: find.byType(KumihanBookView),
         matching: find.byType(CustomPaint),
       ),
       findsNWidgets(2),
@@ -801,7 +801,7 @@ void main() {
         child: SizedBox(
           width: size.width,
           height: size.height,
-          child: KumihanBookCanvas(document: document),
+          child: KumihanBookView(document: document),
         ),
       ),
     );
@@ -809,7 +809,7 @@ void main() {
     await tester.pumpAndSettle();
     await _longPressCanvas(
       tester,
-      find.byType(KumihanBookCanvas),
+      find.byType(KumihanBookView),
       localPosition: point,
     );
 
@@ -838,7 +838,7 @@ void main() {
         child: SizedBox(
           width: size.width,
           height: size.height,
-          child: KumihanBookCanvas(document: document),
+          child: KumihanBookView(document: document),
         ),
       ),
     );
@@ -846,7 +846,7 @@ void main() {
     await tester.pumpAndSettle();
     await _longPressCanvas(
       tester,
-      find.byType(KumihanBookCanvas),
+      find.byType(KumihanBookView),
       localPosition: point,
     );
 
@@ -868,14 +868,14 @@ void main() {
           child: SizedBox(
             width: 800,
             height: 600,
-            child: KumihanBookCanvas(document: Document(<Object>['本文です。'])),
+            child: KumihanBookView(document: Document(<Object>['本文です。'])),
           ),
         ),
       ),
     );
 
     await tester.pumpAndSettle();
-    await tester.tap(find.byType(KumihanBookCanvas));
+    await tester.tap(find.byType(KumihanBookView));
     await tester.pumpAndSettle();
 
     expect(tapped, isTrue);
@@ -892,7 +892,7 @@ void main() {
         child: SizedBox(
           width: size.width,
           height: size.height,
-          child: KumihanBookCanvas(document: document),
+          child: KumihanBookView(document: document),
         ),
       ),
     );
@@ -900,7 +900,7 @@ void main() {
     await tester.pumpAndSettle();
     await _longPressCanvas(
       tester,
-      find.byType(KumihanBookCanvas),
+      find.byType(KumihanBookView),
       localPosition: point,
     );
 
@@ -1421,7 +1421,7 @@ void main() {
         child: SizedBox(
           width: size.width,
           height: size.height,
-          child: KumihanBookCanvas(document: document, selectable: false),
+          child: KumihanBookView(document: document, selectable: false),
         ),
       ),
     );
@@ -1429,7 +1429,7 @@ void main() {
     await tester.pumpAndSettle();
     await _longPressCanvas(
       tester,
-      find.byType(KumihanBookCanvas),
+      find.byType(KumihanBookView),
       localPosition: point,
     );
 
@@ -1447,7 +1447,7 @@ void main() {
         child: SizedBox(
           width: size.width,
           height: size.height,
-          child: KumihanPagedCanvas(document: document, selectable: false),
+          child: KumihanPagedView(document: document, selectable: false),
         ),
       ),
     );
@@ -1455,7 +1455,7 @@ void main() {
     await tester.pumpAndSettle();
     await _longPressCanvas(
       tester,
-      find.byType(KumihanPagedCanvas),
+      find.byType(KumihanPagedView),
       localPosition: point,
     );
 
@@ -1473,7 +1473,7 @@ void main() {
         child: SizedBox(
           width: size.width,
           height: size.height,
-          child: KumihanScrollCanvas(document: document, selectable: false),
+          child: KumihanScrollView(document: document, selectable: false),
         ),
       ),
     );
@@ -1481,7 +1481,7 @@ void main() {
     await tester.pumpAndSettle();
     await _longPressCanvas(
       tester,
-      find.byType(KumihanScrollCanvas),
+      find.byType(KumihanScrollView),
       localPosition: point,
     );
 

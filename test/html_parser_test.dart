@@ -113,7 +113,7 @@ void main() {
           child: SizedBox(
             width: 400,
             height: 600,
-            child: KumihanPagedCanvas(
+            child: KumihanPagedView(
               document: const HtmlParser().parse(
                 '<section><h1>表題</h1><p>本文です。</p></section>',
               ),

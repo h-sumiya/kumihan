@@ -469,7 +469,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                           });
                         },
                       ),
-                      ReaderViewMode.paged => KumihanPagedCanvas(
+                      ReaderViewMode.paged => KumihanPagedView(
                         document: _document!,
                         controller: _pagedController,
                         baseUri: _documentBaseUri,
@@ -488,7 +488,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                           });
                         },
                       ),
-                      ReaderViewMode.singlePage => KumihanSinglePageCanvas(
+                      ReaderViewMode.singlePage => KumihanSinglePageView(
                         document: _document!,
                         baseUri: _documentBaseUri,
                         imageLoader: _loadImage,
@@ -505,7 +505,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                           });
                         },
                       ),
-                      ReaderViewMode.scroll => KumihanScrollCanvas(
+                      ReaderViewMode.scroll => KumihanScrollView(
                         document: _document!,
                         controller: _scrollController,
                         baseUri: _documentBaseUri,

@@ -13,8 +13,8 @@ import 'kumihan_paged_controller.dart';
 import 'kumihan_theme.dart';
 import 'kumihan_types.dart';
 
-class KumihanBookCanvas extends StatefulWidget {
-  const KumihanBookCanvas({
+class KumihanBookView extends StatefulWidget {
+  const KumihanBookView({
     super.key,
     required this.document,
     this.controller,
@@ -44,10 +44,10 @@ class KumihanBookCanvas extends StatefulWidget {
   final ValueChanged<KumihanPagedSnapshot>? onSnapshotChanged;
 
   @override
-  State<KumihanBookCanvas> createState() => _KumihanBookCanvasState();
+  State<KumihanBookView> createState() => _KumihanBookViewState();
 }
 
-class _KumihanBookCanvasState extends State<KumihanBookCanvas>
+class _KumihanBookViewState extends State<KumihanBookView>
     implements KumihanPagedViewport {
   late KumihanEngine _engine;
   Size _lastPageSize = Size.zero;
@@ -74,7 +74,7 @@ class _KumihanBookCanvasState extends State<KumihanBookCanvas>
   }
 
   @override
-  void didUpdateWidget(covariant KumihanBookCanvas oldWidget) {
+  void didUpdateWidget(covariant KumihanBookView oldWidget) {
     super.didUpdateWidget(oldWidget);
 
     if (!identical(oldWidget.controller, widget.controller)) {

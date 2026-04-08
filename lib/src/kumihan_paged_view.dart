@@ -11,8 +11,8 @@ import 'kumihan_paged_controller.dart';
 import 'kumihan_theme.dart';
 import 'kumihan_types.dart';
 
-class KumihanPagedCanvas extends StatefulWidget {
-  const KumihanPagedCanvas({
+class KumihanPagedView extends StatefulWidget {
+  const KumihanPagedView({
     super.key,
     required this.document,
     this.controller,
@@ -38,10 +38,10 @@ class KumihanPagedCanvas extends StatefulWidget {
   final ValueChanged<KumihanPagedSnapshot>? onSnapshotChanged;
 
   @override
-  State<KumihanPagedCanvas> createState() => _KumihanPagedCanvasState();
+  State<KumihanPagedView> createState() => _KumihanPagedViewState();
 }
 
-class _KumihanPagedCanvasState extends State<KumihanPagedCanvas> {
+class _KumihanPagedViewState extends State<KumihanPagedView> {
   late KumihanEngine _engine;
   Size _lastSize = Size.zero;
   KumihanSelectableGlyph? _selectionAnchor;
@@ -60,7 +60,7 @@ class _KumihanPagedCanvasState extends State<KumihanPagedCanvas> {
   }
 
   @override
-  void didUpdateWidget(covariant KumihanPagedCanvas oldWidget) {
+  void didUpdateWidget(covariant KumihanPagedView oldWidget) {
     super.didUpdateWidget(oldWidget);
 
     if (!identical(oldWidget.controller, widget.controller)) {
